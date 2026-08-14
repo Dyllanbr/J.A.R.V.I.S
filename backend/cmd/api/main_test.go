@@ -9,6 +9,8 @@ import (
 )
 
 func TestRunRejectsInvalidStartupConfiguration(t *testing.T) {
+	t.Setenv("JARVIS_FINANCIAL_API_ENABLED", "")
+	t.Setenv("JARVIS_OWNER_ID", "")
 	t.Setenv("JARVIS_HTTP_ADDRESS", "127.0.0.1:0")
 	t.Setenv("JARVIS_SHUTDOWN_TIMEOUT", "10s")
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
@@ -19,6 +21,8 @@ func TestRunRejectsInvalidStartupConfiguration(t *testing.T) {
 }
 
 func TestInvalidStartupConfigurationIsRedactedFromLogs(t *testing.T) {
+	t.Setenv("JARVIS_FINANCIAL_API_ENABLED", "")
+	t.Setenv("JARVIS_OWNER_ID", "")
 	tests := []struct {
 		name          string
 		address       string

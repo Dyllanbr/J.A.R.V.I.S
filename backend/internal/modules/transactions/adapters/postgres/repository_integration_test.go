@@ -34,35 +34,43 @@ func TestMigrationsUpDownAndReapply(t *testing.T) {
 		if err := migrations.Up(ctx, connection); err != nil {
 			t.Fatal("migration UP failed")
 		}
-		assertMigrationVersion(t, ctx, connection, 1)
+		assertMigrationVersion(t, ctx, connection, 2)
 	})
 	assertTablesExist(t, ctx, pool, true)
+	assertTableExists(t, ctx, pool, "idempotency_records", true)
 	assertSchemaTypes(t, ctx, pool)
 	assertAuditSchemaIsMinimal(t, ctx, pool)
+	assertIdempotencySchemaIsMinimal(t, ctx, pool)
 	assertSchemaConstraints(t, ctx, pool)
+	assertMonthlyIndex(t, ctx, pool, true)
 
 	withConnection(t, ctx, pool, func(connection *pgx.Conn) {
 		if err := migrations.Up(ctx, connection); err != nil {
 			t.Fatal("reapplying migration UP failed")
 		}
-		assertMigrationVersion(t, ctx, connection, 1)
+		assertMigrationVersion(t, ctx, connection, 2)
 		if err := migrations.Down(ctx, connection); err != nil {
-			t.Fatal("migration DOWN failed")
+			t.Fatal("migration 002 DOWN failed")
 		}
-		assertMigrationVersion(t, ctx, connection, 0)
+		assertMigrationVersion(t, ctx, connection, 1)
 	})
-	assertTablesExist(t, ctx, pool, false)
+	assertTablesExist(t, ctx, pool, true)
+	assertTableExists(t, ctx, pool, "idempotency_records", false)
+	assertMonthlyIndex(t, ctx, pool, false)
 
 	withConnection(t, ctx, pool, func(connection *pgx.Conn) {
 		if err := migrations.Up(ctx, connection); err != nil {
 			t.Fatal("migration UP after DOWN failed")
 		}
-		assertMigrationVersion(t, ctx, connection, 1)
+		assertMigrationVersion(t, ctx, connection, 2)
 	})
 	assertTablesExist(t, ctx, pool, true)
+	assertTableExists(t, ctx, pool, "idempotency_records", true)
 	assertSchemaTypes(t, ctx, pool)
 	assertAuditSchemaIsMinimal(t, ctx, pool)
+	assertIdempotencySchemaIsMinimal(t, ctx, pool)
 	assertSchemaConstraints(t, ctx, pool)
+	assertMonthlyIndex(t, ctx, pool, true)
 }
 
 func TestExpenseRepositoryPersistsExpenseAndAuditAtomically(t *testing.T) {
@@ -642,15 +650,20 @@ func assertMigrationVersion(t *testing.T, ctx context.Context, connection *pgx.C
 func assertTablesExist(t *testing.T, ctx context.Context, pool *pgxpool.Pool, expected bool) {
 	t.Helper()
 	for _, table := range []string{"users", "transactions", "audit_events"} {
-		var exists bool
-		if err := pool.QueryRow(ctx, `
-			SELECT to_regclass('public.' || $1) IS NOT NULL
-		`, table).Scan(&exists); err != nil {
-			t.Fatal("schema lookup failed")
-		}
-		if exists != expected {
-			t.Fatalf("table %s exists = %t, want %t", table, exists, expected)
-		}
+		assertTableExists(t, ctx, pool, table, expected)
+	}
+}
+
+func assertTableExists(t *testing.T, ctx context.Context, pool *pgxpool.Pool, table string, expected bool) {
+	t.Helper()
+	var exists bool
+	if err := pool.QueryRow(ctx, `
+		SELECT to_regclass('public.' || $1) IS NOT NULL
+	`, table).Scan(&exists); err != nil {
+		t.Fatal("schema lookup failed")
+	}
+	if exists != expected {
+		t.Fatalf("table %s exists = %t, want %t", table, exists, expected)
 	}
 }
 
@@ -665,6 +678,9 @@ func assertSchemaTypes(t *testing.T, ctx context.Context, pool *pgxpool.Pool) {
 		{table: "transactions", column: "updated_at", expected: "timestamp with time zone"},
 		{table: "audit_events", column: "id", expected: "bigint"},
 		{table: "audit_events", column: "created_at", expected: "timestamp with time zone"},
+		{table: "idempotency_records", column: "request_fingerprint", expected: "bytea"},
+		{table: "idempotency_records", column: "created_at", expected: "timestamp with time zone"},
+		{table: "idempotency_records", column: "completed_at", expected: "timestamp with time zone"},
 	}
 
 	for _, test := range tests {
@@ -714,6 +730,64 @@ func assertAuditSchemaIsMinimal(t *testing.T, ctx context.Context, pool *pgxpool
 	}
 }
 
+func assertIdempotencySchemaIsMinimal(t *testing.T, ctx context.Context, pool *pgxpool.Pool) {
+	t.Helper()
+	rows, err := pool.Query(ctx, `
+		SELECT column_name
+		FROM information_schema.columns
+		WHERE table_schema = 'public' AND table_name = 'idempotency_records'
+		ORDER BY ordinal_position
+	`)
+	if err != nil {
+		t.Fatal("idempotency schema lookup failed")
+	}
+	defer rows.Close()
+
+	var columns []string
+	for rows.Next() {
+		var column string
+		if err := rows.Scan(&column); err != nil {
+			t.Fatal("idempotency schema scan failed")
+		}
+		columns = append(columns, column)
+	}
+	expected := []string{
+		"user_id",
+		"operation",
+		"idempotency_key",
+		"request_fingerprint",
+		"state",
+		"transaction_id",
+		"created_at",
+		"completed_at",
+	}
+	if fmt.Sprint(columns) != fmt.Sprint(expected) {
+		t.Fatalf("idempotency columns = %v, want minimal schema %v", columns, expected)
+	}
+}
+
+func assertMonthlyIndex(t *testing.T, ctx context.Context, pool *pgxpool.Pool, expected bool) {
+	t.Helper()
+	var definition *string
+	if err := pool.QueryRow(ctx, `
+		SELECT (
+			SELECT indexdef
+			FROM pg_indexes
+			WHERE schemaname = 'public'
+			  AND tablename = 'transactions'
+			  AND indexname = 'transactions_owner_month_idx'
+		)
+	`).Scan(&definition); err != nil {
+		t.Fatal("monthly index lookup failed")
+	}
+	if (definition != nil) != expected {
+		t.Fatalf("monthly index exists = %t, want %t", definition != nil, expected)
+	}
+	if definition != nil && !strings.Contains(*definition, "(user_id, occurred_at DESC, id DESC)") {
+		t.Fatal("monthly index does not match the owner/time/order query")
+	}
+}
+
 func assertSchemaConstraints(t *testing.T, ctx context.Context, pool *pgxpool.Pool) {
 	t.Helper()
 	expectations := []struct {
@@ -727,6 +801,10 @@ func assertSchemaConstraints(t *testing.T, ctx context.Context, pool *pgxpool.Po
 		{table: "audit_events", name: "audit_events_transaction_owner_fkey", kind: "f", definitionFragment: "FOREIGN KEY (aggregate_id, user_id) REFERENCES transactions(id, user_id) ON DELETE RESTRICT"},
 		{table: "transactions", name: "transactions_id_user_id_unique", kind: "u", definitionFragment: "UNIQUE (id, user_id)"},
 		{table: "audit_events", name: "audit_events_unique_version", kind: "u", definitionFragment: "UNIQUE (aggregate_type, aggregate_id, aggregate_version, event_type)"},
+		{table: "idempotency_records", name: "idempotency_records_pkey", kind: "p", definitionFragment: "PRIMARY KEY (user_id, operation, idempotency_key)"},
+		{table: "idempotency_records", name: "idempotency_records_user_id_fkey", kind: "f", definitionFragment: "FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE RESTRICT"},
+		{table: "idempotency_records", name: "idempotency_records_transaction_owner_fkey", kind: "f", definitionFragment: "FOREIGN KEY (transaction_id, user_id) REFERENCES transactions(id, user_id) ON DELETE RESTRICT"},
+		{table: "idempotency_records", name: "idempotency_records_transaction_unique", kind: "u", definitionFragment: "UNIQUE (transaction_id)"},
 	}
 
 	criticalChecks := map[string][]string{
@@ -764,6 +842,15 @@ func assertSchemaConstraints(t *testing.T, ctx context.Context, pool *pgxpool.Po
 			"audit_events_aggregate_id_no_controls",
 			"audit_events_aggregate_version_positive",
 			"audit_events_event_type_recorded",
+		},
+		"idempotency_records": {
+			"idempotency_records_operation_create_expense",
+			"idempotency_records_key_length",
+			"idempotency_records_key_visible_ascii",
+			"idempotency_records_fingerprint_sha256",
+			"idempotency_records_state_valid",
+			"idempotency_records_completion_valid",
+			"idempotency_records_timestamps_ordered",
 		},
 	}
 	for table, names := range criticalChecks {

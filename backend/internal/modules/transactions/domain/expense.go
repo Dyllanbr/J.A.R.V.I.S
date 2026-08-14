@@ -100,37 +100,42 @@ type Expense struct {
 
 // ValidateExpenseDetails applies the domain rules for channel-supplied data.
 func ValidateExpenseDetails(details ExpenseDetails) error {
-	_, err := validateExpenseDetails(details)
+	_, err := NormalizeExpenseDetails(details)
 	return err
 }
 
-func validateExpenseDetails(details ExpenseDetails) (string, error) {
+// NormalizeExpenseDetails validates channel-supplied data and returns the
+// canonical representation used to create an Expense. It does not generate an
+// ID or timestamps and is therefore safe to use for a non-persisting preview.
+func NormalizeExpenseDetails(details ExpenseDetails) (ExpenseDetails, error) {
 	if !isValidIdentifier(details.UserID) {
-		return "", ErrInvalidUserID
+		return ExpenseDetails{}, ErrInvalidUserID
 	}
 
 	description := strings.TrimSpace(details.Description)
 	if description == "" || !utf8.ValidString(description) || utf8.RuneCountInString(description) > MaxExpenseDescriptionRunes {
-		return "", ErrInvalidDescription
+		return ExpenseDetails{}, ErrInvalidDescription
 	}
 
 	if details.Amount.MinorUnits() <= 0 {
-		return "", ErrInvalidExpenseAmount
+		return ExpenseDetails{}, ErrInvalidExpenseAmount
 	}
 	if !details.PaymentMethod.valid() {
-		return "", ErrInvalidPaymentMethod
+		return ExpenseDetails{}, ErrInvalidPaymentMethod
 	}
 	if details.OccurredAt.IsZero() {
-		return "", ErrInvalidOccurredAt
+		return ExpenseDetails{}, ErrInvalidOccurredAt
 	}
 	if !isValidTimezone(details.FinancialTimezone) {
-		return "", ErrInvalidFinancialTimezone
+		return ExpenseDetails{}, ErrInvalidFinancialTimezone
 	}
 	if !details.Origin.valid() {
-		return "", ErrInvalidOrigin
+		return ExpenseDetails{}, ErrInvalidOrigin
 	}
 
-	return description, nil
+	details.Description = description
+	details.OccurredAt = normalizeInstant(details.OccurredAt)
+	return details, nil
 }
 
 // NewExpense validates all invariants and creates an expense in RECORDED state.
@@ -139,7 +144,7 @@ func NewExpense(params ExpenseParams) (Expense, error) {
 		return Expense{}, ErrInvalidExpenseID
 	}
 
-	description, err := validateExpenseDetails(params.Details)
+	details, err := NormalizeExpenseDetails(params.Details)
 	if err != nil {
 		return Expense{}, err
 	}
@@ -148,16 +153,14 @@ func NewExpense(params ExpenseParams) (Expense, error) {
 	}
 
 	createdAt := normalizeInstant(params.CreatedAt)
-	details := params.Details
-
 	return Expense{
 		id:                params.ID,
 		userID:            details.UserID,
 		transactionType:   TransactionTypeExpense,
-		description:       description,
+		description:       details.Description,
 		amount:            details.Amount,
 		paymentMethod:     details.PaymentMethod,
-		occurredAt:        normalizeInstant(details.OccurredAt),
+		occurredAt:        details.OccurredAt,
 		financialTimezone: details.FinancialTimezone,
 		origin:            details.Origin,
 		status:            ExpenseStatusRecorded,
@@ -165,6 +168,15 @@ func NewExpense(params ExpenseParams) (Expense, error) {
 		createdAt:         createdAt,
 		updatedAt:         createdAt,
 	}, nil
+}
+
+// ValidateUserID applies the opaque owner identifier policy without exposing
+// the rejected value.
+func ValidateUserID(value string) error {
+	if !isValidIdentifier(value) {
+		return ErrInvalidUserID
+	}
+	return nil
 }
 
 func (e Expense) ID() string                   { return e.id }

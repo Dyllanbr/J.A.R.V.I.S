@@ -1,0 +1,41 @@
+package randomid_test
+
+import (
+	"testing"
+	"time"
+
+	"jarvis/backend/internal/modules/transactions/adapters/randomid"
+	"jarvis/backend/internal/modules/transactions/domain"
+)
+
+func TestGeneratorCreatesDomainCompatibleDistinctIDs(t *testing.T) {
+	generator := randomid.Generator{}
+	first, err := generator.NewExpenseID()
+	if err != nil {
+		t.Fatalf("first NewExpenseID() error = %v", err)
+	}
+	second, err := generator.NewExpenseID()
+	if err != nil {
+		t.Fatalf("second NewExpenseID() error = %v", err)
+	}
+	if first == second || len(first) != len("exp_")+32 {
+		t.Fatal("generator did not create distinct 128-bit opaque IDs")
+	}
+
+	amount, _ := domain.NewMoney(1, domain.CurrencyBRL)
+	if _, err := domain.NewExpense(domain.ExpenseParams{
+		ID: first,
+		Details: domain.ExpenseDetails{
+			UserID:            "user-synthetic-001",
+			Description:       "Synthetic",
+			Amount:            amount,
+			PaymentMethod:     domain.PaymentMethodCash,
+			OccurredAt:        time.Date(2026, time.August, 14, 12, 0, 0, 0, time.UTC),
+			FinancialTimezone: "America/Sao_Paulo",
+			Origin:            domain.OriginIOS,
+		},
+		CreatedAt: time.Date(2026, time.August, 14, 13, 0, 0, 0, time.UTC),
+	}); err != nil {
+		t.Fatalf("generated ID is not domain compatible: %v", err)
+	}
+}

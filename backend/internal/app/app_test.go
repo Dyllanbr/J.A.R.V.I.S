@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 
@@ -19,13 +20,27 @@ func TestRunReturnsBindFailure(t *testing.T) {
 	}
 	defer listener.Close()
 
-	application := New(config.Config{
+	application := newTestApp(t, config.Config{
 		HTTPAddress:     listener.Addr().String(),
 		ShutdownTimeout: time.Second,
-	}, discardLogger())
+	})
 
 	if err := application.Run(context.Background()); err == nil {
 		t.Fatal("Run() returned nil error for an occupied address")
+	}
+}
+
+func TestHealthOnlyCompositionDoesNotRegisterFinancialRoutes(t *testing.T) {
+	application := newTestApp(t, config.Config{
+		HTTPAddress:     "127.0.0.1:8080",
+		ShutdownTimeout: time.Second,
+	})
+
+	request := httptest.NewRequest(http.MethodPost, "/v1/transactions", nil)
+	response := httptest.NewRecorder()
+	application.server.Handler.ServeHTTP(response, request)
+	if response.Code != http.StatusNotFound {
+		t.Fatalf("financial route status = %d, want 404 in health-only mode", response.Code)
 	}
 }
 
@@ -37,10 +52,10 @@ func TestRunHonorsPreCanceledContext(t *testing.T) {
 		t.Fatalf("create test listener: %v", err)
 	}
 
-	application := New(config.Config{
+	application := newTestApp(t, config.Config{
 		HTTPAddress:     listener.Addr().String(),
 		ShutdownTimeout: time.Second,
-	}, discardLogger())
+	})
 
 	if err := application.serve(ctx, listener); err != nil {
 		t.Fatalf("serve() returned an error for canceled context: %v", err)
@@ -53,10 +68,10 @@ func TestRunGracefullyShutsDown(t *testing.T) {
 		t.Fatalf("create test listener: %v", err)
 	}
 	address := listener.Addr().String()
-	application := New(config.Config{
+	application := newTestApp(t, config.Config{
 		HTTPAddress:     address,
 		ShutdownTimeout: 2 * time.Second,
-	}, discardLogger())
+	})
 
 	ctx, cancel := context.WithCancel(context.Background())
 	result := make(chan error, 1)
@@ -109,4 +124,35 @@ func waitForHealth(t *testing.T, url string, result <-chan error) {
 
 func discardLogger() *slog.Logger {
 	return slog.New(slog.NewTextHandler(io.Discard, nil))
+}
+
+func newTestApp(t *testing.T, cfg config.Config) *App {
+	t.Helper()
+	application, err := New(context.Background(), cfg, discardLogger(), func(string) string {
+		t.Fatal("health-only composition read PostgreSQL configuration")
+		return ""
+	})
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	return application
+}
+
+func TestNewRejectsInvalidFinancialOwnerBeforeDatabaseConfiguration(t *testing.T) {
+	configurationRead := false
+	_, err := New(context.Background(), config.Config{
+		HTTPAddress:         "127.0.0.1:8080",
+		ShutdownTimeout:     time.Second,
+		FinancialAPIEnabled: true,
+		OwnerID:             " owner ",
+	}, discardLogger(), func(string) string {
+		configurationRead = true
+		return ""
+	})
+	if err != ErrInvalidFinancialOwner {
+		t.Fatalf("New() error = %v, want ErrInvalidFinancialOwner", err)
+	}
+	if configurationRead {
+		t.Fatal("New() loaded database configuration for an invalid owner")
+	}
 }

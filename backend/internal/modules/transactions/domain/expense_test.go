@@ -53,6 +53,32 @@ func TestNewExpenseCreatesRecordedExpense(t *testing.T) {
 	}
 }
 
+func TestNormalizeExpenseDetailsReturnsCanonicalPreviewData(t *testing.T) {
+	details := validExpenseParams(t).Details
+	details.Description = "  Mercado sintético  "
+	details.OccurredAt = time.Date(2026, time.August, 14, 12, 0, 0, 123, time.FixedZone("synthetic", -3*60*60))
+
+	normalized, err := domain.NormalizeExpenseDetails(details)
+	if err != nil {
+		t.Fatalf("NormalizeExpenseDetails() error = %v", err)
+	}
+	if normalized.Description != "Mercado sintético" {
+		t.Fatalf("description = %q", normalized.Description)
+	}
+	if normalized.OccurredAt.Location() != time.UTC {
+		t.Fatalf("occurred-at location = %v, want UTC", normalized.OccurredAt.Location())
+	}
+}
+
+func TestValidateUserIDUsesExpenseIdentifierPolicy(t *testing.T) {
+	if err := domain.ValidateUserID("user-synthetic-001"); err != nil {
+		t.Fatalf("ValidateUserID(valid) error = %v", err)
+	}
+	if err := domain.ValidateUserID(" user-synthetic-001 "); !errors.Is(err, domain.ErrInvalidUserID) {
+		t.Fatalf("ValidateUserID(invalid) error = %v", err)
+	}
+}
+
 func TestNewExpenseAcceptsSupportedPaymentMethods(t *testing.T) {
 	methods := []domain.PaymentMethod{
 		domain.PaymentMethodPIX,

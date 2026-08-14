@@ -66,7 +66,24 @@ func (repository *ExpenseRepository) Save(ctx context.Context, expense domain.Ex
 		_ = transaction.Rollback(rollbackContext)
 	}()
 
-	if _, err := transaction.Exec(operationContext, `
+	if err := insertExpense(operationContext, transaction, expense); err != nil {
+		return err
+	}
+
+	if err := insertAuditEvent(operationContext, transaction, expense); err != nil {
+		return err
+	}
+
+	if err := transaction.Commit(operationContext); err != nil {
+		return newRepositoryError(ErrCommitTransaction, err)
+	}
+	committed = true
+
+	return nil
+}
+
+func insertExpense(ctx context.Context, transaction pgx.Tx, expense domain.Expense) error {
+	if _, err := transaction.Exec(ctx, `
 		INSERT INTO transactions (
 			id,
 			user_id,
@@ -101,8 +118,11 @@ func (repository *ExpenseRepository) Save(ctx context.Context, expense domain.Ex
 	); err != nil {
 		return newRepositoryError(ErrInsertExpense, err)
 	}
+	return nil
+}
 
-	if _, err := transaction.Exec(operationContext, `
+func insertAuditEvent(ctx context.Context, transaction pgx.Tx, expense domain.Expense) error {
+	if _, err := transaction.Exec(ctx, `
 		INSERT INTO audit_events (
 			user_id,
 			aggregate_type,
@@ -121,12 +141,6 @@ func (repository *ExpenseRepository) Save(ctx context.Context, expense domain.Ex
 	); err != nil {
 		return newRepositoryError(ErrInsertAuditEvent, err)
 	}
-
-	if err := transaction.Commit(operationContext); err != nil {
-		return newRepositoryError(ErrCommitTransaction, err)
-	}
-	committed = true
-
 	return nil
 }
 
