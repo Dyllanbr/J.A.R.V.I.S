@@ -1,11 +1,17 @@
 # Inventário de dados
 
-Estado: **PLANEJADO**. Nenhum dado pessoal ou financeiro é tratado pela fundação.
+Estado: campos da despesa **IMPLEMENTADOS somente no modelo**; tratamento operacional **PLANEJADO e ainda inexistente**. Não há banco, conta ou usuário real, armazenamento financeiro operacional ou integração externa financeira.
 
-Para cada dado futuro, criar uma linha somente quando existir finalidade aprovada. Não usar dados reais como exemplo.
+As linhas abaixo registram o que já existe conceitualmente em `Expense`, sem afirmar coleta ou uso real. Finalidade operacional, titular, base legal, retenção, compartilhamento, fornecedores, localização e demais decisões de tratamento permanecem a definir antes que qualquer canal ou persistência seja implementado. Não usar dados reais como exemplo.
 
 | Nome | Categoria | Titular | Finalidade | Origem | Base legal | Armazenamento | Acesso | Compartilhamento | Localização | Retenção | Eliminação | Classificação | Controles | Estado |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| A definir | A definir | A definir | A definir | A definir | A definir | A definir | A definir | A definir | A definir | A definir | A definir | A definir | A definir | PLANEJADO |
+| Expense ID | Identificador opaco modelado | A definir | A definir antes do tratamento | Campo do modelo | A definir | Nenhum armazenamento operacional | Nenhum acesso operacional | A definir; nenhum atual | A definir | A definir | A definir | A definir | UTF-8 válido, 1–128 bytes, sem controles ou espaços externos; fixtures sintéticas | IMPLEMENTADO (modelo); PLANEJADO (tratamento) |
+| UserID | Identificador opaco modelado; potencial dado pessoal | A definir | A definir antes do tratamento | Campo do modelo | A definir | Nenhum armazenamento operacional | Nenhum acesso operacional | A definir; nenhum atual | A definir | A definir | A definir | A definir | UTF-8 válido, 1–128 bytes, sem controles ou espaços externos; fixtures sintéticas | IMPLEMENTADO (modelo); PLANEJADO (tratamento) |
+| Descrição | Conteúdo financeiro modelado; potencial dado pessoal | A definir | A definir antes do tratamento | Campo do modelo | A definir | Nenhum armazenamento operacional | Nenhum acesso operacional | A definir; nenhum atual | A definir | A definir | A definir | A definir | UTF-8 válido, 1–200 caracteres Unicode; não registrar em logs; fixtures sintéticas | IMPLEMENTADO (modelo); PLANEJADO (tratamento) |
+| Valor e moeda | Dado financeiro modelado | A definir | A definir antes do tratamento | Campo do modelo | A definir | Nenhum armazenamento operacional | Nenhum acesso operacional | A definir; nenhum atual | A definir | A definir | A definir | A definir | Minor units inteiras; BRL; valor não registrado em logs; fixtures sintéticas | IMPLEMENTADO (modelo); PLANEJADO (tratamento) |
+| Forma de pagamento | Dado financeiro modelado | A definir | A definir antes do tratamento | Campo do modelo | A definir | Nenhum armazenamento operacional | Nenhum acesso operacional | A definir; nenhum atual | A definir | A definir | A definir | A definir | Enumeração de domínio; fixtures sintéticas | IMPLEMENTADO (modelo); PLANEJADO (tratamento) |
+| Data/hora e timezone financeiro | Metadado financeiro modelado | A definir | A definir antes do tratamento | Campo do modelo | A definir | Nenhum armazenamento operacional | Nenhum acesso operacional | A definir; nenhum atual | A definir | A definir | A definir | A definir | Instante normalizado para UTC e timezone IANA explícito; fixtures sintéticas | IMPLEMENTADO (modelo); PLANEJADO (tratamento) |
+| Origem | Metadado de canal modelado | A definir | A definir antes do tratamento | Campo do modelo | A definir | Nenhum armazenamento operacional | Nenhum acesso operacional | A definir; nenhum atual | A definir | A definir | A definir | A definir | Enumeração de domínio; os canais não estão implementados; fixtures sintéticas | IMPLEMENTADO (modelo); PLANEJADO (tratamento) |
 
 Estados permitidos: PLANEJADO, IMPLEMENTADO e VERIFICADO. VERIFICADO exige evidência referenciada; uma decisão genérica não preenche o inventário.

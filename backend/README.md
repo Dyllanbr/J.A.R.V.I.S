@@ -1,6 +1,6 @@
 # Backend
 
-Processo HTTP mínimo em Go que estabelece a composição da aplicação e um health check operacional. Ele não contém domínio financeiro, persistência, autenticação ou integrações.
+Backend Go em monólito modular. O processo HTTP continua restrito ao health check operacional; o núcleo financeiro da Etapa 1 não está conectado à composição, a transportes ou à persistência.
 
 ## Pacotes
 
@@ -8,7 +8,10 @@ Processo HTTP mínimo em Go que estabelece a composição da aplicação e um he
 - `internal/app`: composição e execução da aplicação.
 - `internal/config`: configuração explícita por ambiente.
 - `internal/platform/httpserver`: adaptador HTTP e limites do servidor.
-- `internal/modules`: local reservado e documentado para módulos de negócio futuros.
+- `internal/modules/transactions/domain`: `Money` e invariantes de uma despesa simples, sem infraestrutura.
+- `internal/modules/transactions/application`: `CreateExpense` e suas portas consumidoras mínimas.
+
+O módulo de transações está IMPLEMENTADO e aguarda revisão independente para receber estado VERIFICADO. Não existe adaptador de produção para suas portas.
 
 O módulo Go usa o caminho local `jarvis/backend` enquanto o repositório não possui URL canônica. Uma URL de módulo pública deve ser decidida antes da primeira publicação externa.
 

@@ -1,13 +1,14 @@
 # Produto
 
-O J.A.R.V.I.S. pretende ser um assessor financeiro pessoal, mas esta fundação ainda não define jornadas, regras financeiras ou telas.
+O J.A.R.V.I.S. pretende ser um assessor financeiro pessoal. A Etapa 1 do Incremento 1 define somente o núcleo determinístico de registro de uma despesa simples; ainda não existe jornada, canal ou tela de produto.
 
 ## Incluído agora
 
-- Estrutura do monorepo.
-- Processo de backend com health check operacional.
-- Regras arquiteturais e automações de qualidade.
+- `Money` exato em minor units, inicialmente BRL.
+- `Expense` com valor positivo e vocabulário mínimo validado.
+- `CreateExpense`, executado somente após confirmação explícita do canal futuro.
+- Porta mínima de repositório e abstrações determinísticas de relógio e ID.
 
 ## Fora do escopo desta entrega
 
-Despesas, receitas, parcelamentos, orçamento, metas, WhatsApp, IA/OpenAI, MCP, agentes de produção, autenticação, credenciais locais, banco de dados funcional, nuvem e telas de aplicativo. Cada capacidade exigirá requisitos, modelagem, avaliação de segurança e critérios de aceitação próprios.
+Persistência de despesas, endpoints financeiros, confirmação por UI, idempotência, `AuditEvent`, receitas, parcelamentos, orçamento, metas, WhatsApp funcional, IA/OpenAI, MCP, agentes de produção, autenticação, credenciais locais, banco de dados funcional, nuvem e telas de aplicativo. Cada capacidade exigirá requisitos, modelagem, avaliação de segurança e critérios de aceitação próprios.

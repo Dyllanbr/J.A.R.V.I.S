@@ -4,7 +4,13 @@ Estes documentos são baselines e templates de privacy by design. Eles não afir
 
 ## Estado atual
 
-A fundação não coleta, persiste ou compartilha dados pessoais ou financeiros. Enquanto o projeto for usado exclusivamente por pessoa natural para fins particulares e não econômicos, aplica-se a exceção do art. 4º, I, da LGPD. Essa exceção deve ser reavaliada se o contexto mudar e nunca autoriza ignorar segurança ou privacidade.
+É necessário distinguir três dimensões:
+
+- **Campos modelados:** `Expense` já representa ID, UserID, descrição, valor, forma de pagamento, data/hora, timezone financeiro e origem. UserID é um identificador opaco do modelo e não é considerado intrinsecamente anônimo ou sintético.
+- **Fixtures de teste:** os valores usados atualmente pelos testes automatizados são exclusivamente sintéticos.
+- **Tratamento operacional:** ainda não existem banco, conta ou usuário real, armazenamento financeiro operacional ou integração externa financeira. O runtime não coleta, persiste nem compartilha esses campos.
+
+Enquanto o projeto for usado exclusivamente por pessoa natural para fins particulares e não econômicos, aplica-se a exceção do art. 4º, I, da LGPD. Essa exceção deve ser reavaliada se o contexto mudar e nunca autoriza ignorar segurança ou privacidade.
 
 Qualquer beta com terceiros exige a conclusão e aprovação formal do [LGPD Readiness Gate](privacy-by-design-checklist.md) antes de usuários externos.
 

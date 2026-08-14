@@ -6,7 +6,7 @@
 
 ## Contexto
 
-Dados financeiros futuros exigirão integridade, transações e consultas confiáveis. Ainda não existe modelo de domínio ou requisito de persistência suficiente para desenhar schema.
+Dados financeiros futuros exigirão integridade, transações e consultas confiáveis. O núcleo de despesa já existe, mas ainda não há requisitos de persistência suficientes para desenhar schema ou transações de auditoria e idempotência.
 
 ## Decisão
 
