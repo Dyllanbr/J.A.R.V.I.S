@@ -41,10 +41,15 @@ make bootstrap
 make check
 make verify
 make smoke
+make test-integration
 ```
 
 `make verify` é o quality gate completo e equivalente ao CI. A entrega segue a [Definition of Done](docs/quality/definition-of-done.md); nada é chamado de verificado sem evidência, e findings bloqueadores impedem aprovação.
 
-## Limite da fundação
+Comandos de desenvolvimento PostgreSQL (`make db-up`, `make migrate-up`, `make migrate-down` e `make db-down`) exigem configuração local explícita. `make verify` também exige Docker a partir da Etapa 2A.
 
-A fundação permite somente estrutura do monorepo, processo Go, configuração, lifecycle HTTP, `GET /healthz`, contrato e automação de qualidade. Permanecem fora dela: domínio financeiro, banco funcional, autenticação, IA, WhatsApp, MCP, agentes de produto, infraestrutura cloud/Terraform funcional e telas iOS.
+## Limites por incremento
+
+A fundação contém estrutura do monorepo, processo Go, configuração, lifecycle HTTP, `GET /healthz`, contrato e automação de qualidade. A Etapa 1 acrescentou somente `Money`, `Expense`, `CreateExpense` e suas portas. A Etapa 2A acrescenta somente PostgreSQL local/CI, migrations e o adapter de persistência atômica Expense + audit event.
+
+Permanecem fora da Etapa 2A: HTTP financeiro, idempotência, autenticação, receitas, parcelamentos, orçamento, metas, IA, WhatsApp funcional, MCP, agentes de produto, infraestrutura cloud/Terraform funcional e telas iOS. O banco local/teste não autoriza dados pessoais ou financeiros reais.

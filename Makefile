@@ -1,4 +1,4 @@
-.PHONY: bootstrap fmt whitespace fmt-check lint test mod-verify build contract-check audit secret-scan secret-scan-test smoke check verify
+.PHONY: bootstrap fmt whitespace fmt-check lint test test-integration mod-verify build contract-check audit secret-scan secret-scan-test smoke db-up db-down migrate-up migrate-down check verify
 
 GO ?= go
 GOFMT ?= gofmt
@@ -26,12 +26,16 @@ lint:
 test:
 	cd backend && $(GO) test -race -coverprofile=coverage.out ./...
 
+test-integration:
+	GO="$(GO)" bash scripts/test-integration.sh
+
 mod-verify:
 	cd backend && $(GO) mod verify
 
 build:
 	mkdir -p backend/bin
 	cd backend && $(GO) build -trimpath -o bin/jarvis-api ./cmd/api
+	cd backend && $(GO) build -trimpath -o bin/jarvis-migrate ./cmd/migrate
 
 contract-check:
 	cd qa/playwright && $(NPM) run openapi:validate
@@ -48,10 +52,23 @@ secret-scan-test:
 smoke: build
 	bash scripts/smoke-test.sh
 
+db-up:
+	docker compose up --detach --wait --wait-timeout 45 postgres
+
+db-down:
+	docker compose down --timeout 10
+
+migrate-up:
+	cd backend && $(GO) run ./cmd/migrate up
+
+migrate-down:
+	cd backend && $(GO) run ./cmd/migrate down
+
 check: whitespace fmt-check lint test mod-verify contract-check secret-scan secret-scan-test
 
 verify: bootstrap
 	$(MAKE) check
 	$(MAKE) build
 	$(MAKE) audit
+	$(MAKE) test-integration
 	$(MAKE) smoke

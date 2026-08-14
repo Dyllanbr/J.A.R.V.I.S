@@ -1,6 +1,6 @@
 # Retenção, anonimização e eliminação
 
-Estado: **PLANEJADO**. Não existem dados persistidos nem prazos de retenção aprovados.
+Estado: política para dados reais **PLANEJADA**; não existem prazos de retenção aprovados. Testes de integração persistem somente fixtures sintéticas em volume descartável removido automaticamente. O volume de desenvolvimento local aceita somente dados sintéticos, é preservado por `make db-down` e pode ser eliminado explicitamente com `docker compose down --volumes`; isso é lifecycle técnico, não uma política de retenção de produto.
 
 Cada tratamento futuro deve definir, antes da coleta:
 

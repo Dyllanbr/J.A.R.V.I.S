@@ -1,7 +1,7 @@
 # ADR-006: Representação monetária e núcleo de despesas
 
 - Estado da decisão: Aceita
-- Estado de implementação: Etapa 1 implementada; verificação independente pendente
+- Estado de implementação: Etapa 1 verificada
 - Data: 2026-08-14
 
 ## Contexto
@@ -21,5 +21,5 @@ O módulo `transactions` separa `domain` de `application`. `Expense` possui esta
 - A representação interna terá de ser reavaliada apenas se uma segunda moeda for realmente introduzida; essa flexibilidade não é antecipada agora.
 - Canais futuros traduzirão suas entradas para os tipos do núcleo e não duplicarão regras financeiras.
 - A validação de timezones IANA depende de tzdata no ambiente operacional. Antes de containerização ou deploy, a presença dessa base deverá ser verificada; `America/Sao_Paulo` permanece baseline e UTC-3 nunca será hard-coded.
-- Idempotência ficará na camada de aplicação/persistência e `AuditEvent` entrará com a futura transação real.
-- Não há adaptador de produção, SQL, PostgreSQL, endpoint ou UI nesta decisão.
+- Idempotência continua planejada para a command/API boundary. A persistência atômica do audit event foi implementada posteriormente pela Etapa 2A, conforme o ADR-003, sem alterar este núcleo.
+- O domínio permanece sem SQL, PostgreSQL, endpoint ou UI.

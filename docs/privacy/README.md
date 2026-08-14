@@ -8,7 +8,8 @@ Estes documentos são baselines e templates de privacy by design. Eles não afir
 
 - **Campos modelados:** `Expense` já representa ID, UserID, descrição, valor, forma de pagamento, data/hora, timezone financeiro e origem. UserID é um identificador opaco do modelo e não é considerado intrinsecamente anônimo ou sintético.
 - **Fixtures de teste:** os valores usados atualmente pelos testes automatizados são exclusivamente sintéticos.
-- **Tratamento operacional:** ainda não existem banco, conta ou usuário real, armazenamento financeiro operacional ou integração externa financeira. O runtime não coleta, persiste nem compartilha esses campos.
+- **Operação local/teste:** PostgreSQL agora persiste dados financeiros sintéticos em desenvolvimento e em bancos descartáveis de integração. Isso valida comportamento técnico, não representa tratamento de usuário real.
+- **Tratamento de produto:** ainda não existem conta ou usuário real, armazenamento de dados financeiros reais, endpoint/canal financeiro ou integração externa. O runtime HTTP não coleta nem persiste esses campos.
 
 Enquanto o projeto for usado exclusivamente por pessoa natural para fins particulares e não econômicos, aplica-se a exceção do art. 4º, I, da LGPD. Essa exceção deve ser reavaliada se o contexto mudar e nunca autoriza ignorar segurança ou privacidade.
 

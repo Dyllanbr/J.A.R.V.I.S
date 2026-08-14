@@ -14,7 +14,9 @@ Segurança e privacidade são requisitos de arquitetura, desenvolvimento e opera
 - Actions oficiais são fixadas por SHA e documentadas na [baseline de supply chain](supply-chain.md); checkout não persiste credenciais e o CI usa apenas `contents: read`.
 - O núcleo financeiro não registra logs, usa somente dados sintéticos nos testes e retorna erros categóricos sem conteúdo financeiro.
 - IDs opacos do núcleo financeiro são obrigatórios, limitados a 128 bytes de UTF-8 válido e rejeitam caracteres de controle e espaços externos sem expor o valor rejeitado no erro.
-- O projeto não possui credenciais, banco, SDKs externos nem coleta operacional de dados.
+- O adapter PostgreSQL usa parâmetros posicionais, `context.Context`, timeouts e uma DB transaction atômica; erros públicos não incluem SQL, URL, descrição, amount ou identificadores rejeitados.
+- Credenciais locais vêm exclusivamente do ambiente. O arquivo Compose fixa PostgreSQL 18.6 por digest e o CI gera credencial sintética efêmera sem secrets do GitHub.
+- Não há credenciais reais, banco de produção, autenticação ou coleta operacional de usuários reais. A persistência atual contém somente dados sintéticos local/CI.
 
 ## Regras obrigatórias
 
@@ -24,6 +26,7 @@ Segurança e privacidade são requisitos de arquitetura, desenvolvimento e opera
 - Dependências devem ser mínimas, justificadas, fixadas e revisadas.
 - Pull requests não recebem secrets na fundação; o workflow não usa `pull_request_target` ou `continue-on-error`.
 - Mudanças envolvendo dados pessoais, autenticação ou integrações exigem modelagem de ameaças e revisão independente proporcionais ao risco.
+- Antes de produção deverão ser definidos papéis de banco com least privilege, TLS, backup, criptografia, retenção e gestão externa de secrets; a conta do container local/teste não é baseline de produção.
 - Qualquer beta externo exige o [LGPD Readiness Gate](../privacy/privacy-by-design-checklist.md).
 
 O scanner local reduz risco de padrões conhecidos, mas não substitui revisão humana, secret scanning do provedor e defesa em profundidade quando a exposição do projeto crescer.
