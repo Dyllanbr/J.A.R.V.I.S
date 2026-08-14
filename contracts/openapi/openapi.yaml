@@ -1,8 +1,13 @@
 openapi: 3.1.0
 info:
   title: J.A.R.V.I.S. API
-  version: 0.1.0
-  description: Contrato da fundação; ainda não contém operações de produto.
+  version: 0.2.0
+  description: >-
+    API da fundação e do primeiro incremento financeiro. Criar uma transaction
+    registra no organizador J.A.R.V.I.S. uma despesa que já ocorreu no mundo
+    real; não executa pagamento, Pix, transferência bancária, compra ou qualquer
+    movimentação de fundos. Os endpoints financeiros só existem quando o modo
+    financeiro single-owner temporário está explicitamente habilitado.
 jsonSchemaDialect: https://json-schema.org/draft/2020-12/schema
 servers:
   - url: http://127.0.0.1:8080
@@ -13,39 +18,405 @@ paths:
     get:
       operationId: getHealth
       summary: Verifica se o processo HTTP está operacional
-      tags:
-        - Operations
+      tags: [Operations]
       responses:
         "200":
           description: Processo operacional
           headers:
             Cache-Control:
-              required: true
-              schema:
-                type: string
-                const: no-store
-              description: Impede armazenamento da resposta.
+              $ref: "#/components/headers/CacheControl"
             X-Content-Type-Options:
-              required: true
-              schema:
-                type: string
-                const: nosniff
-              description: Impede MIME sniffing da resposta.
+              $ref: "#/components/headers/ContentTypeOptions"
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Health"
+        "405":
+          description: Método não permitido
+  /v1/transactions/preview:
+    post:
+      operationId: previewExpense
+      summary: Valida uma despesa para revisão antes da confirmação
+      description: >-
+        Valida e normaliza uma Expense sem gerar ID, gravar transaction, criar
+        audit event ou reservar idempotência. O cliente deve apresentar este
+        preview ao usuário antes de chamar a operação mutável.
+      tags: [Transactions]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ExpenseRequest"
+            examples:
+              synthetic:
+                value:
+                  type: EXPENSE
+                  description: Mercado sintético
+                  amount:
+                    minor: 4250
+                    currency: BRL
+                  paymentMethod: PIX
+                  occurredAt: "2026-08-14T15:00:00Z"
+      responses:
+        "200":
+          description: Representação canônica pronta para revisão
+          headers:
+            Cache-Control:
+              $ref: "#/components/headers/CacheControl"
+            X-Content-Type-Options:
+              $ref: "#/components/headers/ContentTypeOptions"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExpensePreview"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowed"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /v1/transactions:
+    post:
+      operationId: recordExpense
+      summary: Registra uma despesa já confirmada pelo canal
+      description: >-
+        Registra no organizador uma despesa já ocorrida e confirmada pelo
+        usuário no canal chamador. Esta operação não executa pagamento, Pix,
+        transferência, compra nem movimentação bancária. O owner é o contexto
+        single-owner temporário do servidor; origin IOS e timezone financeira
+        America/Sao_Paulo também são atribuídos pelo servidor. Retry com a mesma
+        chave e semântica retorna o recurso original sem novas gravações.
+      tags: [Transactions]
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ExpenseRequest"
+            examples:
+              synthetic:
+                value:
+                  type: EXPENSE
+                  description: Mercado sintético
+                  amount:
+                    minor: 4250
+                    currency: BRL
+                  paymentMethod: PIX
+                  occurredAt: "2026-08-14T15:00:00Z"
+      responses:
+        "201":
+          description: Despesa registrada ou replay seguro do registro original
+          headers:
+            Cache-Control:
+              $ref: "#/components/headers/CacheControl"
+            X-Content-Type-Options:
+              $ref: "#/components/headers/ContentTypeOptions"
+            Idempotency-Replayed:
+              description: Presente com valor true somente quando a resposta é replay.
+              schema:
+                type: string
+                const: "true"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Expense"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowed"
+        "500":
+          $ref: "#/components/responses/InternalError"
+    get:
+      operationId: listExpensesByMonth
+      summary: Lista as despesas do owner no mês financeiro informado
+      description: >-
+        Usa limites de calendário em America/Sao_Paulo e consulta o intervalo
+        [início do mês, início do próximo mês). Não calcula total, saldo,
+        orçamento ou resumo.
+      tags: [Transactions]
+      parameters:
+        - name: month
+          in: query
+          required: true
+          description: Mês financeiro estrito no formato YYYY-MM.
+          schema:
+            type: string
+            pattern: '^(?!0000-)[0-9]{4}-(0[1-9]|1[0-2])$'
+          example: "2026-08"
+      responses:
+        "200":
+          description: Lista determinística, vazia quando não há despesas
+          headers:
+            Cache-Control:
+              $ref: "#/components/headers/CacheControl"
+            X-Content-Type-Options:
+              $ref: "#/components/headers/ContentTypeOptions"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExpenseMonth"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowed"
+        "500":
+          $ref: "#/components/responses/InternalError"
 components:
+  headers:
+    CacheControl:
+      required: true
+      description: Impede armazenamento da resposta.
+      schema:
+        type: string
+        const: no-store
+    ContentTypeOptions:
+      required: true
+      description: Impede MIME sniffing da resposta.
+      schema:
+        type: string
+        const: nosniff
+  parameters:
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      description: >-
+        Chave opaca de 1 a 128 bytes ASCII visíveis, escopada por owner e
+        CREATE_EXPENSE. O valor nunca é devolvido em erros ou responses.
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 128
+        pattern: '^[!-~]+$'
+      example: synthetic-create-20260814-001
+  responses:
+    BadRequest:
+      description: Request, domínio ou chave de idempotência inválidos
+      headers:
+        Cache-Control:
+          $ref: "#/components/headers/CacheControl"
+        X-Content-Type-Options:
+          $ref: "#/components/headers/ContentTypeOptions"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
+    Conflict:
+      description: Chave reutilizada com semântica diferente
+      headers:
+        Cache-Control:
+          $ref: "#/components/headers/CacheControl"
+        X-Content-Type-Options:
+          $ref: "#/components/headers/ContentTypeOptions"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
+          example:
+            error:
+              code: IDEMPOTENCY_KEY_REUSED
+              message: idempotency key was reused with a different request
+    MethodNotAllowed:
+      description: Método não permitido para a rota financeira
+      headers:
+        Cache-Control:
+          $ref: "#/components/headers/CacheControl"
+        X-Content-Type-Options:
+          $ref: "#/components/headers/ContentTypeOptions"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
+    InternalError:
+      description: Falha interna sem exposição de detalhes técnicos
+      headers:
+        Cache-Control:
+          $ref: "#/components/headers/CacheControl"
+        X-Content-Type-Options:
+          $ref: "#/components/headers/ContentTypeOptions"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
   schemas:
     Health:
       type: object
       additionalProperties: false
-      required:
-        - status
+      required: [status]
       properties:
         status:
           type: string
           const: ok
+    Money:
+      type: object
+      additionalProperties: false
+      required: [minor, currency]
+      properties:
+        minor:
+          type: integer
+          format: int64
+          minimum: 1
+          description: Valor BRL exato em centavos; nunca float ou decimal.
+          example: 4250
+        currency:
+          type: string
+          const: BRL
+    ExpenseRequest:
+      type: object
+      additionalProperties: false
+      required: [type, description, amount, paymentMethod, occurredAt]
+      properties:
+        type:
+          type: string
+          const: EXPENSE
+        description:
+          type: string
+          minLength: 1
+          maxLength: 200
+        amount:
+          $ref: "#/components/schemas/Money"
+        paymentMethod:
+          type: string
+          enum: [PIX, DEBIT, CREDIT, CASH]
+        occurredAt:
+          type: string
+          format: date-time
+          description: >-
+            Instante normalizado para UTC e truncado para precisão de
+            microssegundos antes de preview, fingerprint, persistência e resposta.
+    ExpensePreview:
+      type: object
+      additionalProperties: false
+      required:
+        - type
+        - description
+        - amount
+        - paymentMethod
+        - occurredAt
+        - financialTimezone
+        - origin
+      properties:
+        type:
+          type: string
+          const: EXPENSE
+        description:
+          type: string
+          minLength: 1
+          maxLength: 200
+        amount:
+          $ref: "#/components/schemas/Money"
+        paymentMethod:
+          type: string
+          enum: [PIX, DEBIT, CREDIT, CASH]
+        occurredAt:
+          type: string
+          format: date-time
+          description: Instante canônico em UTC com precisão máxima de microssegundos.
+        financialTimezone:
+          type: string
+          const: America/Sao_Paulo
+        origin:
+          type: string
+          const: IOS
+    Expense:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - type
+        - description
+        - amount
+        - paymentMethod
+        - occurredAt
+        - financialTimezone
+        - origin
+        - status
+        - version
+        - createdAt
+        - updatedAt
+      properties:
+        id:
+          type: string
+          minLength: 1
+          maxLength: 128
+        type:
+          type: string
+          const: EXPENSE
+        description:
+          type: string
+          minLength: 1
+          maxLength: 200
+        amount:
+          $ref: "#/components/schemas/Money"
+        paymentMethod:
+          type: string
+          enum: [PIX, DEBIT, CREDIT, CASH]
+        occurredAt:
+          type: string
+          format: date-time
+          description: Instante canônico em UTC com precisão máxima de microssegundos.
+        financialTimezone:
+          type: string
+          const: America/Sao_Paulo
+        origin:
+          type: string
+          const: IOS
+        status:
+          type: string
+          const: RECORDED
+        version:
+          type: integer
+          format: int64
+          minimum: 1
+        createdAt:
+          type: string
+          format: date-time
+          description: Instante gerado em UTC com precisão máxima de microssegundos.
+        updatedAt:
+          type: string
+          format: date-time
+          description: Instante gerado em UTC com precisão máxima de microssegundos.
+    ExpenseMonth:
+      type: object
+      additionalProperties: false
+      required: [month, items]
+      properties:
+        month:
+          type: string
+          pattern: '^(?!0000-)[0-9]{4}-(0[1-9]|1[0-2])$'
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/Expense"
+    ErrorEnvelope:
+      type: object
+      additionalProperties: false
+      required: [error]
+      properties:
+        error:
+          type: object
+          additionalProperties: false
+          required: [code, message]
+          properties:
+            code:
+              type: string
+              enum:
+                - INVALID_REQUEST
+                - UNSUPPORTED_TRANSACTION_TYPE
+                - IDEMPOTENCY_KEY_REQUIRED
+                - IDEMPOTENCY_KEY_INVALID
+                - IDEMPOTENCY_KEY_REUSED
+                - METHOD_NOT_ALLOWED
+                - INTERNAL_ERROR
+            message:
+              type: string
 tags:
   - name: Operations
     description: Endpoints operacionais, sem regras de negócio.
+  - name: Transactions
+    description: Registro e consulta de despesas; nunca execução de movimentação financeira.

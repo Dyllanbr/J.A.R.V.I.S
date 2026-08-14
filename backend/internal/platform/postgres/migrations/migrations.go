@@ -35,13 +35,22 @@ func Up(ctx context.Context, connection *pgx.Conn) error {
 	return nil
 }
 
-// Down rolls the disposable database schema back to version zero.
+// Down rolls back exactly one applied migration. Repeated calls are required
+// to reach version zero, making a published base schema harder to remove by
+// accident.
 func Down(ctx context.Context, connection *pgx.Conn) error {
 	migrator, err := newMigrator(ctx, connection)
 	if err != nil {
 		return err
 	}
-	if err := migrator.MigrateTo(ctx, 0); err != nil {
+	version, err := migrator.GetCurrentVersion(ctx)
+	if err != nil {
+		return newMigrationError(ErrVersion, err)
+	}
+	if version == 0 {
+		return nil
+	}
+	if err := migrator.MigrateTo(ctx, version-1); err != nil {
 		return newMigrationError(ErrRollback, err)
 	}
 	return nil

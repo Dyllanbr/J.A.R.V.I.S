@@ -50,6 +50,6 @@ Comandos de desenvolvimento PostgreSQL (`make db-up`, `make migrate-up`, `make m
 
 ## Limites por incremento
 
-A fundação contém estrutura do monorepo, processo Go, configuração, lifecycle HTTP, `GET /healthz`, contrato e automação de qualidade. A Etapa 1 acrescentou somente `Money`, `Expense`, `CreateExpense` e suas portas. A Etapa 2A acrescenta somente PostgreSQL local/CI, migrations e o adapter de persistência atômica Expense + audit event.
+A fundação contém estrutura do monorepo, processo Go, configuração, lifecycle HTTP, `GET /healthz`, contrato e automação de qualidade. A Etapa 1 acrescentou somente `Money`, `Expense`, `CreateExpense` e suas portas. A Etapa 2A acrescentou PostgreSQL local/CI, migrations e o adapter de persistência atômica Expense + audit event. A Etapa 2B acrescenta somente idempotência transacional, preview, registro HTTP confirmado pelo canal e consulta mensal owner-scoped.
 
-Permanecem fora da Etapa 2A: HTTP financeiro, idempotência, autenticação, receitas, parcelamentos, orçamento, metas, IA, WhatsApp funcional, MCP, agentes de produto, infraestrutura cloud/Terraform funcional e telas iOS. O banco local/teste não autoriza dados pessoais ou financeiros reais.
+Permanecem fora da Etapa 2B: autenticação, autorização multiusuário, receitas, parcelamentos, orçamento, metas, categorias funcionais, IA, WhatsApp funcional, MCP, agentes de produto, infraestrutura cloud/Terraform funcional e telas iOS. A API registra despesas já ocorridas e nunca executa Pix, pagamentos ou transferências. Banco/API local/teste não autorizam dados pessoais ou financeiros reais.

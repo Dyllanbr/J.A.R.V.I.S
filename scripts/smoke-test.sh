@@ -78,6 +78,7 @@ node "$repository_root/scripts/check-port.mjs" "$smoke_host" "$smoke_port"
 
 JARVIS_HTTP_ADDRESS="${smoke_host}:${smoke_port}" \
 JARVIS_SHUTDOWN_TIMEOUT="5s" \
+JARVIS_FINANCIAL_API_ENABLED="false" \
   "$backend_binary" >"$backend_log" 2>&1 &
 backend_pid=$!
 

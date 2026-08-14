@@ -34,6 +34,9 @@ func run(logger *slog.Logger) error {
 		stop()
 	}()
 
-	application := app.New(cfg, logger)
+	application, err := app.New(ctx, cfg, logger, os.Getenv)
+	if err != nil {
+		return fmt.Errorf("compose application: %w", err)
+	}
 	return application.Run(ctx)
 }

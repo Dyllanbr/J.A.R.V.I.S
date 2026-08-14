@@ -1,6 +1,6 @@
 # J.A.R.V.I.S.
 
-Monorepo do J.A.R.V.I.S., um assessor financeiro pessoal em construção. A Etapa 1 do Incremento 1 contém o núcleo verificado de uma despesa simples. A Etapa 2A adiciona migrations e persistência PostgreSQL real para dados sintéticos locais/de teste, aguardando revisão independente. O único comportamento HTTP continua sendo `GET /healthz`; não existe endpoint financeiro nem tela de produto.
+Monorepo do J.A.R.V.I.S., um assessor financeiro pessoal em construção. O núcleo de uma despesa simples e sua persistência PostgreSQL estão verificados pelas etapas anteriores. A Etapa 2B implementa, aguardando revisão independente, preview, registro idempotente e histórico mensal de despesas. Esses endpoints apenas registram informações no organizador: não executam Pix, pagamentos, compras, transferências ou qualquer movimentação de fundos.
 
 ## Estado atual
 
@@ -8,7 +8,8 @@ Implementado:
 
 - backend Go em monólito modular;
 - `Money`, `Expense` e `CreateExpense` verificados no núcleo do módulo `transactions`;
-- migrations versionadas e adapter PostgreSQL para `Expense` + `EXPENSE_RECORDED` atômicos, implementados e aguardando revisão independente;
+- migrations versionadas e adapter PostgreSQL verificados para `Expense` + `EXPENSE_RECORDED` atômicos;
+- API financeira opt-in com preview sem escrita, criação idempotente e listagem mensal, implementada e aguardando revisão independente;
 - health check operacional, configuração e shutdown gracioso;
 - testes nativos Go e smoke de API com Playwright/TypeScript;
 - contrato OpenAPI 3.1 validado semanticamente;
@@ -24,9 +25,9 @@ SwiftUI/iOS, Maestro, Terraform e infraestrutura de nuvem estão apenas planejad
 ├── apps/ios/                  # Aplicativo iOS planejado
 ├── backend/                   # Monólito modular, núcleo e adapter PostgreSQL
 ├── compose.yaml               # PostgreSQL local/teste, fixado por digest
-├── contracts/openapi/         # Contrato HTTP versionado
+├── contracts/openapi/         # Contrato HTTP operacional e financeiro versionado
 ├── qa/
-│   ├── playwright/            # Smoke de API em TypeScript
+│   ├── playwright/            # Smoke e E2E financeiro em TypeScript
 │   ├── maestro/               # Testes mobile planejados
 │   ├── performance/           # Cenários de carga planejados
 │   └── test-data/             # Política para dados sintéticos
@@ -54,7 +55,7 @@ make bootstrap
 make check
 ```
 
-`make check` executa as verificações rápidas de desenvolvimento sem iniciar containers. O quality gate completo, equivalente ao CI, faz uma instalação npm limpa e inclui build, race detector, PostgreSQL 18.6 real, migrations, auditoria, contrato, scanner e smoke gerenciado:
+`make check` executa as verificações rápidas de desenvolvimento sem iniciar containers. O quality gate completo, equivalente ao CI, faz uma instalação npm limpa e inclui build, race detector, PostgreSQL 18.6 real, migrations, idempotência concorrente, E2E financeiro, auditoria, contrato, scanner e smoke health-only gerenciado:
 
 ```bash
 make verify
@@ -67,7 +68,7 @@ cd backend
 go run ./cmd/api
 ```
 
-O servidor escuta em `127.0.0.1:8080` por padrão. Para alterar a configuração, exporte as variáveis no shell ou passe-as ao comando:
+O servidor escuta em `127.0.0.1:8080` por padrão. Sem configuração adicional, somente `/healthz` é registrado e nenhum pool PostgreSQL é aberto. Para alterar a configuração operacional, exporte as variáveis no shell ou passe-as ao comando:
 
 ```bash
 JARVIS_HTTP_ADDRESS=127.0.0.1:8081 JARVIS_SHUTDOWN_TIMEOUT=10s go run ./cmd/api
@@ -90,13 +91,29 @@ make db-up
 make migrate-up
 ```
 
-Para validar a persistência em um Postgres descartável e remover automaticamente container e volume:
+Para validar persistência, migrations, concorrência idempotente e endpoints via Playwright em um Postgres descartável, removendo automaticamente API, container e volume:
 
 ```bash
 make test-integration
 ```
 
 `make db-down` encerra o banco de desenvolvimento preservando seu volume. `docker compose down --volumes` também remove esse volume quando a eliminação explícita dos dados sintéticos locais for desejada. Os comandos de banco são opt-in; a API health-only não lê `JARVIS_DATABASE_URL` e continua iniciando sem PostgreSQL.
+
+Para executar a API financeira local, aplique as migrations, crie um owner exclusivamente sintético e habilite explicitamente o contexto single-owner temporário:
+
+```bash
+docker compose exec -T postgres psql \
+  --username "$JARVIS_POSTGRES_USER" \
+  --dbname "$JARVIS_POSTGRES_DB" \
+  --command "INSERT INTO users (id, created_at, updated_at) VALUES ('usr_local_synthetic_owner', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP) ON CONFLICT (id) DO NOTHING"
+
+export JARVIS_FINANCIAL_API_ENABLED=true
+export JARVIS_OWNER_ID=usr_local_synthetic_owner
+cd backend
+go run ./cmd/api
+```
+
+Esse owner vem do servidor e não é autenticação. O contrato expõe `POST /v1/transactions/preview`, `POST /v1/transactions` e `GET /v1/transactions?month=YYYY-MM`. O POST mutável deve ser chamado pelo canal somente depois de apresentar o preview e obter confirmação explícita. `origin=IOS` e `America/Sao_Paulo` são atribuídos pelo servidor; o cliente não envia `userId`, origin ou timezone.
 
 ## Smoke test
 
@@ -114,4 +131,4 @@ As regras permanentes estão em [AGENTS.md](AGENTS.md). A [Definition of Done](d
 
 ## Limitações atuais
 
-O núcleo de despesa não está conectado à API nem a qualquer canal. Não há endpoint financeiro, idempotência, dados reais, banco de produção, receitas, parcelamentos, categorias funcionais, orçamento, metas, autenticação, Face ID, passkeys, PIN, WhatsApp funcional, OpenAI, IA, MCP, agentes de produto, cloud, Terraform funcional ou telas iOS. A persistência do audit event existe apenas junto à gravação da Expense; não há sistema de auditoria de produto além desse evento mínimo. A baseline LGPD não é alegação de conformidade jurídica, e a baseline WCAG não é alegação de conformidade de UI.
+A API financeira é um contexto local single-owner temporário, sem autenticação, autorização multiusuário, rate limiting distribuído ou uso real aprovado. Não há dados reais, banco de produção, receitas, parcelamentos, categorias funcionais, orçamento, metas, Face ID, passkeys, PIN, WhatsApp funcional, OpenAI, IA, MCP, agentes de produto, cloud, Terraform funcional ou telas iOS. O audit event existe apenas junto ao novo registro; preview, replay e leitura não geram eventos. A retenção de metadata de idempotência e outcomes de commit indeterminado exigem política operacional antes de uso real. A baseline LGPD não é alegação de conformidade jurídica, e a baseline WCAG não é alegação de conformidade de UI.

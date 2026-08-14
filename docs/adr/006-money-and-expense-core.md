@@ -21,5 +21,5 @@ O módulo `transactions` separa `domain` de `application`. `Expense` possui esta
 - A representação interna terá de ser reavaliada apenas se uma segunda moeda for realmente introduzida; essa flexibilidade não é antecipada agora.
 - Canais futuros traduzirão suas entradas para os tipos do núcleo e não duplicarão regras financeiras.
 - A validação de timezones IANA depende de tzdata no ambiente operacional. Antes de containerização ou deploy, a presença dessa base deverá ser verificada; `America/Sao_Paulo` permanece baseline e UTC-3 nunca será hard-coded.
-- Idempotência continua planejada para a command/API boundary. A persistência atômica do audit event foi implementada posteriormente pela Etapa 2A, conforme o ADR-003, sem alterar este núcleo.
+- Idempotência foi implementada posteriormente na command/API boundary da Etapa 2B, conforme o ADR-007, sem entrar em `Money` ou `Expense`. A persistência atômica do audit event foi implementada pela Etapa 2A, conforme o ADR-003, sem alterar este núcleo.
 - O domínio permanece sem SQL, PostgreSQL, endpoint ou UI.

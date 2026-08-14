@@ -4,9 +4,10 @@
 | --- | --- | --- | --- |
 | [001](001-modular-monolith.md) | Monólito modular | Aceita | Fundação e primeiro módulo implementados |
 | [002](002-go-backend.md) | Go no backend | Aceita | Fundação implementada |
-| [003](003-postgresql.md) | PostgreSQL para persistência | Aceita | Etapa 2A implementada; revisão pendente |
+| [003](003-postgresql.md) | PostgreSQL para persistência | Aceita | Etapa 2A verificada; extensão 002 implementada |
 | [004](004-swiftui-ios.md) | SwiftUI para iOS | Aceita | Planejado |
 | [005](005-testing-strategy.md) | Estratégia de testes | Aceita | Parcialmente implementada, incluindo integração PostgreSQL |
 | [006](006-money-and-expense-core.md) | Representação monetária e núcleo de despesas | Aceita | Etapa 1 verificada |
+| [007](007-idempotent-financial-api.md) | API financeira idempotente e single-owner temporária | Aceita | Etapa 2B implementada; revisão pendente |
 
 “Aceita” registra uma escolha arquitetural; não significa que a tecnologia já foi entregue. O estado de implementação é sempre indicado separadamente.

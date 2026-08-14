@@ -16,10 +16,17 @@ const (
 	maxShutdownTimeout     = 30 * time.Second
 )
 
+var (
+	ErrInvalidFinancialAPIEnabled = errors.New("JARVIS_FINANCIAL_API_ENABLED: must be true or false")
+	ErrMissingOwnerID             = errors.New("JARVIS_OWNER_ID: is required when the financial API is enabled")
+)
+
 // Config contains the process configuration required by the foundation.
 type Config struct {
-	HTTPAddress     string
-	ShutdownTimeout time.Duration
+	HTTPAddress         string
+	ShutdownTimeout     time.Duration
+	FinancialAPIEnabled bool
+	OwnerID             string
 }
 
 // FromEnv loads and validates configuration from environment variables.
@@ -45,6 +52,21 @@ func FromEnv() (Config, error) {
 			return Config{}, fmt.Errorf("JARVIS_SHUTDOWN_TIMEOUT: must not exceed %s", maxShutdownTimeout)
 		}
 		cfg.ShutdownTimeout = timeout
+	}
+
+	switch enabled := os.Getenv("JARVIS_FINANCIAL_API_ENABLED"); enabled {
+	case "", "false":
+		cfg.FinancialAPIEnabled = false
+	case "true":
+		cfg.FinancialAPIEnabled = true
+	default:
+		return Config{}, ErrInvalidFinancialAPIEnabled
+	}
+	if cfg.FinancialAPIEnabled {
+		cfg.OwnerID = os.Getenv("JARVIS_OWNER_ID")
+		if cfg.OwnerID == "" {
+			return Config{}, ErrMissingOwnerID
+		}
 	}
 
 	return cfg, nil

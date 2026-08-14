@@ -17,6 +17,9 @@ Segurança e privacidade são requisitos de arquitetura, desenvolvimento e opera
 - O adapter PostgreSQL usa parâmetros posicionais, `context.Context`, timeouts e uma DB transaction atômica; erros públicos não incluem SQL, URL, descrição, amount ou identificadores rejeitados.
 - Credenciais locais vêm exclusivamente do ambiente. O arquivo Compose fixa PostgreSQL 18.6 por digest e o CI gera credencial sintética efêmera sem secrets do GitHub.
 - Não há credenciais reais, banco de produção, autenticação ou coleta operacional de usuários reais. A persistência atual contém somente dados sintéticos local/CI.
+- O modo financeiro é opt-in: health-only não abre pool nem exige banco. Quando habilitado, owner, origin e timezone vêm do servidor; `userId`, origin e timezone não são aceitos do cliente.
+- Requests financeiros exigem JSON estrito, DTO explícito e body limitado a 16 KiB. Responses são JSON, `no-store`, `nosniff` e nunca incluem owner, SQL, erro PostgreSQL ou body bruto.
+- A idempotência é garantida no PostgreSQL por chave owner/operação, fingerprint SHA-256 canônico e uma única transação com Expense/AuditEvent. Chaves não são logadas ou devolvidas, e a tabela não replica payload financeiro.
 
 ## Regras obrigatórias
 
@@ -27,6 +30,7 @@ Segurança e privacidade são requisitos de arquitetura, desenvolvimento e opera
 - Pull requests não recebem secrets na fundação; o workflow não usa `pull_request_target` ou `continue-on-error`.
 - Mudanças envolvendo dados pessoais, autenticação ou integrações exigem modelagem de ameaças e revisão independente proporcionais ao risco.
 - Antes de produção deverão ser definidos papéis de banco com least privilege, TLS, backup, criptografia, retenção e gestão externa de secrets; a conta do container local/teste não é baseline de produção.
+- Autenticação e rate limiting distribuído permanecem planejados; não usar o contexto single-owner temporário como controle de acesso em beta externo.
 - Qualquer beta externo exige o [LGPD Readiness Gate](../privacy/privacy-by-design-checklist.md).
 
 O scanner local reduz risco de padrões conhecidos, mas não substitui revisão humana, secret scanning do provedor e defesa em profundidade quando a exposição do projeto crescer.

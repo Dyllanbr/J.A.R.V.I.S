@@ -1,6 +1,8 @@
 # Retenção, anonimização e eliminação
 
-Estado: política para dados reais **PLANEJADA**; não existem prazos de retenção aprovados. Testes de integração persistem somente fixtures sintéticas em volume descartável removido automaticamente. O volume de desenvolvimento local aceita somente dados sintéticos, é preservado por `make db-down` e pode ser eliminado explicitamente com `docker compose down --volumes`; isso é lifecycle técnico, não uma política de retenção de produto.
+Estado: política para dados reais **PLANEJADA**; não existem prazos de retenção aprovados. Testes de integração persistem somente fixtures e metadata idempotente sintéticas em volume descartável removido automaticamente. O volume de desenvolvimento local aceita somente dados sintéticos, é preservado por `make db-down` e pode ser eliminado explicitamente com `docker compose down --volumes`; isso é lifecycle técnico, não uma política de retenção de produto.
+
+A retenção de `idempotency_records` em qualquer ambiente real permanece uma decisão obrigatória antes do beta. Ela deve equilibrar a janela segura de retry com minimização e eliminação, sem transformar metadata técnica em cópia permanente da vida financeira. Nenhum prazo é definido nesta etapa sem finalidade e evidência operacional.
 
 Cada tratamento futuro deve definir, antes da coleta:
 

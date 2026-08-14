@@ -82,20 +82,8 @@ func (useCase *CreateExpense) Execute(ctx context.Context, input CreateExpenseIn
 		return CreateExpenseResult{}, err
 	}
 
-	amount, err := domain.NewMoney(input.AmountMinor, input.Currency)
+	details, err := normalizeExpenseInput(input)
 	if err != nil {
-		return CreateExpenseResult{}, err
-	}
-	details := domain.ExpenseDetails{
-		UserID:            input.UserID,
-		Description:       input.Description,
-		Amount:            amount,
-		PaymentMethod:     input.PaymentMethod,
-		OccurredAt:        input.OccurredAt,
-		FinancialTimezone: input.FinancialTimezone,
-		Origin:            input.Origin,
-	}
-	if err := domain.ValidateExpenseDetails(details); err != nil {
 		return CreateExpenseResult{}, err
 	}
 
@@ -107,7 +95,7 @@ func (useCase *CreateExpense) Execute(ctx context.Context, input CreateExpenseIn
 	expense, err := domain.NewExpense(domain.ExpenseParams{
 		ID:        id,
 		Details:   details,
-		CreatedAt: useCase.clock.Now(),
+		CreatedAt: canonicalizeFinancialInstant(useCase.clock.Now()),
 	})
 	if err != nil {
 		return CreateExpenseResult{}, err
@@ -118,6 +106,37 @@ func (useCase *CreateExpense) Execute(ctx context.Context, input CreateExpenseIn
 	}
 
 	return CreateExpenseResult{Expense: expense}, nil
+}
+
+func normalizeExpenseInput(input CreateExpenseInput) (domain.ExpenseDetails, error) {
+	amount, err := domain.NewMoney(input.AmountMinor, input.Currency)
+	if err != nil {
+		return domain.ExpenseDetails{}, err
+	}
+
+	details, err := domain.NormalizeExpenseDetails(domain.ExpenseDetails{
+		UserID:            input.UserID,
+		Description:       input.Description,
+		Amount:            amount,
+		PaymentMethod:     input.PaymentMethod,
+		OccurredAt:        input.OccurredAt,
+		FinancialTimezone: input.FinancialTimezone,
+		Origin:            input.Origin,
+	})
+	if err != nil {
+		return domain.ExpenseDetails{}, err
+	}
+
+	details.OccurredAt = canonicalizeFinancialInstant(details.OccurredAt)
+	return details, nil
+}
+
+// canonicalizeFinancialInstant defines the single time representation used by
+// application commands, previews, fingerprints and persisted responses. It
+// discards precision below one microsecond instead of relying on an adapter to
+// choose how an otherwise valid instant is represented.
+func canonicalizeFinancialInstant(value time.Time) time.Time {
+	return value.UTC().Truncate(time.Microsecond)
 }
 
 type safeOperationError struct {

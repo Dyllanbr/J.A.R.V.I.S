@@ -5,6 +5,7 @@ Estado: tratamento de produto com dados reais **PLANEJADO** e inexistente. Exist
 | Atividade | Dados | Ambiente | Estado | Observação |
 | --- | --- | --- | --- | --- |
 | Teste da persistência de Expense | Fixtures sintéticas do inventário | Máquina do desenvolvedor e runner CI descartável | IMPLEMENTADO | Banco por teste; cleanup automático de integração; sem dado pessoal real |
+| Teste E2E da API financeira e idempotência | Fixtures e chaves técnicas sintéticas do inventário | Máquina do desenvolvedor e runner CI descartável | IMPLEMENTADO | Owner single-user sintético; API/PostgreSQL encerrados e volume removido; sem dado pessoal real |
 | Registro de Expense de usuário real | A definir | A definir | PLANEJADO | Bloqueado pelo LGPD Readiness Gate e por decisões ainda ausentes |
 
 Cada atividade futura deve registrar:

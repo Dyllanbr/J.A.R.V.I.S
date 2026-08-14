@@ -1,7 +1,7 @@
 # ADR-003: PostgreSQL para persistência
 
 - Estado da decisão: Aceita
-- Estado de implementação: Etapa 2A implementada; revisão independente pendente
+- Estado de implementação: Etapa 2A verificada; migration 002 implementada na Etapa 2B e aguardando revisão
 - Data: 2026-08-14
 
 ## Contexto
@@ -12,7 +12,7 @@ O núcleo de despesa verificado precisa de integridade referencial e gravação 
 
 PostgreSQL 18.6 é a persistência relacional da Etapa 2A. O ambiente local/CI usa a imagem fixada por tag e digest. O adapter usa `pgx/v5` 5.10.0 e implementa a porta existente `ExpenseRepository`; domínio e aplicação não dependem do banco. Migrations SQL versionadas usam `tern/v2` 2.4.1 fora do domínio.
 
-O schema inicial contém somente `users`, `transactions` e `audit_events`. `users` fornece ownership e integridade referencial sem autenticação ou dados cadastrais. `Save` grava a Expense e `EXPENSE_RECORDED` na mesma DB transaction. O audit event não replica descrição, valor nem payload financeiro. Idempotência não integra este schema e permanece planejada para a boundary de comando/API da Etapa 2B.
+O schema inicial contém somente `users`, `transactions` e `audit_events`. `users` fornece ownership e integridade referencial sem autenticação ou dados cadastrais. `Save` grava a Expense e `EXPENSE_RECORDED` na mesma DB transaction. O audit event não replica descrição, valor nem payload financeiro. A migration 001 permanece imutável; a migration 002 da Etapa 2B acrescenta idempotência e o índice da consulta mensal conforme o [ADR-007](007-idempotent-financial-api.md).
 
 Instantes são `TIMESTAMPTZ`; o identificador IANA financeiro é persistido separadamente. Valores usam `BIGINT` em minor units. Constraints simples reforçam invariantes fundamentais sem usar enum nativo, ORM ou SQL dinâmico. A consistência de ownership do audit event é relacional: `(aggregate_id, user_id)` referencia a chave candidata `(id, user_id)` de `transactions`; a versão do aggregate não participa dessa FK nesta etapa.
 
