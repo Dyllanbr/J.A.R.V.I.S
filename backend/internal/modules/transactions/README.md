@@ -1,15 +1,16 @@
 # Módulo de transações
 
-## Estado da Etapa 1
+## Estado atual
 
 | Item | Estado | Evidência candidata |
 | --- | --- | --- |
-| `Money` em minor units inteiras com BRL | IMPLEMENTADO | testes unitários e fuzz seeds em `domain` |
-| Entidade `Expense` e invariantes | IMPLEMENTADO | testes unitários e fuzz seeds de descrição em `domain` |
-| Caso de uso `CreateExpense` | IMPLEMENTADO | testes unitários determinísticos em `application` |
-| Persistência PostgreSQL | PLANEJADO | não implementada |
+| `Money` em minor units inteiras com BRL | VERIFICADO | Etapa 1 mergeada, testes unitários/fuzz e revisão independente |
+| Entidade `Expense` e invariantes | VERIFICADO | Etapa 1 mergeada, testes unitários/fuzz e revisão independente |
+| Caso de uso `CreateExpense` | VERIFICADO | Etapa 1 mergeada, testes determinísticos e revisão independente |
+| Persistência PostgreSQL | IMPLEMENTADO | adapter e integração real aguardam revisão independente da Etapa 2A |
+| Migrations | IMPLEMENTADO | UP/DOWN/reaplicação aguardam revisão independente da Etapa 2A |
 | Idempotência | PLANEJADO | não implementada |
-| `AuditEvent` transacional | PLANEJADO | não implementado |
+| `AuditEvent` transacional | IMPLEMENTADO | evento mínimo atômico aguarda revisão independente da Etapa 2A |
 | API, iOS e demais canais | PLANEJADO | não implementados |
 
 O estado **VERIFICADO** depende de quality gate e revisão independente conforme a Definition of Done; não é atribuído autonomamente por esta implementação.
@@ -28,10 +29,18 @@ O instante é normalizado para UTC e o timezone financeiro permanece explícito.
 
 `application.CreateExpense` recebe dados já revisados e confirmados pelo canal, constrói `Money` e solicita ao domínio a validação de todos os dados do canal antes de consultar ID ou relógio. A criação segura de `Expense` reutiliza a mesma fonte das invariantes, sem copiar regras na aplicação. Somente depois da validação o caso de uso obtém ID e horário por dependências explícitas, chama `ExpenseRepository.Save` exatamente uma vez e retorna a entidade após sucesso. Não existe `confirmed=true`: interfaces futuras são responsáveis por não executar o caso de uso antes da confirmação.
 
-As únicas portas são `ExpenseRepository`, `ExpenseIDGenerator` e `Clock`. Os fakes existem apenas nos testes; não há adaptador de persistência de produção.
+As únicas portas são `ExpenseRepository`, `ExpenseIDGenerator` e `Clock`. A interface existente não foi ampliada. `adapters/postgres` implementa `ExpenseRepository` com SQL explícito e parametrizado; `application` e `domain` não importam pgx, migrations ou plataforma.
+
+## Adapter PostgreSQL
+
+`Save` inicia uma DB transaction, insere a Expense em `transactions`, insere um `EXPENSE_RECORDED` mínimo em `audit_events` e confirma somente após ambos terem sucesso. Qualquer falha provoca rollback. O evento guarda owner lógico, aggregate, versão, tipo e instante; não replica descrição, valor ou payload financeiro. Uma FK composta de `(aggregate_id, user_id)` para `transactions (id, user_id)` garante no banco que o owner do evento é o mesmo da Expense, sem incluir `aggregate_version` nessa relação.
+
+O schema também protege invariantes essenciais com PK, FK, `UNIQUE` e `CHECK`, mas o domínio continua sendo a autoridade. Para os limites de borda, a migration enumera explicitamente o conjunto Unicode White_Space usado por `strings.TrimSpace` no Go 1.26.6: IDs e timezones com whitespace externo são rejeitados, descrições persistidas devem estar sem whitespace externo e descrições formadas somente por esse conjunto são inválidas. Whitespace interno permanece intacto e nenhuma normalização Unicode é feita. Como a tabela Unicode do Go pode evoluir em uma atualização futura da toolchain, esse conjunto SQL deverá ser revisto junto com a versão do Go; não há dependência de locale ou extensão PostgreSQL.
+
+Instantes usam `TIMESTAMPTZ`, enquanto `financial_timezone` preserva o identificador IANA. A tabela `users` contém somente ID e timestamps para ownership/referential integrity; ela não implementa autenticação e as migrations não contêm usuários.
 
 ## Decisões adiadas
 
-Idempotência pertence à camada de aplicação e ao limite do canal/persistência. Uma chave e seu armazenamento serão definidos quando esse limite existir; ela não faz parte de `Money` ou `Expense`. `AuditEvent` deverá ser persistido atomicamente com a despesa quando houver uma transação real. Logs não substituem auditoria e não devem receber conteúdo financeiro.
+Idempotência pertence à futura command/API boundary da Etapa 2B. Uma chave e seu armazenamento ainda não foram definidos e não fazem parte de `Money`, `Expense` ou do adapter desta etapa. Logs não substituem audit events e não devem receber conteúdo financeiro.
 
-Não existem nesta etapa SQL, migrations, PostgreSQL, endpoint financeiro, UI, autenticação, IA, WhatsApp funcional ou infraestrutura de nuvem.
+Não existem endpoint financeiro, UI, autenticação, IA, WhatsApp funcional, infraestrutura de nuvem ou banco de produção nesta etapa.

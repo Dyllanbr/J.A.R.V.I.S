@@ -1,27 +1,29 @@
 # J.A.R.V.I.S.
 
-Monorepo do J.A.R.V.I.S., um assessor financeiro pessoal em construção. Além da fundação operacional, o repositório contém a Etapa 1 do Incremento 1: núcleo de domínio para uma despesa simples. O único comportamento HTTP continua sendo `GET /healthz`; não existe persistência ou tela de produto.
+Monorepo do J.A.R.V.I.S., um assessor financeiro pessoal em construção. A Etapa 1 do Incremento 1 contém o núcleo verificado de uma despesa simples. A Etapa 2A adiciona migrations e persistência PostgreSQL real para dados sintéticos locais/de teste, aguardando revisão independente. O único comportamento HTTP continua sendo `GET /healthz`; não existe endpoint financeiro nem tela de produto.
 
 ## Estado atual
 
 Implementado:
 
 - backend Go em monólito modular;
-- `Money`, `Expense` e `CreateExpense` implementados no módulo `transactions`, aguardando revisão independente;
+- `Money`, `Expense` e `CreateExpense` verificados no núcleo do módulo `transactions`;
+- migrations versionadas e adapter PostgreSQL para `Expense` + `EXPENSE_RECORDED` atômicos, implementados e aguardando revisão independente;
 - health check operacional, configuração e shutdown gracioso;
 - testes nativos Go e smoke de API com Playwright/TypeScript;
 - contrato OpenAPI 3.1 validado semanticamente;
 - quality gate local e CI, incluindo scanner de secrets com autoteste;
 - baselines versionadas de arquitetura, segurança, privacidade, acessibilidade, QA e performance.
 
-PostgreSQL, SwiftUI/iOS, Maestro, Terraform e infraestrutura de nuvem estão apenas planejados. As pastas reservadas não significam implementação.
+SwiftUI/iOS, Maestro, Terraform e infraestrutura de nuvem estão apenas planejados. O PostgreSQL existe somente para desenvolvimento e integração local/CI nesta etapa; não há ambiente ou fornecedor de produção.
 
 ## Estrutura
 
 ```text
 .
 ├── apps/ios/                  # Aplicativo iOS planejado
-├── backend/                   # Monólito modular em Go e núcleo de transações
+├── backend/                   # Monólito modular, núcleo e adapter PostgreSQL
+├── compose.yaml               # PostgreSQL local/teste, fixado por digest
 ├── contracts/openapi/         # Contrato HTTP versionado
 ├── qa/
 │   ├── playwright/            # Smoke de API em TypeScript
@@ -38,7 +40,8 @@ PostgreSQL, SwiftUI/iOS, Maestro, Terraform e infraestrutura de nuvem estão ape
 - Go 1.26.6, registrado em `.go-version` e `backend/go.mod`;
 - Node.js 24.19.0, registrado em `.node-version`;
 - npm 11.17.0, registrado no `packageManager` da suíte Playwright;
-- Git, Bash, Make e curl.
+- Git, Bash, Make e curl;
+- Docker com Docker Compose para migrations e integração PostgreSQL.
 
 Todas as dependências npm são instaladas pelo lockfile versionado. O repositório não depende de caminhos locais, instalações temporárias ou ambientes de desenvolvimento específicos.
 
@@ -51,7 +54,7 @@ make bootstrap
 make check
 ```
 
-`make check` executa as verificações rápidas de desenvolvimento. O quality gate completo, equivalente ao CI, faz uma instalação npm limpa e inclui build, race detector, auditoria, contrato, scanner e smoke gerenciado:
+`make check` executa as verificações rápidas de desenvolvimento sem iniciar containers. O quality gate completo, equivalente ao CI, faz uma instalação npm limpa e inclui build, race detector, PostgreSQL 18.6 real, migrations, auditoria, contrato, scanner e smoke gerenciado:
 
 ```bash
 make verify
@@ -72,6 +75,29 @@ JARVIS_HTTP_ADDRESS=127.0.0.1:8081 JARVIS_SHUTDOWN_TIMEOUT=10s go run ./cmd/api
 
 `.env.example` é apenas uma referência de nomes e valores fictícios; o binário não carrega arquivos `.env` automaticamente.
 
+## PostgreSQL local e migrations
+
+Exporte credenciais exclusivas para desenvolvimento local; não use dados ou senhas reais. O exemplo abaixo é deliberadamente fictício:
+
+```bash
+export JARVIS_POSTGRES_DB=jarvis_local
+export JARVIS_POSTGRES_USER=jarvis_local
+export JARVIS_POSTGRES_PASSWORD=choose-a-local-development-password
+export JARVIS_POSTGRES_PORT=55432
+export JARVIS_DATABASE_URL='postgres://jarvis_local:choose-a-local-development-password@127.0.0.1:55432/jarvis_local?sslmode=disable'
+
+make db-up
+make migrate-up
+```
+
+Para validar a persistência em um Postgres descartável e remover automaticamente container e volume:
+
+```bash
+make test-integration
+```
+
+`make db-down` encerra o banco de desenvolvimento preservando seu volume. `docker compose down --volumes` também remove esse volume quando a eliminação explícita dos dados sintéticos locais for desejada. Os comandos de banco são opt-in; a API health-only não lê `JARVIS_DATABASE_URL` e continua iniciando sem PostgreSQL.
+
 ## Smoke test
 
 Após `make bootstrap`, execute da raiz:
@@ -88,4 +114,4 @@ As regras permanentes estão em [AGENTS.md](AGENTS.md). A [Definition of Done](d
 
 ## Limitações atuais
 
-O núcleo de despesa não está conectado à API nem a qualquer canal. Não há persistência, SQL, PostgreSQL, endpoint financeiro, receitas, parcelamentos, categorias funcionais, orçamento, metas, autenticação, Face ID, passkeys, PIN, WhatsApp funcional, OpenAI, IA, MCP, agentes de produto, cloud, Terraform funcional ou telas iOS. Idempotência e auditoria transacional permanecem planejadas. A baseline LGPD não é alegação de conformidade jurídica, e a baseline WCAG não é alegação de conformidade de UI.
+O núcleo de despesa não está conectado à API nem a qualquer canal. Não há endpoint financeiro, idempotência, dados reais, banco de produção, receitas, parcelamentos, categorias funcionais, orçamento, metas, autenticação, Face ID, passkeys, PIN, WhatsApp funcional, OpenAI, IA, MCP, agentes de produto, cloud, Terraform funcional ou telas iOS. A persistência do audit event existe apenas junto à gravação da Expense; não há sistema de auditoria de produto além desse evento mínimo. A baseline LGPD não é alegação de conformidade jurídica, e a baseline WCAG não é alegação de conformidade de UI.

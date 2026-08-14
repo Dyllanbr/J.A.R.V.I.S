@@ -1,7 +1,7 @@
 # ADR-001: Monólito modular
 
 - Estado da decisão: Aceita
-- Estado de implementação: Fundação e Etapa 1 do módulo `transactions` implementadas
+- Estado de implementação: Fundação e Etapa 1 verificadas; adapter PostgreSQL da Etapa 2A implementado
 - Data: 2026-08-14
 
 ## Contexto
@@ -18,5 +18,6 @@ Limites serão criados conforme o domínio for compreendido. Não haverá abstra
 
 - Desenvolvimento, testes e operação começam simples.
 - Transações locais futuras podem preservar consistência sem coordenação distribuída.
+- O adapter PostgreSQL permanece na borda do módulo e implementa a porta da aplicação sem inverter dependências.
 - Disciplina de dependências é necessária para impedir um monólito acoplado.
 - Extração de serviço só será considerada com evidência de necessidade operacional ou organizacional.

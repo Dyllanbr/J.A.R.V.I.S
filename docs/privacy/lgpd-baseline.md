@@ -2,7 +2,7 @@
 
 ## Escopo e cautela
 
-Na fase atual, o projeto é uma fundação sem tratamento de dados pessoais. O [art. 4º, I, da LGPD](https://www.planalto.gov.br/ccivil_03/_ato2015-2018/2018/lei/l13709.htm) exclui o tratamento realizado por pessoa natural para fins exclusivamente particulares e não econômicos. O contexto de uso deve ser confirmado continuamente: disponibilização a terceiros, beta, exploração econômica ou mudança de finalidade exige nova análise.
+Na fase atual, o PostgreSQL local/CI usa somente fixtures sintéticas; não há tratamento operacional de dados pessoais de usuários. O [art. 4º, I, da LGPD](https://www.planalto.gov.br/ccivil_03/_ato2015-2018/2018/lei/l13709.htm) exclui o tratamento realizado por pessoa natural para fins exclusivamente particulares e não econômicos. O contexto de uso deve ser confirmado continuamente: dados reais, disponibilização a terceiros, beta, exploração econômica ou mudança de finalidade exigem nova análise.
 
 Mesmo quando a exceção for aplicável, o J.A.R.V.I.S. seguirá privacy by design. Ela não é permissão para reduzir controles de segurança, inserir dados reais em testes ou coletar dados por conveniência. Estes documentos não constituem parecer jurídico nem alegação de conformidade.
 

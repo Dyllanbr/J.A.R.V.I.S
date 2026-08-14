@@ -1,6 +1,11 @@
 # Registro de atividades de tratamento
 
-Estado: **PLANEJADO**. Não há operação de tratamento de produto implementada.
+Estado: tratamento de produto com dados reais **PLANEJADO** e inexistente. Existe somente validação técnica local/CI com fixtures sintéticas em PostgreSQL; ela não cria conta, usuário externo, coleta ou compartilhamento.
+
+| Atividade | Dados | Ambiente | Estado | Observação |
+| --- | --- | --- | --- | --- |
+| Teste da persistência de Expense | Fixtures sintéticas do inventário | Máquina do desenvolvedor e runner CI descartável | IMPLEMENTADO | Banco por teste; cleanup automático de integração; sem dado pessoal real |
+| Registro de Expense de usuário real | A definir | A definir | PLANEJADO | Bloqueado pelo LGPD Readiness Gate e por decisões ainda ausentes |
 
 Cada atividade futura deve registrar:
 
@@ -16,4 +21,4 @@ Cada atividade futura deve registrar:
 | Controles e riscos | Salvaguardas técnicas e organizacionais |
 | Evidência | Contrato, teste, revisão e aprovação aplicáveis |
 
-Não registrar tratamentos hipotéticos como existentes.
+Não extrapolar o teste sintético para afirmar tratamento real, base legal, fornecedor, transferência, retenção ou conformidade.
