@@ -1,0 +1,53 @@
+# Local environment and secrets
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+*.p12
+*.pfx
+
+# Operating systems and editors
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# Go
+backend/bin/
+backend/coverage.out
+backend/*.test
+.gocache/
+.gomodcache/
+
+# Node.js / Playwright
+node_modules/
+qa/playwright/playwright-report/
+qa/playwright/test-results/
+qa/playwright/blob-report/
+
+# Apple platforms
+DerivedData/
+*.xcuserstate
+xcuserdata/
+
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+*.tfvars.json
+!*.tfvars.example
+*.tfplan
+crash.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+
+# Local reports and temporary files
+coverage/
+reports/
+tmp/
+*.log
+*.tmp

@@ -1,0 +1,51 @@
+openapi: 3.1.0
+info:
+  title: J.A.R.V.I.S. API
+  version: 0.1.0
+  description: Contrato da fundação; ainda não contém operações de produto.
+jsonSchemaDialect: https://json-schema.org/draft/2020-12/schema
+servers:
+  - url: http://127.0.0.1:8080
+    description: Execução local com a configuração padrão
+security: []
+paths:
+  /healthz:
+    get:
+      operationId: getHealth
+      summary: Verifica se o processo HTTP está operacional
+      tags:
+        - Operations
+      responses:
+        "200":
+          description: Processo operacional
+          headers:
+            Cache-Control:
+              required: true
+              schema:
+                type: string
+                const: no-store
+              description: Impede armazenamento da resposta.
+            X-Content-Type-Options:
+              required: true
+              schema:
+                type: string
+                const: nosniff
+              description: Impede MIME sniffing da resposta.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Health"
+components:
+  schemas:
+    Health:
+      type: object
+      additionalProperties: false
+      required:
+        - status
+      properties:
+        status:
+          type: string
+          const: ok
+tags:
+  - name: Operations
+    description: Endpoints operacionais, sem regras de negócio.

@@ -1,0 +1,22 @@
+# Estratégia de testes
+
+## Pirâmide inicial
+
+1. Testes unitários nativos de Go para configuração, domínio e casos de uso futuros.
+2. Testes de integração em limites reais quando adaptadores forem introduzidos.
+3. Playwright com TypeScript para contrato e smoke tests HTTP.
+4. Maestro para poucas jornadas mobile críticas quando existir aplicativo.
+5. Testes de performance guiados por metas mensuráveis quando existirem cargas representativas.
+
+## Implementado
+
+- Testes Go para configuração, limites HTTP, health, 405, bind, cancelamento e shutdown gracioso.
+- Smoke Playwright de health e método não permitido, com zero retries.
+- Lifecycle compartilhado que valida porta, readiness do PID atual, cleanup e shutdown gracioso.
+- Formatação, vet, lint TypeScript sem warnings, type-check, testes com detector de corrida, OpenAPI semântico, auditoria, scanner e build no CI.
+
+## Ainda planejado
+
+Não há testes funcionais financeiros, fluxos Maestro, ambiente PostgreSQL, dados de produto ou cenários de carga, porque as respectivas funcionalidades não existem.
+
+Testes futuros devem ser determinísticos, independentes e usar dados sintéticos. Flakiness deve ser tratada como defeito e não pode terminar verde por retry. O comando oficial de evidência completa é `make verify`.
