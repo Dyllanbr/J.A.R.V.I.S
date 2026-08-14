@@ -1,0 +1,232 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 60;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		A00100000000000000000001 /* JARVISApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = B00100000000000000000001 /* JARVISApp.swift */; };
+		A00100000000000000000002 /* AppConfiguration.swift in Sources */ = {isa = PBXBuildFile; fileRef = B00100000000000000000002 /* AppConfiguration.swift */; };
+		A00100000000000000000003 /* AppModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = B00100000000000000000003 /* AppModel.swift */; };
+		A00100000000000000000004 /* FinancialModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = B00100000000000000000004 /* FinancialModels.swift */; };
+		A00100000000000000000005 /* FinancialAPI.swift in Sources */ = {isa = PBXBuildFile; fileRef = B00100000000000000000005 /* FinancialAPI.swift */; };
+		A00100000000000000000006 /* RFC3339DateCodec.swift in Sources */ = {isa = PBXBuildFile; fileRef = B00100000000000000000006 /* RFC3339DateCodec.swift */; };
+		A00100000000000000000007 /* StubFinancialAPI.swift in Sources */ = {isa = PBXBuildFile; fileRef = B00100000000000000000007 /* StubFinancialAPI.swift */; };
+		A00100000000000000000008 /* RegistrationViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = B00100000000000000000008 /* RegistrationViewModel.swift */; };
+		A00100000000000000000009 /* RegisterView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B00100000000000000000009 /* RegisterView.swift */; };
+		A0010000000000000000000A /* FinancialMonth.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0010000000000000000000A /* FinancialMonth.swift */; };
+		A0010000000000000000000B /* HistoryViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0010000000000000000000B /* HistoryViewModel.swift */; };
+		A0010000000000000000000C /* HistoryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0010000000000000000000C /* HistoryView.swift */; };
+		A0010000000000000000000D /* BRLMoneyParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0010000000000000000000D /* BRLMoneyParser.swift */; };
+		A0010000000000000000000E /* FinancialDisplayFormatter.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0010000000000000000000E /* FinancialDisplayFormatter.swift */; };
+		A0010000000000000000000F /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0010000000000000000000F /* RootView.swift */; };
+		A00200000000000000000001 /* BRLMoneyParserTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B00200000000000000000001 /* BRLMoneyParserTests.swift */; };
+		A00200000000000000000002 /* RFC3339DateCodecTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B00200000000000000000002 /* RFC3339DateCodecTests.swift */; };
+		A00200000000000000000003 /* TestFixtures.swift in Sources */ = {isa = PBXBuildFile; fileRef = B00200000000000000000003 /* TestFixtures.swift */; };
+		A00200000000000000000004 /* RegistrationViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B00200000000000000000004 /* RegistrationViewModelTests.swift */; };
+		A00200000000000000000005 /* HistoryViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B00200000000000000000005 /* HistoryViewModelTests.swift */; };
+		A00200000000000000000006 /* FinancialAPIClientTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B00200000000000000000006 /* FinancialAPIClientTests.swift */; };
+		A00200000000000000000007 /* AppConfigurationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B00200000000000000000007 /* AppConfigurationTests.swift */; };
+		A00300000000000000000001 /* JARVISUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B00300000000000000000001 /* JARVISUITests.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		C00100000000000000000001 = {
+			isa = PBXContainerItemProxy;
+			containerPortal = D00100000000000000000001 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = D00200000000000000000001;
+			remoteInfo = JARVIS;
+		};
+		C00100000000000000000002 = {
+			isa = PBXContainerItemProxy;
+			containerPortal = D00100000000000000000001 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = D00200000000000000000001;
+			remoteInfo = JARVIS;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXFileReference section */
+		B00100000000000000000001 /* JARVISApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JARVISApp.swift; sourceTree = "<group>"; };
+		B00100000000000000000002 /* AppConfiguration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppConfiguration.swift; sourceTree = "<group>"; };
+		B00100000000000000000003 /* AppModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppModel.swift; sourceTree = "<group>"; };
+		B00100000000000000000004 /* FinancialModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FinancialModels.swift; sourceTree = "<group>"; };
+		B00100000000000000000005 /* FinancialAPI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FinancialAPI.swift; sourceTree = "<group>"; };
+		B00100000000000000000006 /* RFC3339DateCodec.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RFC3339DateCodec.swift; sourceTree = "<group>"; };
+		B00100000000000000000007 /* StubFinancialAPI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StubFinancialAPI.swift; sourceTree = "<group>"; };
+		B00100000000000000000008 /* RegistrationViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RegistrationViewModel.swift; sourceTree = "<group>"; };
+		B00100000000000000000009 /* RegisterView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RegisterView.swift; sourceTree = "<group>"; };
+		B0010000000000000000000A /* FinancialMonth.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FinancialMonth.swift; sourceTree = "<group>"; };
+		B0010000000000000000000B /* HistoryViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryViewModel.swift; sourceTree = "<group>"; };
+		B0010000000000000000000C /* HistoryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryView.swift; sourceTree = "<group>"; };
+		B0010000000000000000000D /* BRLMoneyParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BRLMoneyParser.swift; sourceTree = "<group>"; };
+		B0010000000000000000000E /* FinancialDisplayFormatter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FinancialDisplayFormatter.swift; sourceTree = "<group>"; };
+		B0010000000000000000000F /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
+		B00100000000000000000010 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		B00100000000000000000011 /* Info-Release.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "Info-Release.plist"; sourceTree = "<group>"; };
+		B00200000000000000000001 /* BRLMoneyParserTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BRLMoneyParserTests.swift; sourceTree = "<group>"; };
+		B00200000000000000000002 /* RFC3339DateCodecTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RFC3339DateCodecTests.swift; sourceTree = "<group>"; };
+		B00200000000000000000003 /* TestFixtures.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TestFixtures.swift; sourceTree = "<group>"; };
+		B00200000000000000000004 /* RegistrationViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RegistrationViewModelTests.swift; sourceTree = "<group>"; };
+		B00200000000000000000005 /* HistoryViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryViewModelTests.swift; sourceTree = "<group>"; };
+		B00200000000000000000006 /* FinancialAPIClientTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FinancialAPIClientTests.swift; sourceTree = "<group>"; };
+		B00200000000000000000007 /* AppConfigurationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppConfigurationTests.swift; sourceTree = "<group>"; };
+		B00300000000000000000001 /* JARVISUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JARVISUITests.swift; sourceTree = "<group>"; };
+		B00300000000000000000002 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		B00400000000000000000001 /* JARVIS.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = JARVIS.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		B00400000000000000000002 /* JARVISTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = JARVISTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		B00400000000000000000003 /* JARVISUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = JARVISUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		E00100000000000000000001 = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+		E00100000000000000000002 = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+		E00100000000000000000003 = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		F00100000000000000000001 = {
+			isa = PBXGroup;
+			children = (
+				F00100000000000000000002 /* JARVIS */,
+				F0010000000000000000000B /* JARVISTests */,
+				F0010000000000000000000C /* JARVISUITests */,
+				F0010000000000000000000D /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		F00100000000000000000002 /* JARVIS */ = {
+			isa = PBXGroup;
+			children = (
+				F00100000000000000000003 /* App */,
+				F00100000000000000000004 /* API */,
+				F00100000000000000000005 /* Development */,
+				F00100000000000000000006 /* Register */,
+				F00100000000000000000007 /* History */,
+				F00100000000000000000008 /* Formatting */,
+				F00100000000000000000009 /* Resources */,
+				F0010000000000000000000A /* UI */,
+			);
+			path = JARVIS;
+			sourceTree = "<group>";
+		};
+		F00100000000000000000003 /* App */ = {isa = PBXGroup; children = (B00100000000000000000001, B00100000000000000000002, B00100000000000000000003); path = App; sourceTree = "<group>"; };
+		F00100000000000000000004 /* API */ = {isa = PBXGroup; children = (B00100000000000000000004, B00100000000000000000005, B00100000000000000000006); path = API; sourceTree = "<group>"; };
+		F00100000000000000000005 /* Development */ = {isa = PBXGroup; children = (B00100000000000000000007); path = Development; sourceTree = "<group>"; };
+		F00100000000000000000006 /* Register */ = {isa = PBXGroup; children = (B00100000000000000000008, B00100000000000000000009); name = Register; path = Features/Register; sourceTree = "<group>"; };
+		F00100000000000000000007 /* History */ = {isa = PBXGroup; children = (B0010000000000000000000A, B0010000000000000000000B, B0010000000000000000000C); name = History; path = Features/History; sourceTree = "<group>"; };
+		F00100000000000000000008 /* Formatting */ = {isa = PBXGroup; children = (B0010000000000000000000D, B0010000000000000000000E); path = Formatting; sourceTree = "<group>"; };
+		F00100000000000000000009 /* Resources */ = {isa = PBXGroup; children = (B00100000000000000000010, B00100000000000000000011); path = Resources; sourceTree = "<group>"; };
+		F0010000000000000000000A /* UI */ = {isa = PBXGroup; children = (B0010000000000000000000F); path = UI; sourceTree = "<group>"; };
+		F0010000000000000000000B /* JARVISTests */ = {isa = PBXGroup; children = (B00200000000000000000001, B00200000000000000000002, B00200000000000000000003, B00200000000000000000004, B00200000000000000000005, B00200000000000000000006, B00200000000000000000007); path = JARVISTests; sourceTree = "<group>"; };
+		F0010000000000000000000C /* JARVISUITests */ = {isa = PBXGroup; children = (B00300000000000000000001, B00300000000000000000002); path = JARVISUITests; sourceTree = "<group>"; };
+		F0010000000000000000000D /* Products */ = {isa = PBXGroup; children = (B00400000000000000000001, B00400000000000000000002, B00400000000000000000003); name = Products; sourceTree = "<group>"; };
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		D00200000000000000000001 /* JARVIS */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = D00800000000000000000002;
+			buildPhases = (E00300000000000000000001, E00100000000000000000001, E00200000000000000000001);
+			buildRules = ();
+			dependencies = ();
+			name = JARVIS;
+			productName = JARVIS;
+			productReference = B00400000000000000000001;
+			productType = "com.apple.product-type.application";
+		};
+		D00200000000000000000002 /* JARVISTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = D00800000000000000000003;
+			buildPhases = (E00300000000000000000002, E00100000000000000000002, E00200000000000000000002);
+			buildRules = ();
+			dependencies = (D00400000000000000000001);
+			name = JARVISTests;
+			productName = JARVISTests;
+			productReference = B00400000000000000000002;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+		D00200000000000000000003 /* JARVISUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = D00800000000000000000004;
+			buildPhases = (E00300000000000000000003, E00100000000000000000003, E00200000000000000000003);
+			buildRules = ();
+			dependencies = (D00400000000000000000002);
+			name = JARVISUITests;
+			productName = JARVISUITests;
+			productReference = B00400000000000000000003;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		D00100000000000000000001 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 2660;
+				LastUpgradeCheck = 2660;
+				TargetAttributes = {
+					D00200000000000000000001 = {CreatedOnToolsVersion = 26.6; };
+					D00200000000000000000002 = {CreatedOnToolsVersion = 26.6; TestTargetID = D00200000000000000000001; };
+					D00200000000000000000003 = {CreatedOnToolsVersion = 26.6; TestTargetID = D00200000000000000000001; };
+				};
+			};
+			buildConfigurationList = D00800000000000000000001;
+			compatibilityVersion = "Xcode 15.0";
+			developmentRegion = pt_BR;
+			hasScannedForEncodings = 0;
+			knownRegions = (pt_BR, Base);
+			mainGroup = F00100000000000000000001;
+			productRefGroup = F0010000000000000000000D;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (D00200000000000000000001, D00200000000000000000002, D00200000000000000000003);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		E00200000000000000000001 = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+		E00200000000000000000002 = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+		E00200000000000000000003 = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		E00300000000000000000001 = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (A00100000000000000000001, A00100000000000000000002, A00100000000000000000003, A00100000000000000000004, A00100000000000000000005, A00100000000000000000006, A00100000000000000000007, A00100000000000000000008, A00100000000000000000009, A0010000000000000000000A, A0010000000000000000000B, A0010000000000000000000C, A0010000000000000000000D, A0010000000000000000000E, A0010000000000000000000F);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		E00300000000000000000002 = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (A00200000000000000000001, A00200000000000000000002, A00200000000000000000003, A00200000000000000000004, A00200000000000000000005, A00200000000000000000006, A00200000000000000000007); runOnlyForDeploymentPostprocessing = 0; };
+		E00300000000000000000003 = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (A00300000000000000000001); runOnlyForDeploymentPostprocessing = 0; };
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		D00400000000000000000001 = {isa = PBXTargetDependency; target = D00200000000000000000001; targetProxy = C00100000000000000000001; };
+		D00400000000000000000002 = {isa = PBXTargetDependency; target = D00200000000000000000001; targetProxy = C00100000000000000000002; };
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		D00600000000000000000001 /* Debug */ = {isa = XCBuildConfiguration; buildSettings = {CLANG_ENABLE_MODULES = YES; COPY_PHASE_STRIP = NO; ENABLE_TESTABILITY = YES; GCC_C_LANGUAGE_STANDARD = gnu17; IPHONEOS_DEPLOYMENT_TARGET = 17.0; SDKROOT = iphoneos; SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG; SWIFT_OPTIMIZATION_LEVEL = "-Onone"; SWIFT_STRICT_CONCURRENCY = complete; SWIFT_VERSION = 6.0; }; name = Debug; };
+		D00600000000000000000002 /* Release */ = {isa = XCBuildConfiguration; buildSettings = {CLANG_ENABLE_MODULES = YES; GCC_C_LANGUAGE_STANDARD = gnu17; IPHONEOS_DEPLOYMENT_TARGET = 17.0; SDKROOT = iphoneos; SWIFT_COMPILATION_MODE = wholemodule; SWIFT_STRICT_CONCURRENCY = complete; SWIFT_VERSION = 6.0; VALIDATE_PRODUCT = YES; }; name = Release; };
+		D00600000000000000000003 /* App Debug */ = {isa = XCBuildConfiguration; buildSettings = {CODE_SIGN_STYLE = Automatic; CURRENT_PROJECT_VERSION = 1; DEVELOPMENT_TEAM = ""; INFOPLIST_FILE = JARVIS/Resources/Info.plist; LD_RUNPATH_SEARCH_PATHS = ("$(inherited)", "@executable_path/Frameworks"); MARKETING_VERSION = 0.1.0; PRODUCT_BUNDLE_IDENTIFIER = dev.jarvis.JARVIS; PRODUCT_NAME = "$(TARGET_NAME)"; SUPPORTED_PLATFORMS = "iphoneos iphonesimulator"; SUPPORTS_MACCATALYST = NO; SWIFT_EMIT_LOC_STRINGS = YES; SWIFT_TREAT_WARNINGS_AS_ERRORS = YES; TARGETED_DEVICE_FAMILY = 1; }; name = Debug; };
+		D00600000000000000000004 /* App Release */ = {isa = XCBuildConfiguration; buildSettings = {CODE_SIGN_STYLE = Automatic; CURRENT_PROJECT_VERSION = 1; DEVELOPMENT_TEAM = ""; INFOPLIST_FILE = "JARVIS/Resources/Info-Release.plist"; LD_RUNPATH_SEARCH_PATHS = ("$(inherited)", "@executable_path/Frameworks"); MARKETING_VERSION = 0.1.0; PRODUCT_BUNDLE_IDENTIFIER = dev.jarvis.JARVIS; PRODUCT_NAME = "$(TARGET_NAME)"; SUPPORTED_PLATFORMS = "iphoneos iphonesimulator"; SUPPORTS_MACCATALYST = NO; SWIFT_EMIT_LOC_STRINGS = YES; SWIFT_TREAT_WARNINGS_AS_ERRORS = YES; TARGETED_DEVICE_FAMILY = 1; }; name = Release; };
+		D00600000000000000000005 /* Tests Debug */ = {isa = XCBuildConfiguration; buildSettings = {BUNDLE_LOADER = "$(TEST_HOST)"; CODE_SIGN_STYLE = Automatic; GENERATE_INFOPLIST_FILE = YES; IPHONEOS_DEPLOYMENT_TARGET = 17.0; LD_RUNPATH_SEARCH_PATHS = ("$(inherited)", "@executable_path/Frameworks", "@loader_path/Frameworks"); PRODUCT_BUNDLE_IDENTIFIER = dev.jarvis.JARVISTests; PRODUCT_NAME = "$(TARGET_NAME)"; SWIFT_TREAT_WARNINGS_AS_ERRORS = YES; TARGETED_DEVICE_FAMILY = 1; TEST_HOST = "$(BUILT_PRODUCTS_DIR)/JARVIS.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/JARVIS"; }; name = Debug; };
+		D00600000000000000000006 /* Tests Release */ = {isa = XCBuildConfiguration; buildSettings = {BUNDLE_LOADER = "$(TEST_HOST)"; CODE_SIGN_STYLE = Automatic; GENERATE_INFOPLIST_FILE = YES; IPHONEOS_DEPLOYMENT_TARGET = 17.0; LD_RUNPATH_SEARCH_PATHS = ("$(inherited)", "@executable_path/Frameworks", "@loader_path/Frameworks"); PRODUCT_BUNDLE_IDENTIFIER = dev.jarvis.JARVISTests; PRODUCT_NAME = "$(TARGET_NAME)"; SWIFT_TREAT_WARNINGS_AS_ERRORS = YES; TARGETED_DEVICE_FAMILY = 1; TEST_HOST = "$(BUILT_PRODUCTS_DIR)/JARVIS.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/JARVIS"; }; name = Release; };
+		D00600000000000000000007 /* UI Tests Debug */ = {isa = XCBuildConfiguration; buildSettings = {CODE_SIGN_STYLE = Automatic; GENERATE_INFOPLIST_FILE = NO; INFOPLIST_FILE = JARVISUITests/Info.plist; IPHONEOS_DEPLOYMENT_TARGET = 17.0; LD_RUNPATH_SEARCH_PATHS = ("$(inherited)", "@executable_path/Frameworks", "@loader_path/Frameworks"); PRODUCT_BUNDLE_IDENTIFIER = dev.jarvis.JARVISUITests; PRODUCT_NAME = "$(TARGET_NAME)"; SWIFT_TREAT_WARNINGS_AS_ERRORS = YES; TARGETED_DEVICE_FAMILY = 1; TEST_TARGET_NAME = JARVIS; }; name = Debug; };
+		D00600000000000000000008 /* UI Tests Release */ = {isa = XCBuildConfiguration; buildSettings = {CODE_SIGN_STYLE = Automatic; GENERATE_INFOPLIST_FILE = NO; INFOPLIST_FILE = JARVISUITests/Info.plist; IPHONEOS_DEPLOYMENT_TARGET = 17.0; LD_RUNPATH_SEARCH_PATHS = ("$(inherited)", "@executable_path/Frameworks", "@loader_path/Frameworks"); PRODUCT_BUNDLE_IDENTIFIER = dev.jarvis.JARVISUITests; PRODUCT_NAME = "$(TARGET_NAME)"; SWIFT_TREAT_WARNINGS_AS_ERRORS = YES; TARGETED_DEVICE_FAMILY = 1; TEST_TARGET_NAME = JARVIS; }; name = Release; };
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		D00800000000000000000001 = {isa = XCConfigurationList; buildConfigurations = (D00600000000000000000001, D00600000000000000000002); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+		D00800000000000000000002 = {isa = XCConfigurationList; buildConfigurations = (D00600000000000000000003, D00600000000000000000004); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+		D00800000000000000000003 = {isa = XCConfigurationList; buildConfigurations = (D00600000000000000000005, D00600000000000000000006); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+		D00800000000000000000004 = {isa = XCConfigurationList; buildConfigurations = (D00600000000000000000007, D00600000000000000000008); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+/* End XCConfigurationList section */
+	};
+	rootObject = D00100000000000000000001 /* Project object */;
+}

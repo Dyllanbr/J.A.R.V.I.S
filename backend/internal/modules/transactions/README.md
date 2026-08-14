@@ -9,10 +9,11 @@
 | Caso de uso `CreateExpense` | VERIFICADO | Etapa 1 mergeada, testes determinísticos e revisão independente |
 | Persistência PostgreSQL base | VERIFICADO | Etapa 2A mergeada, integração real e revisão independente |
 | Migration 001 e `AuditEvent` transacional | VERIFICADO | Etapa 2A mergeada, atomicidade e lifecycle revisados |
-| Idempotência e migration 002 | IMPLEMENTADO | integração/concurrency aguardam revisão independente da Etapa 2B |
-| Preview e API financeira | IMPLEMENTADO | handlers/contrato/E2E aguardam revisão independente da Etapa 2B |
-| Consulta mensal | IMPLEMENTADA | query owner-scoped e limites financeiros aguardam revisão independente |
-| iOS e demais canais | PLANEJADO | não implementados |
+| Idempotência e migration 002 | VERIFICADO | Etapa 2B mergeada, integração/concurrency e revisão independente |
+| Preview e API financeira | VERIFICADO | Etapa 2B mergeada, contrato/E2E e revisão independente |
+| Consulta mensal | VERIFICADA | Etapa 2B mergeada, query owner-scoped e limites financeiros revisados |
+| Cliente iOS | IMPLEMENTADO | Etapa 3 aguardando revisão independente |
+| Demais canais | PLANEJADO | não implementados |
 
 O estado **VERIFICADO** depende de quality gate e revisão independente conforme a Definition of Done; não é atribuído autonomamente por esta implementação.
 
@@ -28,7 +29,7 @@ O instante é normalizado para UTC e o timezone financeiro permanece explícito.
 
 ## Aplicação e portas
 
-`application.CreateExpense` recebe dados já revisados e confirmados pelo canal, constrói `Money` e solicita ao domínio a validação de todos os dados do canal antes de consultar ID ou relógio. A criação segura de `Expense` reutiliza a mesma fonte das invariantes, sem copiar regras na aplicação. Somente depois da validação o caso de uso obtém ID e horário por dependências explícitas, chama `ExpenseRepository.Save` exatamente uma vez e retorna a entidade após sucesso. Não existe `confirmed=true`: interfaces futuras são responsáveis por não executar o caso de uso antes da confirmação.
+`application.CreateExpense` recebe dados já revisados e confirmados pelo canal, constrói `Money` e solicita ao domínio a validação de todos os dados do canal antes de consultar ID ou relógio. A criação segura de `Expense` reutiliza a mesma fonte das invariantes, sem copiar regras na aplicação. Somente depois da validação o caso de uso obtém ID e horário por dependências explícitas, chama `ExpenseRepository.Save` exatamente uma vez e retorna a entidade após sucesso. Não existe `confirmed=true`: cada interface é responsável por não executar o caso de uso antes da confirmação; o cliente iOS da Etapa 3 cumpre preview → revisão → confirmação explícita.
 
 `PreviewExpense` reutiliza a normalização da aplicação/domínio sem ID, Clock ou persistência. Instantes financeiros são convertidos para UTC e truncados para microssegundos em uma única função da aplicação antes de preview, fingerprint, criação persistível e resposta; o Clock passa pela mesma canonicalização para `createdAt`/`updatedAt`. `RecordExpense` representa a operação posterior à confirmação do canal, valida antes de gerar valores e delega a atomicidade à porta pequena `ExpenseCommandStore`. `ListExpensesByMonth` calcula `[start,end)` em `America/Sao_Paulo` e usa somente `ExpenseReader.ListByFinancialMonth`. As portas anteriores continuam pequenas; não há UnitOfWork, repository genérico ou dependência de pgx/HTTP na aplicação.
 
@@ -52,4 +53,4 @@ O fingerprint inclui tipo, descrição normalizada, Money, forma de pagamento, i
 
 Retenção de metadata idempotente, autenticação real, rate limiting distribuído e tratamento de outcomes operacionais indeterminados permanecem decisões anteriores ao uso real. Idempotência não faz parte de `Money`/`Expense`, e logs não substituem audit events nem recebem conteúdo financeiro.
 
-Não existem UI, autenticação, IA, WhatsApp funcional, infraestrutura de nuvem ou banco de produção nesta etapa. A API registra uma despesa já ocorrida; nunca executa Pix, pagamento, compra ou transferência.
+Não existem autenticação, armazenamento financeiro local, IA, WhatsApp funcional, infraestrutura de nuvem ou banco de produção nesta etapa. A UI iOS implementa somente a primeira jornada e usa dados sintéticos em desenvolvimento. A API registra uma despesa já ocorrida; nunca executa Pix, pagamento, compra ou transferência.

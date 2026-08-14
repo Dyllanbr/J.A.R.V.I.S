@@ -28,6 +28,9 @@ qa/playwright/blob-report/
 
 # Apple platforms
 DerivedData/
+*.xcresult
+.build/
+apps/ios/build/
 *.xcuserstate
 xcuserdata/
 

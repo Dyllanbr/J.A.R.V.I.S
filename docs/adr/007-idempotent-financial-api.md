@@ -1,7 +1,7 @@
 # ADR-007: API financeira idempotente e single-owner temporária
 
 - Estado da decisão: Aceita
-- Estado de implementação: Etapa 2B implementada; revisão independente pendente
+- Estado de implementação: Etapa 2B verificada
 - Data: 2026-08-14
 
 ## Contexto

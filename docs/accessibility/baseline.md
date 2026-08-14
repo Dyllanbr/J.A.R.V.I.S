@@ -2,9 +2,9 @@
 
 ## Estado
 
-WCAG 2.2 nível AA é a baseline mínima **PLANEJADA** do J.A.R.V.I.S. Não existe alegação de conformidade: a fundação não possui UI, projeto Xcode ou componente funcional. Os critérios aplicáveis serão mapeados ao contexto iOS/SwiftUI antes da implementação.
+WCAG 2.2 nível AA é a baseline mínima do J.A.R.V.I.S. A Etapa 3 possui a primeira UI SwiftUI **IMPLEMENTADA**, mas não existe alegação de conformidade: revisão independente e validação manual com tecnologias assistivas ainda não foram concluídas. Os critérios aplicáveis são mapeados ao contexto iOS/SwiftUI na matriz de rastreabilidade.
 
-## Requisitos para interfaces futuras
+## Requisitos para interfaces
 
 Os critérios de aceite deverão contemplar, conforme aplicável:
 
@@ -21,6 +21,8 @@ Os critérios de aceite deverão contemplar, conforme aplicável:
 
 Testes automatizados apoiam regressão, mas não substituem validação manual com VoiceOver, tamanhos extremos de texto, preferências de movimento e demais tecnologias assistivas. Regressões críticas de acessibilidade bloqueiam release.
 
+A primeira jornada possui regressão automatizada com identifiers semânticos independentes da copy e em `UIContentSizeCategoryAccessibilityExtraExtraExtraLarge`. Essa evidência garante alcançabilidade funcional básica com scroll; não é inspeção visual pixel a pixel nem substitui o teste manual.
+
 ## Rastreabilidade
 
-A matriz [WCAG → requisito → componente → caso de teste → evidência](wcag-traceability-matrix.md) é o registro obrigatório. Ela começa como template vazio porque ainda não existem componentes funcionais. Nenhum requisito poderá ser classificado como VERIFICADO sem evidência associada.
+A matriz [WCAG → requisito → componente → caso de teste → evidência](wcag-traceability-matrix.md) é o registro obrigatório. A primeira jornada possui linhas **IMPLEMENTADAS**; nenhuma pode ser classificada como VERIFICADA antes das evidências automatizadas e manuais aplicáveis.

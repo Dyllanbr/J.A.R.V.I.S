@@ -1,6 +1,6 @@
 # J.A.R.V.I.S.
 
-Monorepo do J.A.R.V.I.S., um assessor financeiro pessoal em construção. O núcleo de uma despesa simples e sua persistência PostgreSQL estão verificados pelas etapas anteriores. A Etapa 2B implementa, aguardando revisão independente, preview, registro idempotente e histórico mensal de despesas. Esses endpoints apenas registram informações no organizador: não executam Pix, pagamentos, compras, transferências ou qualquer movimentação de fundos.
+Monorepo do J.A.R.V.I.S., um assessor financeiro pessoal em construção. O núcleo, a persistência PostgreSQL e a Financial API da despesa simples estão verificados pelas etapas anteriores. A Etapa 3 implementa o primeiro app SwiftUI nativo, aguardando revisão independente. O sistema apenas registra informações no organizador: não executa Pix, pagamentos, compras, transferências ou qualquer movimentação de fundos.
 
 ## Estado atual
 
@@ -9,20 +9,22 @@ Implementado:
 - backend Go em monólito modular;
 - `Money`, `Expense` e `CreateExpense` verificados no núcleo do módulo `transactions`;
 - migrations versionadas e adapter PostgreSQL verificados para `Expense` + `EXPENSE_RECORDED` atômicos;
-- API financeira opt-in com preview sem escrita, criação idempotente e listagem mensal, implementada e aguardando revisão independente;
+- API financeira opt-in com preview sem escrita, criação idempotente e listagem mensal, verificada pela Etapa 2B;
+- projeto iOS 17/SwiftUI, entrada com preview/revisão/confirmação e histórico mensal, implementados e aguardando revisão independente;
+- XCTest/XCUITest e integração automatizada Simulator → API → PostgreSQL, implementados;
 - health check operacional, configuração e shutdown gracioso;
 - testes nativos Go e smoke de API com Playwright/TypeScript;
 - contrato OpenAPI 3.1 validado semanticamente;
 - quality gate local e CI, incluindo scanner de secrets com autoteste;
 - baselines versionadas de arquitetura, segurança, privacidade, acessibilidade, QA e performance.
 
-SwiftUI/iOS, Maestro, Terraform e infraestrutura de nuvem estão apenas planejados. O PostgreSQL existe somente para desenvolvimento e integração local/CI nesta etapa; não há ambiente ou fornecedor de produção.
+Maestro, dispositivo físico, autenticação, armazenamento local seguro, Terraform e infraestrutura de nuvem estão apenas planejados. O PostgreSQL existe somente para desenvolvimento e integração local/CI nesta etapa; não há ambiente ou fornecedor de produção.
 
 ## Estrutura
 
 ```text
 .
-├── apps/ios/                  # Aplicativo iOS planejado
+├── apps/ios/                  # Projeto SwiftUI, XCTest e XCUITest
 ├── backend/                   # Monólito modular, núcleo e adapter PostgreSQL
 ├── compose.yaml               # PostgreSQL local/teste, fixado por digest
 ├── contracts/openapi/         # Contrato HTTP operacional e financeiro versionado
@@ -42,7 +44,8 @@ SwiftUI/iOS, Maestro, Terraform e infraestrutura de nuvem estão apenas planejad
 - Node.js 24.19.0, registrado em `.node-version`;
 - npm 11.17.0, registrado no `packageManager` da suíte Playwright;
 - Git, Bash, Make e curl;
-- Docker com Docker Compose para migrations e integração PostgreSQL.
+- Docker com Docker Compose para migrations e integração PostgreSQL;
+- Para o gate iOS: macOS, Xcode e um iPhone Simulator com runtime compatível.
 
 Todas as dependências npm são instaladas pelo lockfile versionado. O repositório não depende de caminhos locais, instalações temporárias ou ambientes de desenvolvimento específicos.
 
@@ -115,6 +118,18 @@ go run ./cmd/api
 
 Esse owner vem do servidor e não é autenticação. O contrato expõe `POST /v1/transactions/preview`, `POST /v1/transactions` e `GET /v1/transactions?month=YYYY-MM`. O POST mutável deve ser chamado pelo canal somente depois de apresentar o preview e obter confirmação explícita. `origin=IOS` e `America/Sao_Paulo` são atribuídos pelo servidor; o cliente não envia `userId`, origin ou timezone.
 
+## Aplicativo iOS
+
+No macOS com Xcode e um iPhone Simulator disponível:
+
+```bash
+make build-ios
+make verify-ios
+make test-ios-integration
+```
+
+O gate iOS é separado de `make verify`, que continua reproduzível no ambiente cross-platform do backend. XCUITest com stub cobre regressão de UI; a integração local real é fail-closed, gerencia PostgreSQL, migrations, owner/fixture sintéticos, API e Simulator, passa pelo app/URLSession e exige no banco uma Expense, um audit event e um registro idempotente concluído. Instruções de configuração e as limitações de segurança estão em [`apps/ios/README.md`](apps/ios/README.md).
+
 ## Smoke test
 
 Após `make bootstrap`, execute da raiz:
@@ -131,4 +146,4 @@ As regras permanentes estão em [AGENTS.md](AGENTS.md). A [Definition of Done](d
 
 ## Limitações atuais
 
-A API financeira é um contexto local single-owner temporário, sem autenticação, autorização multiusuário, rate limiting distribuído ou uso real aprovado. Não há dados reais, banco de produção, receitas, parcelamentos, categorias funcionais, orçamento, metas, Face ID, passkeys, PIN, WhatsApp funcional, OpenAI, IA, MCP, agentes de produto, cloud, Terraform funcional ou telas iOS. O audit event existe apenas junto ao novo registro; preview, replay e leitura não geram eventos. A retenção de metadata de idempotência e outcomes de commit indeterminado exigem política operacional antes de uso real. A baseline LGPD não é alegação de conformidade jurídica, e a baseline WCAG não é alegação de conformidade de UI.
+A API financeira é um contexto local single-owner temporário, sem autenticação, autorização multiusuário, rate limiting distribuído ou uso real aprovado. O app iOS não persiste dados localmente, e o retry idempotente pendente não sobrevive a restart. Não há dados reais, banco de produção, receitas, parcelamentos, categorias funcionais, orçamento, metas, Face ID, passkeys, PIN, WhatsApp funcional, OpenAI, IA, MCP, agentes de produto, cloud ou Terraform funcional. Dispositivo físico/LAN permanece planejado até existir proteção apropriada. O audit event existe apenas junto ao novo registro; preview, replay e leitura não geram eventos. A retenção de metadata de idempotência e outcomes de commit indeterminado exigem política operacional antes de uso real. As baselines LGPD e WCAG não são alegações de conformidade.
