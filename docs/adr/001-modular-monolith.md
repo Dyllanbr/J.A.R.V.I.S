@@ -1,7 +1,7 @@
 # ADR-001: Monólito modular
 
 - Estado da decisão: Aceita
-- Estado de implementação: Fundação implementada; módulos de negócio ainda não existem
+- Estado de implementação: Fundação e Etapa 1 do módulo `transactions` implementadas
 - Data: 2026-08-14
 
 ## Contexto

@@ -1,6 +1,6 @@
 # Baseline de segurança
 
-Segurança e privacidade são requisitos de arquitetura, desenvolvimento e operação, mesmo antes de existir dado financeiro.
+Segurança e privacidade são requisitos de arquitetura, desenvolvimento e operação, mesmo sem coleta ou persistência de dados financeiros reais.
 
 ## Controles implementados
 
@@ -12,7 +12,9 @@ Segurança e privacidade são requisitos de arquitetura, desenvolvimento e opera
 - O scanner cobre padrões de alta confiança, imprime somente arquivo, linha e tipo, falha ao detectar material proibido e possui autoteste que verifica redação.
 - Dependências npm usam lockfile; `npm ci`, `npm audit --audit-level=high` e `go mod verify` integram o quality gate.
 - Actions oficiais são fixadas por SHA e documentadas na [baseline de supply chain](supply-chain.md); checkout não persiste credenciais e o CI usa apenas `contents: read`.
-- O projeto não possui credenciais, banco, SDKs externos nem coleta de dados.
+- O núcleo financeiro não registra logs, usa somente dados sintéticos nos testes e retorna erros categóricos sem conteúdo financeiro.
+- IDs opacos do núcleo financeiro são obrigatórios, limitados a 128 bytes de UTF-8 válido e rejeitam caracteres de controle e espaços externos sem expor o valor rejeitado no erro.
+- O projeto não possui credenciais, banco, SDKs externos nem coleta operacional de dados.
 
 ## Regras obrigatórias
 

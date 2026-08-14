@@ -1,12 +1,13 @@
 # J.A.R.V.I.S.
 
-Fundação do monorepo do J.A.R.V.I.S., um assessor financeiro pessoal em construção. O repositório contém somente estrutura arquitetural, um processo HTTP mínimo com `GET /healthz`, contrato e automação de qualidade. Nenhuma funcionalidade financeira ou tela de produto foi implementada.
+Monorepo do J.A.R.V.I.S., um assessor financeiro pessoal em construção. Além da fundação operacional, o repositório contém a Etapa 1 do Incremento 1: núcleo de domínio para uma despesa simples. O único comportamento HTTP continua sendo `GET /healthz`; não existe persistência ou tela de produto.
 
 ## Estado atual
 
 Implementado:
 
-- backend Go em monólito modular, ainda sem módulos de negócio;
+- backend Go em monólito modular;
+- `Money`, `Expense` e `CreateExpense` implementados no módulo `transactions`, aguardando revisão independente;
 - health check operacional, configuração e shutdown gracioso;
 - testes nativos Go e smoke de API com Playwright/TypeScript;
 - contrato OpenAPI 3.1 validado semanticamente;
@@ -20,7 +21,7 @@ PostgreSQL, SwiftUI/iOS, Maestro, Terraform e infraestrutura de nuvem estão ape
 ```text
 .
 ├── apps/ios/                  # Aplicativo iOS planejado
-├── backend/                   # Fundação do monólito modular em Go
+├── backend/                   # Monólito modular em Go e núcleo de transações
 ├── contracts/openapi/         # Contrato HTTP versionado
 ├── qa/
 │   ├── playwright/            # Smoke de API em TypeScript
@@ -87,4 +88,4 @@ As regras permanentes estão em [AGENTS.md](AGENTS.md). A [Definition of Done](d
 
 ## Limitações atuais
 
-Não há despesas, receitas, parcelamentos, categorias funcionais, orçamento, metas, banco de dados, autenticação, Face ID, passkeys, PIN, WhatsApp, OpenAI, IA, MCP, agentes de produto, cloud, Terraform funcional ou telas iOS. A baseline LGPD não é alegação de conformidade jurídica, e a baseline WCAG não é alegação de conformidade de UI.
+O núcleo de despesa não está conectado à API nem a qualquer canal. Não há persistência, SQL, PostgreSQL, endpoint financeiro, receitas, parcelamentos, categorias funcionais, orçamento, metas, autenticação, Face ID, passkeys, PIN, WhatsApp funcional, OpenAI, IA, MCP, agentes de produto, cloud, Terraform funcional ou telas iOS. Idempotência e auditoria transacional permanecem planejadas. A baseline LGPD não é alegação de conformidade jurídica, e a baseline WCAG não é alegação de conformidade de UI.

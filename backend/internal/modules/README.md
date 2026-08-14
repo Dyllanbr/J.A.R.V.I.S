@@ -1,5 +1,5 @@
 # Módulos
 
-Este diretório receberá módulos de negócio quando houver requisitos aprovados. Ele permanece sem código nesta fundação para evitar abstrações e limites artificiais antes do domínio existir.
+Este diretório contém módulos de negócio criados a partir de requisitos aprovados. O primeiro é [`transactions`](transactions/README.md), restrito na Etapa 1 ao domínio de uma despesa simples e ao caso de uso `CreateExpense`.
 
-Cada módulo futuro deverá encapsular seu domínio e casos de uso. Dependências de HTTP, banco de dados e integrações serão adaptadores externos ao núcleo do módulo. Dependências entre módulos precisarão ser explícitas e justificadas.
+Cada módulo encapsula seu domínio e casos de uso. Dependências de HTTP, banco de dados e integrações são adaptadores externos ao núcleo do módulo. Dependências entre módulos precisam ser explícitas e justificadas.
