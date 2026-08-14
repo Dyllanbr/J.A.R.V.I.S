@@ -1,18 +1,71 @@
-# Produto
+# Documentação de produto
 
-O J.A.R.V.I.S. pretende ser um assessor financeiro pessoal. As Etapas 1, 2A e 2B verificaram o núcleo, a persistência/auditoria atômica e a boundary HTTP idempotente. A Etapa 3 implementa o primeiro canal SwiftUI: entrada, preview, revisão, confirmação explícita e histórico mensal. A UI aguarda revisão independente e continua destinada somente a desenvolvimento/testes sintéticos, sem autenticação ou usuário real.
+- Maturidade documental: **Proposed**
+- Estado das capacidades: **misto** — consulte cada documento e capacidade
 
-“Criar uma transaction” significa registrar no organizador uma despesa já ocorrida. J.A.R.V.I.S. não executa Pix, pagamento, compra, transferência, autorização bancária ou movimentação de fundos.
+Este diretório reúne a visão, os princípios e a direção estratégica do J.A.R.V.I.S. Ele não substitui especificações técnicas, controles especializados, evidências de qualidade nem o backlog operacional.
 
-## Incluído agora
+O [Product Book](product-book.md) é a fonte estratégica central do produto. Ele descreve o que o J.A.R.V.I.S. pretende ser, seus limites, sua relação com o usuário, as capacidades já entregues e a visão futura sem transformar intenção em alegação de implementação.
 
-- `Money` exato em minor units, inicialmente BRL.
-- `Expense` com valor positivo e vocabulário mínimo validado.
-- `CreateExpense`, executado somente após confirmação explícita do canal chamador.
-- Porta mínima de repositório e abstrações determinísticas de relógio e ID.
-- Adapter PostgreSQL, migrations, idempotência e atomicidade Expense + `EXPENSE_RECORDED`, verificados.
-- Fluxo iOS `Registrar → preview → revisão → confirmação → sucesso → histórico`, implementado.
+## Fontes de verdade
 
-## Fora do escopo desta entrega
+| Assunto | Fonte |
+| --- | --- |
+| Visão, posicionamento e princípios de produto | [Product Book](product-book.md) |
+| Decisões arquiteturais aceitas | [ADRs](../adr/README.md) |
+| Arquitetura e estado técnico | [Visão de arquitetura](../architecture/overview.md) |
+| Segurança | [Baseline de segurança](../security/baseline.md) |
+| Privacidade e LGPD | [Documentação de privacidade](../privacy/README.md) |
+| Acessibilidade | [Baseline de acessibilidade](../accessibility/baseline.md) |
+| Estratégia e evidências de testes | [Estratégia de QA](../qa/testing-strategy.md) |
+| Performance e operabilidade | [Baseline de performance](../performance/baseline.md) |
+| Critérios de entrega e verificação | [Definition of Done](../quality/definition-of-done.md) |
+| Backlog, prioridade e andamento operacional | GitHub Project |
 
-Receitas, parcelamentos, orçamento, metas, WhatsApp funcional, IA/OpenAI, MCP, agentes de produção, autenticação, armazenamento local seguro, banco de produção, nuvem e telas além desta jornada. Cada capacidade exigirá requisitos, modelagem, avaliação de segurança e critérios de aceitação próprios. O app atual sempre apresenta o preview antes de habilitar a confirmação que chama o POST mutável.
+O GitHub Project continua sendo a fonte de verdade operacional do backlog. Os documentos de produto podem registrar direção, horizontes, dependências e decisões, mas não devem copiar todas as Issues nem manter uma segunda lista operacional concorrente.
+
+## Dois eixos de status
+
+Status documental e estado de entrega respondem a perguntas diferentes e não devem ser combinados em um único rótulo.
+
+### Maturidade documental
+
+- **Proposed:** rascunho estratégico em discussão; ainda pode mudar.
+- **Approved:** conteúdo revisado e aceito como direção vigente.
+- **Published:** conteúdo aprovado e disponibilizado ao público ou audiência pretendida.
+- **Deprecated:** documento mantido apenas para histórico e substituído por outra referência.
+
+### Estado de entrega de capacidades
+
+- **Planned:** capacidade decidida ou descrita, mas ainda não implementada.
+- **Implemented:** código, contrato ou documentação aplicável existe, sem implicar verificação completa.
+- **Verified:** implementação passou pelos critérios e quality gates aplicáveis e possui evidência correspondente.
+
+**Approved não significa Implemented. Published não significa Verified.** Uma capacidade futura pode estar descrita em um documento **Approved** e continuar **Planned**. O estado **Verified** exige evidência compatível com os quality gates, a [Definition of Done](../quality/definition-of-done.md) e revisões proporcionais ao risco.
+
+## Visão, planejamento, implementação e evidência
+
+- **Visão:** define propósito, princípios, limites e resultados desejados; pertence ao Product Book.
+- **Planejamento:** transforma a direção em horizontes e prioridades; o [roadmap estratégico](roadmap.md) organiza a sequência, enquanto o GitHub Project continua operacional.
+- **Implementação:** existe no código, contratos e documentação técnica; sem evidência suficiente de verificação, a capacidade permanece **Implemented**.
+- **Evidência:** testes, auditorias e gates sustentam o estado **Verified** nas fontes especializadas.
+
+Uma declaração de visão não comprova planejamento detalhado. Um item planejado não comprova implementação. Uma implementação não se torna verificada sem evidência.
+
+## Índice
+
+### Documentos atuais
+
+- `README.md` — índice, governança e fontes de verdade; **Proposed**.
+- [Product Book](product-book.md) — visão estratégica central; **Proposed**.
+- [Princípios do assessor](advisor-principles.md) — comportamento, verdade, tom, proatividade e silêncio; **Proposed**, capacidade **Planned**.
+- [Personalização](personalization.md) — modelo financeiro individual, memória, proveniência e controles; **Proposed**, capacidade **Planned**.
+- [Análise competitiva](competitive-analysis.md) — fotografia estratégica datada, padrões de mercado e hipóteses de diferenciação; **Proposed**.
+- [Princípios de design](design-principles.md) — direção visual, experiência, acessibilidade e critérios para um futuro design system; **Proposed**, capacidade **Planned**.
+- [Roadmap estratégico](roadmap.md) — sequência de evolução, resultados, dependências e gates sem duplicar o backlog; **Proposed**, capacidades em estado **misto**.
+
+O Incremento 1 está concluído, auditado, aprovado e mergeado. O Product Book separa essas capacidades entregues da visão futura.
+
+## Regra de manutenção
+
+Documentos de produto devem apontar para as fontes especializadas em vez de copiar requisitos técnicos inteiros. Capacidades futuras precisam aparecer como **Planned**; fatos atuais devem corresponder ao que o repositório e suas evidências comprovam. Mudanças de arquitetura, segurança, privacidade, acessibilidade, QA ou performance continuam sendo registradas e verificadas em seus documentos próprios.
