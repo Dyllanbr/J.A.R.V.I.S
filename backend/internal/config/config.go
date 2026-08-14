@@ -1,6 +1,7 @@
 package config
 
 import (
+	"errors"
 	"fmt"
 	"net"
 	"os"
@@ -35,7 +36,7 @@ func FromEnv() (Config, error) {
 	if raw := strings.TrimSpace(os.Getenv("JARVIS_SHUTDOWN_TIMEOUT")); raw != "" {
 		timeout, err := time.ParseDuration(raw)
 		if err != nil {
-			return Config{}, fmt.Errorf("JARVIS_SHUTDOWN_TIMEOUT: %w", err)
+			return Config{}, errors.New("JARVIS_SHUTDOWN_TIMEOUT: must be a valid duration")
 		}
 		if timeout <= 0 {
 			return Config{}, fmt.Errorf("JARVIS_SHUTDOWN_TIMEOUT: must be greater than zero")
@@ -59,12 +60,12 @@ func valueOrDefault(name, fallback string) string {
 func validateAddress(address string) error {
 	_, port, err := net.SplitHostPort(address)
 	if err != nil {
-		return fmt.Errorf("must use host:port format: %w", err)
+		return errors.New("must use host:port format")
 	}
 
 	portNumber, err := strconv.Atoi(port)
 	if err != nil || portNumber < 1 || portNumber > 65535 {
-		return fmt.Errorf("port must be a number between 1 and 65535")
+		return errors.New("port must be a number between 1 and 65535")
 	}
 
 	return nil
