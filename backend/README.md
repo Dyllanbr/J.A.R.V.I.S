@@ -16,7 +16,7 @@ Backend Go em monólito modular. O processo permanece health-only por padrão; q
 - `internal/platform/postgres`: configuração, pool e migrations fora do domínio.
 - `cmd/migrate`: comando explícito para aplicar ou reverter migrations.
 
-O núcleo `Money`/`Expense`/`CreateExpense`, a migration 001, o adapter base e a persistência de audit event estão **VERIFICADOS** pelas etapas anteriores. Idempotência, migration 002, preview, HTTP financeiro e query mensal estão **IMPLEMENTADOS** e aguardam revisão independente da Etapa 2B.
+O núcleo `Money`/`Expense`/`CreateExpense`, as migrations 001/002, o adapter, o audit event, a idempotência, o preview, a API financeira e a query mensal estão **VERIFICADOS** pelas Etapas 1, 2A e 2B.
 
 O módulo Go usa o caminho local `jarvis/backend` enquanto o repositório não possui URL canônica. Uma URL de módulo pública deve ser decidida antes da primeira publicação externa.
 

@@ -1,7 +1,7 @@
 # ADR-004: SwiftUI para o aplicativo iOS
 
 - Estado da decisão: Aceita
-- Estado de implementação: Planejado; não existe projeto Xcode nem código Swift
+- Estado de implementação: Etapa 3 implementada; revisão independente pendente
 - Data: 2026-08-14
 
 ## Contexto
@@ -10,12 +10,14 @@ O cliente inicial planejado é iOS e deverá tratar acessibilidade, desempenho e
 
 ## Decisão
 
-Usar SwiftUI para o aplicativo iOS, adotando APIs nativas e arquitetura definida quando surgirem as primeiras jornadas. O contrato com o backend será explícito e versionado.
+Usar SwiftUI para o aplicativo iOS 17 com Swift concurrency, Foundation, URLSession e XCTest/XCUITest, sem dependências externas. A primeira jornada segue `View -> ViewModel -> FinancialAPI -> URLSession`; o OpenAPI versionado permanece a fonte do contrato.
 
 ## Consequências
 
-- O projeto iOS será criado somente com requisitos de tela aprovados.
+- O projeto Xcode, o scheme compartilhado, as features de registro/histórico e os testes são versionados e reproduzíveis via `xcodebuild`.
 - WCAG 2.2 nível AA é a baseline mínima planejada; VoiceOver, Dynamic Type, contraste, semântica, foco, alvos e redução de movimento entrarão nos critérios de aceite.
 - Automação não substituirá validação manual com tecnologias assistivas, e regressões críticas bloquearão release.
-- Maestro será usado para jornadas críticas depois que existirem telas estáveis.
+- XCUITest cobre a primeira jornada com stub `DEBUG` explícito e identifiers semânticos; um gate local fail-closed comprova Simulator → app → URLSession → API → PostgreSQL real e valida a pós-condição no banco. Maestro permanece planejado até as telas estabilizarem.
+- Networking local por ATS é permitido somente no Info.plist de Debug/integration; Release não possui essa exceção.
 - Autenticação, Face ID, passkeys e PIN permanecem fora do escopo e exigem decisões separadas.
+- Não há persistência financeira local; retry idempotente pendente existe somente em memória e recuperação após restart permanece planejada junto de auth/armazenamento seguro.

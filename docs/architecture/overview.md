@@ -2,7 +2,7 @@
 
 ## Estado
 
-O backend é um único processo Go organizado como monólito modular. Por padrão ele permanece health-only e não exige banco; a Etapa 2B adiciona composição financeira opt-in, ainda aguardando revisão independente.
+O backend é um único processo Go organizado como monólito modular. Por padrão ele permanece health-only e não exige banco. A Financial API da Etapa 2B está verificada; a Etapa 3 adiciona um cliente SwiftUI nativo, implementado e ainda aguardando revisão independente.
 
 | Elemento | Estado |
 | --- | --- |
@@ -14,9 +14,10 @@ O backend é um único processo Go organizado como monólito modular. Por padrã
 | `transactions`: Money, Expense e CreateExpense | Verificado pela Etapa 1 |
 | PostgreSQL 18.6 local/CI, migration 001 e adapter base | Verificados pela Etapa 2A |
 | Audit event mínimo e atômico | Verificado pela Etapa 2A |
-| Idempotência, migration 002 e API financeira | Implementados na Etapa 2B; revisão independente pendente |
-| Preview e consulta mensal | Implementados na Etapa 2B; revisão independente pendente |
-| Aplicativo SwiftUI/iOS | Planejado, sem projeto Xcode |
+| Idempotência, migration 002, preview e API financeira | Verificados pela Etapa 2B |
+| Consulta mensal owner-scoped | Verificada pela Etapa 2B |
+| Aplicativo SwiftUI/iOS 17 | Implementado na Etapa 3; revisão independente pendente |
+| XCTest, XCUITest e integração Simulator/API/PostgreSQL | Implementados na Etapa 3; revisão independente pendente |
 | Terraform/nuvem | Planejado, sem configuração |
 
 ## Direção de dependências
@@ -37,6 +38,16 @@ composition root -> adapters + platform
 ```
 
 `ExpenseCommandStore` existe porque idempotency record, Expense e AuditEvent precisam de uma única transação; não é um UnitOfWork genérico. `ExpenseReader` possui somente a consulta mensal já necessária. Preview reutiliza a canonicalização da aplicação/domínio sem gerar ID ou tocar persistência. A aplicação define UTC com precisão máxima de microssegundos como representação temporal da API financeira antes de preview, fingerprint e persistência, sem acoplar o domínio ao PostgreSQL.
+
+O cliente iOS segue uma direção igualmente curta:
+
+```text
+SwiftUI Views -> View Models -> FinancialAPI -> URLSession -> backend
+```
+
+Views não montam JSON; features dependem da abstração pequena `FinancialAPI`, e o cliente concreto concentra DTOs/HTTP. A composição fica em `JARVISApp`/`AppModel`, sem singleton ou container de DI. Parsing BRL inteiro e codec temporal têm responsabilidades nomeadas. O preview devolvido pelo servidor congela a semântica revisada antes da confirmação. A mesma chave idempotente permanece em memória durante retries transitórios; erros determinísticos `400`/`409` retornam à edição em vez de oferecer retry infinito.
+
+O harness iOS possui dois modos explícitos: stub `DEBUG` para regressão de UI e real para Simulator → app → URLSession → backend → PostgreSQL. O modo real não possui fallback e exige uma pós-condição no banco. Em `RootView`, um `UITabBarController` nativo hospeda Register e History em controllers SwiftUI separados; cada controller possui seu próprio `UITabBarItem` e identifier semântico, sem associação por posição, copy, símbolo ou temporização.
 
 Domínio e casos de uso não poderão importar HTTP, SQL, SDKs de IA ou integrações. Interfaces deverão nascer de necessidades reais dos casos de uso; não serão criadas antecipadamente. Handlers traduzirão entrada e saída e não conterão regras de negócio nem SQL.
 

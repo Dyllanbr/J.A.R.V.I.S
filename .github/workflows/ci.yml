@@ -40,3 +40,17 @@ jobs:
 
       - name: Run the repository quality gate
         run: make verify
+
+  ios:
+    name: iOS build and tests
+    runs-on: macos-15
+    timeout-minutes: 25
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Run the iOS quality gate
+        run: make verify-ios

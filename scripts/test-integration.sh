@@ -7,6 +7,7 @@ compose_file="$repository_root/compose.yaml"
 project_name="jarvis-it-$$-$RANDOM"
 go_bin="${GO:-go}"
 npm_bin="${NPM:-npm}"
+client_command=("$@")
 api_host="127.0.0.1"
 api_port="${JARVIS_FINANCIAL_API_TEST_PORT:-18081}"
 api_base_url="http://${api_host}:${api_port}"
@@ -177,12 +178,21 @@ if [[ "$ready" -ne 1 ]]; then
   exit 1
 fi
 
-(
-  cd "$repository_root/qa/playwright"
-  unset NO_COLOR
+if ((${#client_command[@]} > 0)); then
   JARVIS_API_BASE_URL="$api_base_url" \
-  JARVIS_FINANCIAL_API_TESTS="true" \
-    "$npm_bin" test
-)
+  JARVIS_IOS_E2E_BASE_URL="$api_base_url" \
+  JARVIS_INTEGRATION_COMPOSE_FILE="$compose_file" \
+  JARVIS_INTEGRATION_COMPOSE_PROJECT_NAME="$project_name" \
+  JARVIS_INTEGRATION_OWNER_ID="$api_owner" \
+    "${client_command[@]}"
+else
+  (
+    cd "$repository_root/qa/playwright"
+    unset NO_COLOR
+    JARVIS_API_BASE_URL="$api_base_url" \
+    JARVIS_FINANCIAL_API_TESTS="true" \
+      "$npm_bin" test
+  )
+fi
 
 echo "PostgreSQL and financial API integration tests passed; cleanup will be validated."

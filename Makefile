@@ -1,4 +1,4 @@
-.PHONY: bootstrap fmt whitespace fmt-check lint test test-integration mod-verify build contract-check audit secret-scan secret-scan-test smoke db-up db-down migrate-up migrate-down check verify
+.PHONY: bootstrap fmt whitespace fmt-check lint test test-integration mod-verify build contract-check audit secret-scan secret-scan-test smoke db-up db-down migrate-up migrate-down build-ios test-ios test-ios-integration analyze-ios verify-ios check verify
 
 GO ?= go
 GOFMT ?= gofmt
@@ -63,6 +63,20 @@ migrate-up:
 
 migrate-down:
 	cd backend && $(GO) run ./cmd/migrate down
+
+build-ios:
+	xcodebuild build -quiet -project apps/ios/JARVIS.xcodeproj -scheme JARVIS -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO
+
+test-ios:
+	bash scripts/test-ios.sh --all
+
+test-ios-integration:
+	bash scripts/test-ios-integration.sh
+
+analyze-ios:
+	xcodebuild analyze -quiet -project apps/ios/JARVIS.xcodeproj -scheme JARVIS -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO
+
+verify-ios: build-ios analyze-ios test-ios
 
 check: whitespace fmt-check lint test mod-verify contract-check secret-scan secret-scan-test
 

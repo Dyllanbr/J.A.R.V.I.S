@@ -42,14 +42,16 @@ make check
 make verify
 make smoke
 make test-integration
+make verify-ios
+make test-ios-integration
 ```
 
-`make verify` é o quality gate completo e equivalente ao CI. A entrega segue a [Definition of Done](docs/quality/definition-of-done.md); nada é chamado de verificado sem evidência, e findings bloqueadores impedem aprovação.
+`make verify` é o quality gate cross-platform/backend e equivalente ao job Linux do CI. `make verify-ios` é o gate macOS/Simulator com stub explícito; `make test-ios-integration` deve falhar fechado e comprovar app/URLSession reais contra API/PostgreSQL locais, incluindo pós-condição no banco. A entrega segue a [Definition of Done](docs/quality/definition-of-done.md); nada é chamado de verificado sem evidência, e findings bloqueadores impedem aprovação.
 
 Comandos de desenvolvimento PostgreSQL (`make db-up`, `make migrate-up`, `make migrate-down` e `make db-down`) exigem configuração local explícita. `make verify` também exige Docker a partir da Etapa 2A.
 
 ## Limites por incremento
 
-A fundação contém estrutura do monorepo, processo Go, configuração, lifecycle HTTP, `GET /healthz`, contrato e automação de qualidade. A Etapa 1 acrescentou somente `Money`, `Expense`, `CreateExpense` e suas portas. A Etapa 2A acrescentou PostgreSQL local/CI, migrations e o adapter de persistência atômica Expense + audit event. A Etapa 2B acrescenta somente idempotência transacional, preview, registro HTTP confirmado pelo canal e consulta mensal owner-scoped.
+A fundação contém estrutura do monorepo, processo Go, configuração, lifecycle HTTP, `GET /healthz`, contrato e automação de qualidade. A Etapa 1 acrescentou somente `Money`, `Expense`, `CreateExpense` e suas portas. A Etapa 2A acrescentou PostgreSQL local/CI, migrations e o adapter de persistência atômica Expense + audit event. A Etapa 2B acrescentou somente idempotência transacional, preview, registro HTTP confirmado pelo canal e consulta mensal owner-scoped. A Etapa 3 acrescenta somente o primeiro app SwiftUI: entrada de Expense, preview/revisão/confirmação, sucesso e histórico mensal.
 
-Permanecem fora da Etapa 2B: autenticação, autorização multiusuário, receitas, parcelamentos, orçamento, metas, categorias funcionais, IA, WhatsApp funcional, MCP, agentes de produto, infraestrutura cloud/Terraform funcional e telas iOS. A API registra despesas já ocorridas e nunca executa Pix, pagamentos ou transferências. Banco/API local/teste não autorizam dados pessoais ou financeiros reais.
+Permanecem fora da Etapa 3: autenticação, autorização multiusuário, armazenamento financeiro local, dispositivo físico/LAN, receitas, parcelamentos, orçamento, metas, categorias funcionais, IA, WhatsApp funcional, MCP, agentes de produto e infraestrutura cloud/Terraform funcional. O sistema registra despesas já ocorridas e nunca executa Pix, pagamentos ou transferências. App/API/banco local de teste não autorizam dados pessoais ou financeiros reais.

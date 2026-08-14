@@ -20,6 +20,10 @@ Segurança e privacidade são requisitos de arquitetura, desenvolvimento e opera
 - O modo financeiro é opt-in: health-only não abre pool nem exige banco. Quando habilitado, owner, origin e timezone vêm do servidor; `userId`, origin e timezone não são aceitos do cliente.
 - Requests financeiros exigem JSON estrito, DTO explícito e body limitado a 16 KiB. Responses são JSON, `no-store`, `nosniff` e nunca incluem owner, SQL, erro PostgreSQL ou body bruto.
 - A idempotência é garantida no PostgreSQL por chave owner/operação, fingerprint SHA-256 canônico e uma única transação com Expense/AuditEvent. Chaves não são logadas ou devolvidas, e a tabela não replica payload financeiro.
+- O cliente iOS usa URLSession efêmera, desabilita cache/cookies persistentes, não registra payloads e não contém owner, credencial ou autenticação fictícia. Somente o build `DEBUG` aceita o stub sintético de UI test.
+- A base URL local é configurável por launch environment; Release não assume localhost nem aceita URL com credenciais. A exceção ATS `NSAllowsLocalNetworking` existe apenas no Info.plist de Debug/integration; Release não a contém e nenhum build habilita cargas arbitrárias.
+- XCUITest separa explicitamente stub e API real. O modo real exige URL propagada pelo test bundle ao launch environment do app, falha fechado e tem pós-condição PostgreSQL para impedir falso positivo offline.
+- O Simulator em loopback é o único alvo integrado atual. O backend não foi aberto à LAN para dispositivo físico sem autenticação.
 
 ## Regras obrigatórias
 
@@ -32,5 +36,6 @@ Segurança e privacidade são requisitos de arquitetura, desenvolvimento e opera
 - Antes de produção deverão ser definidos papéis de banco com least privilege, TLS, backup, criptografia, retenção e gestão externa de secrets; a conta do container local/teste não é baseline de produção.
 - Autenticação e rate limiting distribuído permanecem planejados; não usar o contexto single-owner temporário como controle de acesso em beta externo.
 - Qualquer beta externo exige o [LGPD Readiness Gate](../privacy/privacy-by-design-checklist.md).
+- Não usar a UI da Etapa 3 com dados reais: não há autenticação, autorização, armazenamento local seguro nem recovery de operação após restart.
 
 O scanner local reduz risco de padrões conhecidos, mas não substitui revisão humana, secret scanning do provedor e defesa em profundidade quando a exposição do projeto crescer.

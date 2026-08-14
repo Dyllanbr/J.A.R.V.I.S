@@ -1,7 +1,7 @@
 # ADR-003: PostgreSQL para persistência
 
 - Estado da decisão: Aceita
-- Estado de implementação: Etapa 2A verificada; migration 002 implementada na Etapa 2B e aguardando revisão
+- Estado de implementação: Etapas 2A e 2B verificadas
 - Data: 2026-08-14
 
 ## Contexto
