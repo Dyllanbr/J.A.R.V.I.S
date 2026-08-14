@@ -25,7 +25,7 @@ patterns=(
   'gh[pousr]_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{30,}'
   'npm_[A-Za-z0-9]{20,}'
   '_authToken[[:space:]]*=[[:space:]]*(npm_[A-Za-z0-9]{20,}|[A-Za-z0-9_-]{36,})'
-  'eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}'
+  'eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{3,}\.[A-Za-z0-9_-]{10,}'
   'EAA[A-Za-z0-9]{30,}'
   'AKIA[0-9A-Z]{16}'
   'AIza[0-9A-Za-z_-]{30,}'

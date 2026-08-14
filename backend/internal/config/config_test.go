@@ -1,6 +1,7 @@
 package config
 
 import (
+	"strings"
 	"testing"
 	"time"
 )
@@ -19,6 +20,49 @@ func TestFromEnvUsesSecureDefaults(t *testing.T) {
 	}
 	if cfg.ShutdownTimeout != 10*time.Second {
 		t.Fatalf("ShutdownTimeout = %v, want %v", cfg.ShutdownTimeout, 10*time.Second)
+	}
+}
+
+func TestFromEnvRedactsInvalidRawValues(t *testing.T) {
+	tests := []struct {
+		name          string
+		address       string
+		timeout       string
+		sensitiveRaw  string
+		expectedField string
+	}{
+		{
+			name:          "address",
+			address:       "synthetic-sensitive-address-marker",
+			timeout:       "10s",
+			sensitiveRaw:  "synthetic-sensitive-address-marker",
+			expectedField: "JARVIS_HTTP_ADDRESS",
+		},
+		{
+			name:          "shutdown timeout",
+			address:       "127.0.0.1:8080",
+			timeout:       "synthetic-sensitive-duration-marker",
+			sensitiveRaw:  "synthetic-sensitive-duration-marker",
+			expectedField: "JARVIS_SHUTDOWN_TIMEOUT",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Setenv("JARVIS_HTTP_ADDRESS", test.address)
+			t.Setenv("JARVIS_SHUTDOWN_TIMEOUT", test.timeout)
+
+			_, err := FromEnv()
+			if err == nil {
+				t.Fatal("FromEnv() returned nil error for invalid configuration")
+			}
+			if strings.Contains(err.Error(), test.sensitiveRaw) {
+				t.Fatal("configuration error exposed the raw invalid value")
+			}
+			if !strings.Contains(err.Error(), test.expectedField) {
+				t.Fatalf("configuration error does not identify %s", test.expectedField)
+			}
+		})
 	}
 }
 
