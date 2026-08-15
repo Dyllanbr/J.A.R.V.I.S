@@ -6,23 +6,61 @@ struct ReviewedExpense: Equatable, Sendable {
     let request: ExpenseRequest
 }
 
+struct ReviewedIncome: Equatable, Sendable {
+    let preview: IncomePreview
+    let request: IncomeRequest
+}
+
+enum ReviewedTransaction: Equatable, Sendable {
+    case expense(ReviewedExpense)
+    case income(ReviewedIncome)
+
+    var type: TransactionType {
+        switch self {
+        case .expense: .expense
+        case .income: .income
+        }
+    }
+}
+
 enum RegistrationState: Equatable {
     case editing
     case previewing
-    case reviewing(ReviewedExpense)
-    case submitting(ReviewedExpense)
-    case retryable(ReviewedExpense)
-    case requiresEditing(ReviewedExpense)
-    case success(Expense)
+    case reviewing(ReviewedTransaction)
+    case submitting(ReviewedTransaction)
+    case retryable(ReviewedTransaction)
+    case requiresEditing(ReviewedTransaction)
+    case success(FinancialTransaction)
 }
 
 @MainActor
 @Observable
 final class RegistrationViewModel {
-    var description = ""
-    var amountText = ""
-    var paymentMethod: PaymentMethod = .pix
-    var occurredAt: Date
+    private(set) var transactionType: TransactionType = .expense
+    var description = "" {
+        didSet {
+            guard description != oldValue else { return }
+            draftDidChange()
+        }
+    }
+    var amountText = "" {
+        didSet {
+            guard amountText != oldValue else { return }
+            draftDidChange()
+        }
+    }
+    var paymentMethod: PaymentMethod = .pix {
+        didSet {
+            guard paymentMethod != oldValue, transactionType == .expense else { return }
+            draftDidChange()
+        }
+    }
+    var occurredAt: Date {
+        didSet {
+            guard occurredAt != oldValue else { return }
+            draftDidChange()
+        }
+    }
     private(set) var state: RegistrationState = .editing
     private(set) var errorMessage: String?
 
@@ -30,8 +68,9 @@ final class RegistrationViewModel {
     private let moneyParser: BRLMoneyParser
     private let timestampCodec: RFC3339DateCodec
     private let makeIdempotencyKey: () -> String
-    private let onExpenseRecorded: () -> Void
+    private let onTransactionRecorded: () -> Void
     private var pendingIdempotencyKey: String?
+    @ObservationIgnored private var draftGeneration: UInt64 = 0
 
     init(
         api: any FinancialAPI,
@@ -39,17 +78,17 @@ final class RegistrationViewModel {
         moneyParser: BRLMoneyParser = BRLMoneyParser(),
         timestampCodec: RFC3339DateCodec = RFC3339DateCodec(),
         makeIdempotencyKey: @escaping () -> String = { UUID().uuidString },
-        onExpenseRecorded: @escaping () -> Void = {}
+        onTransactionRecorded: @escaping () -> Void = {}
     ) {
         self.api = api
         occurredAt = now
         self.moneyParser = moneyParser
         self.timestampCodec = timestampCodec
         self.makeIdempotencyKey = makeIdempotencyKey
-        self.onExpenseRecorded = onExpenseRecorded
+        self.onTransactionRecorded = onTransactionRecorded
     }
 
-    var reviewedExpense: ReviewedExpense? {
+    var reviewedTransaction: ReviewedTransaction? {
         switch state {
         case let .reviewing(reviewed),
              let .submitting(reviewed),
@@ -61,9 +100,24 @@ final class RegistrationViewModel {
         }
     }
 
+    var reviewedExpense: ReviewedExpense? {
+        guard case let .expense(reviewed)? = reviewedTransaction else { return nil }
+        return reviewed
+    }
+
+    var reviewedIncome: ReviewedIncome? {
+        guard case let .income(reviewed)? = reviewedTransaction else { return nil }
+        return reviewed
+    }
+
     var successfulExpense: Expense? {
-        guard case let .success(expense) = state else { return nil }
+        guard case let .success(.expense(expense)) = state else { return nil }
         return expense
+    }
+
+    var successfulIncome: Income? {
+        guard case let .success(.income(income)) = state else { return nil }
+        return income
     }
 
     var isBusy: Bool {
@@ -73,6 +127,17 @@ final class RegistrationViewModel {
         case .editing, .reviewing, .retryable, .requiresEditing, .success:
             false
         }
+    }
+
+    func selectTransactionType(_ newType: TransactionType) {
+        guard newType != transactionType else { return }
+        if case .submitting = state { return }
+
+        transactionType = newType
+        paymentMethod = .pix
+        draftDidChange()
+        errorMessage = nil
+        state = .editing
     }
 
     func review() async {
@@ -87,38 +152,63 @@ final class RegistrationViewModel {
             return
         }
         guard !description.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            errorMessage = "Informe uma descrição para a despesa."
+            errorMessage = "Informe uma descrição para a movimentação."
             return
         }
 
-        let request = ExpenseRequest(
-            description: description,
-            amount: ExpenseMoney(minor: amountMinor, currency: .brl),
-            paymentMethod: paymentMethod,
-            occurredAt: timestampCodec.encode(occurredAt)
-        )
+        let amount = FinancialMoney(minor: amountMinor, currency: .brl)
+        let occurredAt = timestampCodec.encode(occurredAt)
+        let requestedType = transactionType
+        let previewGeneration = draftGeneration
         state = .previewing
 
         do {
-            let preview = try await api.preview(request)
-            let frozenRequest = ExpenseRequest(
-                description: preview.description,
-                amount: preview.amount,
-                paymentMethod: preview.paymentMethod,
-                occurredAt: preview.occurredAt
-            )
-            pendingIdempotencyKey = nil
-            state = .reviewing(ReviewedExpense(preview: preview, request: frozenRequest))
+            switch requestedType {
+            case .expense:
+                let request = ExpenseRequest(
+                    description: description,
+                    amount: amount,
+                    paymentMethod: paymentMethod,
+                    occurredAt: occurredAt
+                )
+                let preview = try await api.preview(request)
+                guard canInstallPreview(generation: previewGeneration) else { return }
+                let frozenRequest = ExpenseRequest(
+                    description: preview.description,
+                    amount: preview.amount,
+                    paymentMethod: preview.paymentMethod,
+                    occurredAt: preview.occurredAt
+                )
+                pendingIdempotencyKey = nil
+                state = .reviewing(.expense(ReviewedExpense(preview: preview, request: frozenRequest)))
+            case .income:
+                let request = IncomeRequest(
+                    description: description,
+                    amount: amount,
+                    occurredAt: occurredAt
+                )
+                let preview = try await api.preview(request)
+                guard canInstallPreview(generation: previewGeneration) else { return }
+                let frozenRequest = IncomeRequest(
+                    description: preview.description,
+                    amount: preview.amount,
+                    occurredAt: preview.occurredAt
+                )
+                pendingIdempotencyKey = nil
+                state = .reviewing(.income(ReviewedIncome(preview: preview, request: frozenRequest)))
+            }
         } catch is CancellationError {
+            guard canInstallPreview(generation: previewGeneration) else { return }
             state = .editing
         } catch {
+            guard canInstallPreview(generation: previewGeneration) else { return }
             state = .editing
             errorMessage = userMessage(for: error)
         }
     }
 
     func confirm() async {
-        let reviewed: ReviewedExpense
+        let reviewed: ReviewedTransaction
         switch state {
         case let .reviewing(value), let .retryable(value):
             reviewed = value
@@ -132,11 +222,19 @@ final class RegistrationViewModel {
         state = .submitting(reviewed)
 
         do {
-            let result = try await api.create(reviewed.request, idempotencyKey: key)
+            let recorded: FinancialTransaction
+            switch reviewed {
+            case let .expense(expense):
+                let result = try await api.create(expense.request, idempotencyKey: key)
+                recorded = .expense(result.expense)
+            case let .income(income):
+                let result = try await api.create(income.request, idempotencyKey: key)
+                recorded = .income(result.income)
+            }
             pendingIdempotencyKey = nil
             clearDraft()
-            state = .success(result.expense)
-            onExpenseRecorded()
+            state = .success(recorded)
+            onTransactionRecorded()
         } catch is CancellationError {
             state = .retryable(reviewed)
         } catch {
@@ -162,7 +260,16 @@ final class RegistrationViewModel {
     }
 
     func startNewExpense(now: Date = Date()) {
+        startNew(type: .expense, now: now)
+    }
+
+    func startNewIncome(now: Date = Date()) {
+        startNew(type: .income, now: now)
+    }
+
+    private func startNew(type: TransactionType, now: Date) {
         guard case .success = state else { return }
+        transactionType = type
         occurredAt = now
         pendingIdempotencyKey = nil
         errorMessage = nil
@@ -173,6 +280,25 @@ final class RegistrationViewModel {
         description = ""
         amountText = ""
         paymentMethod = .pix
+    }
+
+    private func draftDidChange() {
+        draftGeneration &+= 1
+        pendingIdempotencyKey = nil
+
+        switch state {
+        case .previewing, .reviewing, .retryable, .requiresEditing:
+            errorMessage = nil
+            state = .editing
+        case .editing, .submitting, .success:
+            break
+        }
+    }
+
+    private func canInstallPreview(generation: UInt64) -> Bool {
+        guard generation == draftGeneration else { return false }
+        guard case .previewing = state else { return false }
+        return true
     }
 
     private func userMessage(for error: Error) -> String {

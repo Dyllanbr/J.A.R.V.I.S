@@ -72,7 +72,15 @@ private struct UnavailableFinancialAPI: FinancialAPI {
         throw FinancialAPIError.configuration
     }
 
-    func expenses(month _: String) async throws -> ExpenseMonth {
+    func preview(_: IncomeRequest) async throws -> IncomePreview {
+        throw FinancialAPIError.configuration
+    }
+
+    func create(_: IncomeRequest, idempotencyKey _: String) async throws -> RecordedIncome {
+        throw FinancialAPIError.configuration
+    }
+
+    func transactions(month _: String) async throws -> TransactionMonth {
         throw FinancialAPIError.configuration
     }
 }

@@ -2,7 +2,7 @@
 
 ## Estado
 
-WCAG 2.2 nível AA é a baseline mínima do J.A.R.V.I.S. A Etapa 3 possui a primeira UI SwiftUI **IMPLEMENTADA**, mas não existe alegação de conformidade: revisão independente e validação manual com tecnologias assistivas ainda não foram concluídas. Os critérios aplicáveis são mapeados ao contexto iOS/SwiftUI na matriz de rastreabilidade.
+WCAG 2.2 nível AA é a baseline mínima do J.A.R.V.I.S. A jornada iOS de Expense do Incremento 1 está verificada; a extensão para Income e histórico misto está **IMPLEMENTADA** e aguarda auditoria global do Incremento 2. Não existe alegação de conformidade: validação manual com tecnologias assistivas continua pendente. Os critérios aplicáveis são mapeados ao contexto iOS/SwiftUI na matriz de rastreabilidade.
 
 ## Requisitos para interfaces
 
@@ -21,8 +21,8 @@ Os critérios de aceite deverão contemplar, conforme aplicável:
 
 Testes automatizados apoiam regressão, mas não substituem validação manual com VoiceOver, tamanhos extremos de texto, preferências de movimento e demais tecnologias assistivas. Regressões críticas de acessibilidade bloqueiam release.
 
-A primeira jornada possui regressão automatizada com identifiers semânticos independentes da copy e em `UIContentSizeCategoryAccessibilityExtraExtraExtraLarge`. Essa evidência garante alcançabilidade funcional básica com scroll; não é inspeção visual pixel a pixel nem substitui o teste manual.
+A jornada atual possui regressão automatizada com identifiers semânticos independentes da copy, distinção textual entre Entrada/Saída e execução em `UIContentSizeCategoryAccessibilityExtraExtraExtraLarge`. Essa evidência garante alcançabilidade funcional básica com scroll; não é inspeção visual pixel a pixel nem substitui o teste manual.
 
 ## Rastreabilidade
 
-A matriz [WCAG → requisito → componente → caso de teste → evidência](wcag-traceability-matrix.md) é o registro obrigatório. A primeira jornada possui linhas **IMPLEMENTADAS**; nenhuma pode ser classificada como VERIFICADA antes das evidências automatizadas e manuais aplicáveis.
+A matriz [WCAG → requisito → componente → caso de teste → evidência](wcag-traceability-matrix.md) é o registro obrigatório. As linhas do Incremento 2 permanecem **IMPLEMENTADAS**; nenhuma pode ser classificada como VERIFICADA antes das evidências automatizadas, manuais e da auditoria global aplicáveis.

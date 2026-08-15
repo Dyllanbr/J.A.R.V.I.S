@@ -1,13 +1,14 @@
 openapi: 3.1.0
 info:
   title: J.A.R.V.I.S. API
-  version: 0.2.0
+  version: 0.3.0
   description: >-
-    API da fundação e do primeiro incremento financeiro. Criar uma transaction
-    registra no organizador J.A.R.V.I.S. uma despesa que já ocorreu no mundo
-    real; não executa pagamento, Pix, transferência bancária, compra ou qualquer
-    movimentação de fundos. Os endpoints financeiros só existem quando o modo
-    financeiro single-owner temporário está explicitamente habilitado.
+    API da fundação e dos incrementos financeiros de despesas e receitas. Criar
+    uma transaction registra no organizador J.A.R.V.I.S. uma movimentação que já
+    ocorreu no mundo real; não executa pagamento, Pix, transferência bancária,
+    compra, recebimento ou qualquer movimentação de fundos. Os endpoints
+    financeiros só existem quando o modo single-owner temporário está
+    explicitamente habilitado.
 jsonSchemaDialect: https://json-schema.org/draft/2020-12/schema
 servers:
   - url: http://127.0.0.1:8080
@@ -35,21 +36,22 @@ paths:
           description: Método não permitido
   /v1/transactions/preview:
     post:
-      operationId: previewExpense
-      summary: Valida uma despesa para revisão antes da confirmação
+      operationId: previewTransaction
+      summary: Valida uma despesa ou receita para revisão antes da confirmação
       description: >-
-        Valida e normaliza uma Expense sem gerar ID, gravar transaction, criar
-        audit event ou reservar idempotência. O cliente deve apresentar este
-        preview ao usuário antes de chamar a operação mutável.
+        Despacha explicitamente por type e normaliza uma Expense ou Income sem
+        gerar ID, gravar transaction, criar audit event ou reservar idempotência.
+        O cliente deve apresentar este preview ao usuário antes de chamar a
+        operação mutável.
       tags: [Transactions]
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/ExpenseRequest"
+              $ref: "#/components/schemas/TransactionRequest"
             examples:
-              synthetic:
+              expense:
                 value:
                   type: EXPENSE
                   description: Mercado sintético
@@ -57,6 +59,14 @@ paths:
                     minor: 4250
                     currency: BRL
                   paymentMethod: PIX
+                  occurredAt: "2026-08-14T15:00:00Z"
+              income:
+                value:
+                  type: INCOME
+                  description: Salário sintético
+                  amount:
+                    minor: 725000
+                    currency: BRL
                   occurredAt: "2026-08-14T15:00:00Z"
       responses:
         "200":
@@ -69,7 +79,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ExpensePreview"
+                $ref: "#/components/schemas/TransactionPreview"
         "400":
           $ref: "#/components/responses/BadRequest"
         "405":
@@ -78,15 +88,16 @@ paths:
           $ref: "#/components/responses/InternalError"
   /v1/transactions:
     post:
-      operationId: recordExpense
-      summary: Registra uma despesa já confirmada pelo canal
+      operationId: recordTransaction
+      summary: Registra uma despesa ou receita já confirmada pelo canal
       description: >-
-        Registra no organizador uma despesa já ocorrida e confirmada pelo
-        usuário no canal chamador. Esta operação não executa pagamento, Pix,
-        transferência, compra nem movimentação bancária. O owner é o contexto
-        single-owner temporário do servidor; origin IOS e timezone financeira
-        America/Sao_Paulo também são atribuídos pelo servidor. Retry com a mesma
-        chave e semântica retorna o recurso original sem novas gravações.
+        Registra no organizador uma despesa ou receita já ocorrida e confirmada
+        pelo usuário no canal chamador. Esta operação não executa pagamento,
+        recebimento, Pix, transferência, compra nem movimentação bancária. O
+        owner é o contexto single-owner temporário do servidor; origin IOS e
+        timezone financeira America/Sao_Paulo também são atribuídos pelo
+        servidor. Retry com a mesma chave, operação e semântica retorna o recurso
+        original sem novas gravações.
       tags: [Transactions]
       parameters:
         - $ref: "#/components/parameters/IdempotencyKey"
@@ -95,9 +106,9 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/ExpenseRequest"
+              $ref: "#/components/schemas/TransactionRequest"
             examples:
-              synthetic:
+              expense:
                 value:
                   type: EXPENSE
                   description: Mercado sintético
@@ -106,9 +117,17 @@ paths:
                     currency: BRL
                   paymentMethod: PIX
                   occurredAt: "2026-08-14T15:00:00Z"
+              income:
+                value:
+                  type: INCOME
+                  description: Salário sintético
+                  amount:
+                    minor: 725000
+                    currency: BRL
+                  occurredAt: "2026-08-14T15:00:00Z"
       responses:
         "201":
-          description: Despesa registrada ou replay seguro do registro original
+          description: Movimentação registrada ou replay seguro do recurso original
           headers:
             Cache-Control:
               $ref: "#/components/headers/CacheControl"
@@ -122,7 +141,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Expense"
+                $ref: "#/components/schemas/TransactionResponse"
         "400":
           $ref: "#/components/responses/BadRequest"
         "409":
@@ -132,8 +151,8 @@ paths:
         "500":
           $ref: "#/components/responses/InternalError"
     get:
-      operationId: listExpensesByMonth
-      summary: Lista as despesas do owner no mês financeiro informado
+      operationId: listTransactionsByMonth
+      summary: Lista despesas e receitas do owner no mês financeiro informado
       description: >-
         Usa limites de calendário em America/Sao_Paulo e consulta o intervalo
         [início do mês, início do próximo mês). Não calcula total, saldo,
@@ -150,7 +169,7 @@ paths:
           example: "2026-08"
       responses:
         "200":
-          description: Lista determinística, vazia quando não há despesas
+          description: Lista mista determinística, vazia quando não há movimentações
           headers:
             Cache-Control:
               $ref: "#/components/headers/CacheControl"
@@ -159,7 +178,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ExpenseMonth"
+                $ref: "#/components/schemas/TransactionMonth"
         "400":
           $ref: "#/components/responses/BadRequest"
         "405":
@@ -186,8 +205,10 @@ components:
       in: header
       required: true
       description: >-
-        Chave opaca de 1 a 128 bytes ASCII visíveis, escopada por owner e
-        CREATE_EXPENSE. O valor nunca é devolvido em erros ou responses.
+        Chave opaca de 1 a 128 bytes ASCII visíveis, escopada por owner e pela
+        operação CREATE_EXPENSE ou CREATE_INCOME derivada de type. A mesma string
+        pode ser usada nas duas operações sem colisão. O valor nunca é devolvido
+        em erros ou responses.
       schema:
         type: string
         minLength: 1
@@ -289,6 +310,35 @@ components:
           description: >-
             Instante normalizado para UTC e truncado para precisão de
             microssegundos antes de preview, fingerprint, persistência e resposta.
+    IncomeRequest:
+      type: object
+      additionalProperties: false
+      required: [type, description, amount, occurredAt]
+      properties:
+        type:
+          type: string
+          const: INCOME
+        description:
+          type: string
+          minLength: 1
+          maxLength: 200
+        amount:
+          $ref: "#/components/schemas/Money"
+        occurredAt:
+          type: string
+          format: date-time
+          description: >-
+            Instante normalizado para UTC e truncado para precisão de
+            microssegundos antes de preview, fingerprint, persistência e resposta.
+    TransactionRequest:
+      oneOf:
+        - $ref: "#/components/schemas/ExpenseRequest"
+        - $ref: "#/components/schemas/IncomeRequest"
+      discriminator:
+        propertyName: type
+        mapping:
+          EXPENSE: "#/components/schemas/ExpenseRequest"
+          INCOME: "#/components/schemas/IncomeRequest"
     ExpensePreview:
       type: object
       additionalProperties: false
@@ -323,6 +373,45 @@ components:
         origin:
           type: string
           const: IOS
+    IncomePreview:
+      type: object
+      additionalProperties: false
+      required:
+        - type
+        - description
+        - amount
+        - occurredAt
+        - financialTimezone
+        - origin
+      properties:
+        type:
+          type: string
+          const: INCOME
+        description:
+          type: string
+          minLength: 1
+          maxLength: 200
+        amount:
+          $ref: "#/components/schemas/Money"
+        occurredAt:
+          type: string
+          format: date-time
+          description: Instante canônico em UTC com precisão máxima de microssegundos.
+        financialTimezone:
+          type: string
+          const: America/Sao_Paulo
+        origin:
+          type: string
+          const: IOS
+    TransactionPreview:
+      oneOf:
+        - $ref: "#/components/schemas/ExpensePreview"
+        - $ref: "#/components/schemas/IncomePreview"
+      discriminator:
+        propertyName: type
+        mapping:
+          EXPENSE: "#/components/schemas/ExpensePreview"
+          INCOME: "#/components/schemas/IncomePreview"
     Expense:
       type: object
       additionalProperties: false
@@ -381,7 +470,70 @@ components:
           type: string
           format: date-time
           description: Instante gerado em UTC com precisão máxima de microssegundos.
-    ExpenseMonth:
+    Income:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - type
+        - description
+        - amount
+        - occurredAt
+        - financialTimezone
+        - origin
+        - status
+        - version
+        - createdAt
+        - updatedAt
+      properties:
+        id:
+          type: string
+          minLength: 1
+          maxLength: 128
+        type:
+          type: string
+          const: INCOME
+        description:
+          type: string
+          minLength: 1
+          maxLength: 200
+        amount:
+          $ref: "#/components/schemas/Money"
+        occurredAt:
+          type: string
+          format: date-time
+          description: Instante canônico em UTC com precisão máxima de microssegundos.
+        financialTimezone:
+          type: string
+          const: America/Sao_Paulo
+        origin:
+          type: string
+          const: IOS
+        status:
+          type: string
+          const: RECORDED
+        version:
+          type: integer
+          format: int64
+          minimum: 1
+        createdAt:
+          type: string
+          format: date-time
+          description: Instante gerado em UTC com precisão máxima de microssegundos.
+        updatedAt:
+          type: string
+          format: date-time
+          description: Instante gerado em UTC com precisão máxima de microssegundos.
+    TransactionResponse:
+      oneOf:
+        - $ref: "#/components/schemas/Expense"
+        - $ref: "#/components/schemas/Income"
+      discriminator:
+        propertyName: type
+        mapping:
+          EXPENSE: "#/components/schemas/Expense"
+          INCOME: "#/components/schemas/Income"
+    TransactionMonth:
       type: object
       additionalProperties: false
       required: [month, items]
@@ -392,7 +544,7 @@ components:
         items:
           type: array
           items:
-            $ref: "#/components/schemas/Expense"
+            $ref: "#/components/schemas/TransactionResponse"
     ErrorEnvelope:
       type: object
       additionalProperties: false
@@ -419,4 +571,4 @@ tags:
   - name: Operations
     description: Endpoints operacionais, sem regras de negócio.
   - name: Transactions
-    description: Registro e consulta de despesas; nunca execução de movimentação financeira.
+    description: Registro e consulta de despesas e receitas; nunca execução de movimentação financeira.

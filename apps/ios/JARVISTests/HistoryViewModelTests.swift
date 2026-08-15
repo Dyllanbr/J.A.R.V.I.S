@@ -15,7 +15,7 @@ final class HistoryViewModelTests: XCTestCase {
         let api = FinancialAPISpy()
         let first = syntheticExpense(id: "exp_002", description: "Restaurante QA")
         let second = syntheticExpense(id: "exp_001", description: "Mercado sintético")
-        api.monthResult = .success(ExpenseMonth(month: "2026-08", items: [first, second]))
+        api.monthResult = .success(TransactionMonth(month: "2026-08", items: [.expense(first), .expense(second)]))
         let model = HistoryViewModel(api: api, now: syntheticAugustDate())
 
         await model.load()
@@ -25,9 +25,27 @@ final class HistoryViewModelTests: XCTestCase {
         XCTAssertEqual(items.map(\.id), ["exp_002", "exp_001"])
         XCTAssertEqual(api.requestedMonths, ["2026-08"])
 
-        api.monthResult = .success(ExpenseMonth(month: "2026-08", items: []))
+        api.monthResult = .success(TransactionMonth(month: "2026-08", items: []))
         await model.load()
         XCTAssertEqual(model.state, .loaded([]))
+    }
+
+    func testLoadPreservesMixedExpenseAndIncomeOrdering() async {
+        let api = FinancialAPISpy()
+        let expense = syntheticExpense(id: "exp_001")
+        let income = syntheticIncome(id: "inc_001")
+        api.monthResult = .success(
+            TransactionMonth(month: "2026-08", items: [.income(income), .expense(expense)])
+        )
+        let model = HistoryViewModel(api: api, now: syntheticAugustDate())
+
+        await model.load()
+
+        guard case let .loaded(items) = model.state else {
+            return XCTFail("Expected loaded history")
+        }
+        XCTAssertEqual(items, [.income(income), .expense(expense)])
+        XCTAssertEqual(items.map(\.type), [.income, .expense])
     }
 
     func testLoadMapsErrorsToSafeUIState() async {

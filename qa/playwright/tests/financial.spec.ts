@@ -15,6 +15,18 @@ function expenseRequest(description: string, occurredAt: string) {
   };
 }
 
+function incomeRequest(description: string, occurredAt: string) {
+  return {
+    type: "INCOME",
+    description,
+    amount: {
+      minor: 725000,
+      currency: "BRL",
+    },
+    occurredAt,
+  };
+}
+
 test("preview validates and normalizes without persistence", async ({
   request,
 }) => {
@@ -70,6 +82,62 @@ test("preview rejects invalid and unknown input", async ({ request }) => {
   expect(await unknown.json()).toEqual({
     error: { code: "INVALID_REQUEST", message: "request is invalid" },
   });
+});
+
+test("income preview is canonical, zero-write, and rejects ambiguous shapes", async ({
+  request,
+}) => {
+  const description = "Preview receita Playwright sintética";
+  const preview = await request.post("/v1/transactions/preview", {
+    data: incomeRequest(
+      `  ${description}  `,
+      "2026-06-14T12:00:00.123456789-03:00",
+    ),
+  });
+  expect(preview.status()).toBe(200);
+  expect(preview.headers()["cache-control"]).toBe("no-store");
+  expect(await preview.json()).toEqual({
+    type: "INCOME",
+    description,
+    amount: { minor: 725000, currency: "BRL" },
+    occurredAt: "2026-06-14T15:00:00.123456Z",
+    financialTimezone: "America/Sao_Paulo",
+    origin: "IOS",
+  });
+
+  const month = await request.get("/v1/transactions?month=2026-06");
+  const monthBody = (await month.json()) as {
+    items: Array<{ description: string }>;
+  };
+  expect(monthBody.items.some((item) => item.description === description)).toBe(
+    false,
+  );
+
+  const base = incomeRequest(
+    "Shape inválido sintético",
+    "2026-06-14T15:00:00Z",
+  );
+  const invalidShapes: Array<Record<string, unknown>> = [
+    { ...base, paymentMethod: null },
+    { ...base, paymentMethod: "PIX" },
+    { ...base, type: "income" },
+    { ...base, type: "TRANSFER" },
+    { ...base, amount: { minor: 0, currency: "BRL" } },
+    { ...base, amount: { minor: -1, currency: "BRL" } },
+    { ...base, amount: { minor: 72.5, currency: "BRL" } },
+    { ...base, userId: "spoofed-owner" },
+    { ...base, ownerId: "spoofed-owner" },
+    { ...base, origin: "WHATSAPP" },
+    { ...base, financialTimezone: "UTC" },
+    { ...base, status: "RECORDED" },
+    { ...base, employer: "synthetic" },
+    { ...base, category: "synthetic" },
+    { ...base, recurring: true },
+  ];
+  for (const data of invalidShapes) {
+    const response = await request.post("/v1/transactions/preview", { data });
+    expect(response.status()).toBe(400);
+  }
 });
 
 test("create requires a key and safely replays the original resource", async ({
@@ -136,6 +204,125 @@ test("create requires a key and safely replays the original resource", async ({
       message: "idempotency key was reused with a different request",
     },
   });
+});
+
+test("income create requires a key and replays the persisted body", async ({
+  request,
+}) => {
+  const payload = incomeRequest(
+    "Salário Playwright sintético",
+    "2026-07-14T15:00:00.123456789Z",
+  );
+  const missing = await request.post("/v1/transactions", { data: payload });
+  expect(missing.status()).toBe(400);
+  expect(await missing.json()).toEqual({
+    error: {
+      code: "IDEMPOTENCY_KEY_REQUIRED",
+      message: "idempotency key is required",
+    },
+  });
+
+  const headers = { "Idempotency-Key": "pw-synthetic-income-replay-001" };
+  const created = await request.post("/v1/transactions", {
+    data: payload,
+    headers,
+  });
+  expect(created.status()).toBe(201);
+  expect(created.headers()["cache-control"]).toBe("no-store");
+  const createdBytes = await created.body();
+  const createdBody = JSON.parse(createdBytes.toString()) as Record<
+    string,
+    unknown
+  >;
+  expect(createdBody).toMatchObject({
+    type: "INCOME",
+    description: payload.description,
+    amount: payload.amount,
+    occurredAt: "2026-07-14T15:00:00.123456Z",
+    financialTimezone: "America/Sao_Paulo",
+    origin: "IOS",
+    status: "RECORDED",
+    version: 1,
+  });
+  expect("paymentMethod" in createdBody).toBe(false);
+  expect("userId" in createdBody).toBe(false);
+
+  const replay = await request.post("/v1/transactions", {
+    data: {
+      occurredAt: "2026-07-14T15:00:00.123456999Z",
+      amount: { currency: "BRL", minor: 725000 },
+      description: `  ${payload.description}  `,
+      type: "INCOME",
+    },
+    headers,
+  });
+  expect(replay.status()).toBe(201);
+  expect(replay.headers()["idempotency-replayed"]).toBe("true");
+  expect(await replay.body()).toEqual(createdBytes);
+
+  const conflict = await request.post("/v1/transactions", {
+    data: { ...payload, description: "Outra receita sintética" },
+    headers,
+  });
+  expect(conflict.status()).toBe(409);
+  expect(await conflict.json()).toEqual({
+    error: {
+      code: "IDEMPOTENCY_KEY_REUSED",
+      message: "idempotency key was reused with a different request",
+    },
+  });
+});
+
+test("monthly history returns a discriminated Expense and Income collection", async ({
+  request,
+}) => {
+  const expenseDescription = "Despesa mista Playwright sintética";
+  const incomeDescription = "Receita mista Playwright sintética";
+  const sharedKey = "pw-synthetic-mixed-operation-key";
+
+  const expense = await request.post("/v1/transactions", {
+    data: expenseRequest(expenseDescription, "2026-05-10T15:00:00Z"),
+    headers: { "Idempotency-Key": sharedKey },
+  });
+  const income = await request.post("/v1/transactions", {
+    data: incomeRequest(incomeDescription, "2026-05-10T16:00:00Z"),
+    headers: { "Idempotency-Key": sharedKey },
+  });
+  expect(expense.status()).toBe(201);
+  expect(income.status()).toBe(201);
+
+  const response = await request.get("/v1/transactions?month=2026-05");
+  expect(response.status()).toBe(200);
+  const body = (await response.json()) as {
+    month: string;
+    items: Array<Record<string, unknown>>;
+  };
+  expect(body.month).toBe("2026-05");
+  const relevant = body.items.filter((item) =>
+    [expenseDescription, incomeDescription].includes(
+      item.description as string,
+    ),
+  );
+  expect(relevant).toHaveLength(2);
+  const incomeItem = relevant[0];
+  const expenseItem = relevant[1];
+  if (!incomeItem || !expenseItem) {
+    throw new Error("mixed history fixtures are missing");
+  }
+  expect(incomeItem).toMatchObject({
+    type: "INCOME",
+    description: incomeDescription,
+  });
+  expect("paymentMethod" in incomeItem).toBe(false);
+  expect(expenseItem).toMatchObject({
+    type: "EXPENSE",
+    description: expenseDescription,
+    paymentMethod: "PIX",
+  });
+
+  const empty = await request.get("/v1/transactions?month=2040-01");
+  expect(empty.status()).toBe(200);
+  expect(await empty.json()).toEqual({ month: "2040-01", items: [] });
 });
 
 test("monthly history lists only the requested financial month", async ({

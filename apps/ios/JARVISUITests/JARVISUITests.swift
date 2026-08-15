@@ -50,6 +50,43 @@ final class JARVISUITests: XCTestCase {
         XCTAssertTrue(expense.waitForExistence(timeout: 10))
         XCTAssertTrue(expense.label.contains(launched.description))
         XCTAssertTrue(expense.label.contains("R$ 42,50"))
+        XCTAssertTrue(expense.label.contains("Saída"))
+    }
+
+    @MainActor
+    func testRegisterIncomePreviewConfirmAndHistory() throws {
+        continueAfterFailure = false
+        let launched = try launchApp()
+        let app = launched.app
+        defer { app.terminate() }
+        let description = incomeDescription(from: launched.description)
+
+        XCTAssertTrue(element("tab.register", in: app).waitForExistence(timeout: 8))
+        selectIncome(in: app)
+        XCTAssertFalse(element("register.paymentMethod", in: app).exists)
+        fillForm(in: app, description: description)
+
+        element("register.review", in: app).tap()
+        XCTAssertTrue(element("review.screen", in: app).waitForExistence(timeout: 8))
+        XCTAssertTrue(element("review.type", in: app).label.contains("Receita"))
+        XCTAssertTrue(element("review.description", in: app).label.contains(description))
+        XCTAssertTrue(element("review.amount", in: app).label.contains("R$ 42,50"))
+        XCTAssertFalse(element("review.paymentMethod", in: app).exists)
+
+        element("review.confirm", in: app).tap()
+        XCTAssertTrue(element("register.success", in: app).waitForExistence(timeout: 10))
+        XCTAssertTrue(element("register.newIncome", in: app).exists)
+
+        element("tab.history", in: app).tap()
+        XCTAssertTrue(element("history.list", in: app).waitForExistence(timeout: 10))
+        let income = app.descendants(matching: .any)
+            .matching(NSPredicate(format: "identifier BEGINSWITH %@", "history.income."))
+            .firstMatch
+        XCTAssertTrue(income.waitForExistence(timeout: 10))
+        XCTAssertTrue(income.label.contains(description))
+        XCTAssertTrue(income.label.contains("R$ 42,50"))
+        XCTAssertTrue(income.label.contains("Entrada"))
+        XCTAssertFalse(income.label.contains("PIX"))
     }
 
     @MainActor
@@ -62,6 +99,9 @@ final class JARVISUITests: XCTestCase {
         for identifier in [
             "tab.register",
             "tab.history",
+            "register.type",
+            "register.type.expense",
+            "register.type.income",
             "register.description",
             "register.amount",
             "register.paymentMethod",
@@ -180,6 +220,66 @@ final class JARVISUITests: XCTestCase {
     }
 
     @MainActor
+    func testSwitchingReviewedExpenseToIncomeInvalidatesTheReview() throws {
+        continueAfterFailure = false
+        let launched = try launchApp()
+        let app = launched.app
+        defer { app.terminate() }
+
+        fillForm(in: app, description: "Troca_tipo_sintetica_UI")
+        element("register.review", in: app).tap()
+        XCTAssertTrue(element("review.confirm", in: app).waitForExistence(timeout: 8))
+        element("review.edit", in: app).tap()
+
+        selectIncome(in: app)
+        XCTAssertFalse(element("register.paymentMethod", in: app).exists)
+        XCTAssertFalse(element("review.confirm", in: app).exists)
+        XCTAssertTrue(element("register.review", in: app).exists)
+
+        element("register.review", in: app).tap()
+        XCTAssertTrue(element("review.confirm", in: app).waitForExistence(timeout: 8))
+        XCTAssertTrue(element("review.type", in: app).label.contains("Receita"))
+        XCTAssertFalse(element("review.paymentMethod", in: app).exists)
+    }
+
+    @MainActor
+    func testMixedHistoryShowsExpenseAndIncomeWithDistinctSemantics() throws {
+        continueAfterFailure = false
+        let launched = try launchApp()
+        let app = launched.app
+        defer { app.terminate() }
+
+        fillForm(in: app, description: "Despesa_mista_sintetica_UI")
+        element("register.review", in: app).tap()
+        XCTAssertTrue(element("review.confirm", in: app).waitForExistence(timeout: 8))
+        element("review.confirm", in: app).tap()
+        XCTAssertTrue(element("register.newExpense", in: app).waitForExistence(timeout: 10))
+        element("register.newExpense", in: app).tap()
+
+        selectIncome(in: app)
+        fillForm(in: app, description: "Receita_mista_sintetica_UI")
+        element("register.review", in: app).tap()
+        XCTAssertTrue(element("review.confirm", in: app).waitForExistence(timeout: 8))
+        element("review.confirm", in: app).tap()
+        XCTAssertTrue(element("register.newIncome", in: app).waitForExistence(timeout: 10))
+
+        element("tab.history", in: app).tap()
+        XCTAssertTrue(element("history.list", in: app).waitForExistence(timeout: 10))
+        let expense = app.descendants(matching: .any)
+            .matching(NSPredicate(format: "identifier BEGINSWITH %@", "history.expense."))
+            .firstMatch
+        let income = app.descendants(matching: .any)
+            .matching(NSPredicate(format: "identifier BEGINSWITH %@", "history.income."))
+            .firstMatch
+        XCTAssertTrue(expense.waitForExistence(timeout: 8))
+        XCTAssertTrue(income.waitForExistence(timeout: 8))
+        XCTAssertTrue(expense.label.contains("Saída"))
+        XCTAssertTrue(expense.label.contains("PIX"))
+        XCTAssertTrue(income.label.contains("Entrada"))
+        XCTAssertFalse(income.label.contains("PIX"))
+    }
+
+    @MainActor
     func testExtremeDynamicTypeKeepsPrimaryJourneyReachable() throws {
         continueAfterFailure = false
         let launched = try launchApp(extremeDynamicType: true)
@@ -200,9 +300,33 @@ final class JARVISUITests: XCTestCase {
         element("review.confirm", in: app).tap()
         XCTAssertTrue(element("register.success", in: app).waitForExistence(timeout: 10))
 
+        XCTAssertTrue(reveal("register.newExpense", in: app))
+        element("register.newExpense", in: app).tap()
+        XCTAssertTrue(reveal("register.type.income", in: app))
+        selectIncome(in: app)
+        fillForm(in: app, description: "Dynamic_Type_receita_sintetica")
+        XCTAssertTrue(reveal("register.review", in: app))
+        element("register.review", in: app).tap()
+        XCTAssertTrue(reveal("review.confirm", in: app))
+        XCTAssertTrue(element("review.type", in: app).label.contains("Receita"))
+        element("review.confirm", in: app).tap()
+        XCTAssertTrue(element("register.newIncome", in: app).waitForExistence(timeout: 10))
+
         XCTAssertTrue(reveal("tab.history", in: app))
         element("tab.history", in: app).tap()
         XCTAssertTrue(element("history.list", in: app).waitForExistence(timeout: 10))
+        XCTAssertTrue(
+            app.descendants(matching: .any)
+                .matching(NSPredicate(format: "identifier BEGINSWITH %@", "history.expense."))
+                .firstMatch
+                .waitForExistence(timeout: 8)
+        )
+        XCTAssertTrue(
+            app.descendants(matching: .any)
+                .matching(NSPredicate(format: "identifier BEGINSWITH %@", "history.income."))
+                .firstMatch
+                .waitForExistence(timeout: 8)
+        )
     }
 
     @MainActor
@@ -270,6 +394,20 @@ final class JARVISUITests: XCTestCase {
         amountField.tap()
         amountField.typeText("42,50")
         dismissKeyboard(in: app)
+    }
+
+    @MainActor
+    private func selectIncome(in app: XCUIApplication) {
+        let selector = element("register.type.income", in: app)
+        XCTAssertTrue(selector.waitForExistence(timeout: 8))
+        if !selector.isHittable {
+            XCTAssertTrue(reveal("register.type.income", in: app))
+        }
+        selector.tap()
+    }
+
+    private func incomeDescription(from base: String) -> String {
+        "\(base)_income"
     }
 
     @MainActor

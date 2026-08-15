@@ -47,7 +47,7 @@ Essa progressão não transforma o J.A.R.V.I.S. em banco nem em executor de tran
 | --- | --- | --- |
 | Fundação | **Verified** | Base técnica e de qualidade para evolução segura |
 | Incremento 1 — Despesas | **Verified** | Primeiro ciclo financeiro completo |
-| Incremento 2 — Receitas | **Planned** | Compreensão de entradas e saídas |
+| Incremento 2 — Receitas | **Implemented** | Registro e consulta de entradas e saídas; auditoria global pendente |
 | Incremento 3 — Categorias, histórico e recorrências | **Planned** | Interpretação de padrões e previsibilidade |
 | Incremento 4 — Cartões, parcelas e compromissos futuros | **Planned** | Compreensão do dinheiro já comprometido |
 | Incremento 5 — Orçamento e Disponível Seguro | **Planned** | Resposta explicável sobre quanto pode ser gasto |
@@ -95,15 +95,17 @@ Esse incremento é a base validada sobre a qual as próximas capacidades finance
 
 ## Incremento 2 — Receitas
 
-**Estado: Planned.**
+**Estado: Implemented; auditoria global independente pendente.**
 
-O objetivo é permitir que o sistema compreenda tanto a entrada quanto a saída de dinheiro. As capacidades esperadas incluem:
+O incremento implementa a base para o sistema representar tanto entrada quanto saída de dinheiro:
 
-- registro de receitas;
-- consulta e histórico;
-- integração das entradas ao modelo financeiro.
+- `Income` como agregado de escrita separado de `Expense`;
+- preview, confirmação explícita e registro idempotente;
+- persistência/auditoria atômicas com `CREATE_INCOME` e `INCOME_RECORDED`;
+- API discriminada e histórico mensal misto de Expense/Income;
+- fluxo iOS completo e integração real Simulator → app → API → PostgreSQL.
 
-Receitas criam a base para análises de saldo e fluxo, ainda sem presumir uma fórmula completa de aconselhamento.
+O histórico não inclui totais, saldo, orçamento ou Disponível Seguro. Essas entradas criam base para análises futuras sem antecipar cálculos ou aconselhamento. A capacidade permanece **Implemented**, e não **Verified**, até a auditoria global independente.
 
 ## Incremento 3 — Categorias, histórico e recorrências
 

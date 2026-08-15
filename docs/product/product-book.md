@@ -1,7 +1,7 @@
 # Product Book do J.A.R.V.I.S.
 
 - Maturidade documental: **Proposed**
-- Estado das capacidades: **misto** — Incremento 1 **Verified**; visão futura **Planned**
+- Estado das capacidades: **misto** — Incremento 1 **Verified**; Incremento 2 **Implemented**; visão futura **Planned**
 
 ## Propósito do documento
 
@@ -73,7 +73,7 @@ A IA não é a fonte de verdade dos cálculos financeiros. Ela não deve possuir
 
 Na visão futura, o Financial Engine realiza cálculos financeiros determinísticos. Verdades financeiras, limites, projeções e composições não podem depender da criatividade ou da probabilidade de uma resposta de IA.
 
-O núcleo determinístico de despesas do Incremento 1 é uma capacidade atual verificada; isso não significa que todo o Financial Engine futuro já exista.
+O núcleo determinístico de despesas do Incremento 1 é uma capacidade atual verificada. O registro determinístico de receitas do Incremento 2 está implementado e aguarda auditoria global; nenhuma dessas entregas significa que todo o Financial Engine futuro já exista.
 
 ### Policy / Security Engine
 
@@ -106,7 +106,22 @@ O Incremento 1 está **implementado, auditado, aprovado e mergeado**. As capacid
 - integração real iOS → backend → PostgreSQL;
 - testes e quality gates correspondentes.
 
-O escopo atual registra uma despesa já ocorrida. Ele não movimenta fundos. Não há autenticação de produto, usuário externo aprovado, banco de produção, WhatsApp funcional, IA consultiva ou Open Finance.
+O escopo verificado do Incremento 1 registra uma despesa já ocorrida. Ele não movimenta fundos. Não há autenticação de produto, usuário externo aprovado, banco de produção, WhatsApp funcional, IA consultiva ou Open Finance.
+
+## Estado atual — Incremento 2
+
+O Incremento 2 está **Implemented** e pronto para auditoria global independente; ainda não está **Verified**. Dentro desse limite, o sistema agora também:
+
+- representa `Income` como agregado de escrita separado de `Expense`;
+- usa magnitude positiva e determina a direção financeira por `type`;
+- realiza preview sem escrita e exige confirmação explícita antes do registro;
+- registra Income com idempotência e `INCOME_RECORDED` na mesma transação lógica;
+- mantém `paymentMethod` exclusivo de Expense;
+- retorna histórico mensal discriminado com Expense e Income;
+- suporta no iOS o fluxo Despesa/Receita e a consulta mista;
+- possui testes de domínio, aplicação, PostgreSQL, HTTP, contrato, iOS e E2E real correspondentes.
+
+Income significa registrar que dinheiro entrou. Não significa receber dinheiro, cobrar alguém, executar depósito, iniciar Pix, movimentar conta ou conectar banco. O histórico atual não calcula totais, saldo, orçamento ou Disponível Seguro.
 
 Detalhes e evidências permanecem nas fontes especializadas de [arquitetura](../architecture/overview.md), [ADRs](../adr/README.md), [segurança](../security/baseline.md), [privacidade](../privacy/README.md), [acessibilidade](../accessibility/baseline.md), [QA](../qa/testing-strategy.md) e [performance](../performance/baseline.md).
 
@@ -114,7 +129,6 @@ Detalhes e evidências permanecem nas fontes especializadas de [arquitetura](../
 
 As capacidades a seguir estão **Planned**. A presença nesta visão não define ordem, prazo, escopo técnico nem compromisso de entrega:
 
-- receitas;
 - categorias;
 - recorrências e assinaturas;
 - cartões e parcelas;

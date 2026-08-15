@@ -47,6 +47,50 @@ final class FinancialAPIClientTests: XCTestCase {
     }
 
     @MainActor
+    func testIncomePreviewUsesCanonicalKeysAndOmitsPaymentMethod() async throws {
+        URLProtocolStub.install { request in
+            let body = try XCTUnwrap(Self.requestBody(request))
+            let object = try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [String: Any])
+            XCTAssertEqual(Set(object.keys), ["type", "description", "amount", "occurredAt"])
+            XCTAssertEqual(object["type"] as? String, "INCOME")
+            XCTAssertNil(object["paymentMethod"])
+            return Self.response(request: request, status: 200, body: Self.incomePreviewJSON)
+        }
+
+        let request = IncomeRequest(
+            description: "Receita sintética",
+            amount: FinancialMoney(minor: 8_500, currency: .brl),
+            occurredAt: "2026-08-14T16:00:00Z"
+        )
+        let preview = try await makeClient().preview(request)
+
+        XCTAssertEqual(preview, syntheticIncomePreview())
+    }
+
+    @MainActor
+    func testIncomeCreateOmitsPaymentMethodAndReadsPersistedResponse() async throws {
+        URLProtocolStub.install { request in
+            XCTAssertEqual(request.value(forHTTPHeaderField: "Idempotency-Key"), "income-key-001")
+            let body = try XCTUnwrap(Self.requestBody(request))
+            let object = try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [String: Any])
+            XCTAssertNil(object["paymentMethod"])
+            return Self.response(request: request, status: 201, body: Self.incomeJSON)
+        }
+
+        let result = try await makeClient().create(
+            IncomeRequest(
+                description: "Receita sintética",
+                amount: FinancialMoney(minor: 8_500, currency: .brl),
+                occurredAt: "2026-08-14T16:00:00Z"
+            ),
+            idempotencyKey: "income-key-001"
+        )
+
+        XCTAssertEqual(result.income, syntheticIncome())
+        XCTAssertFalse(result.replayed)
+    }
+
+    @MainActor
     func testMapsHTTPAndNetworkFailuresWithoutRawServerMessages() async {
         for (status, expected) in [
             (400, FinancialAPIError.invalidData),
@@ -119,8 +163,74 @@ final class FinancialAPIClientTests: XCTestCase {
             return Self.response(request: request, status: 200, body: #"{"month":"2026-08","items":[]}"#)
         }
 
-        let response = try await makeClient().expenses(month: "2026-08")
-        XCTAssertEqual(response, ExpenseMonth(month: "2026-08", items: []))
+        let response = try await makeClient().transactions(month: "2026-08")
+        XCTAssertEqual(response, TransactionMonth(month: "2026-08", items: []))
+    }
+
+    @MainActor
+    func testHistoryDecodesExplicitMixedTypesAndInt64Amounts() async throws {
+        let maxAmount = Int64.max
+        URLProtocolStub.install { request in
+            Self.response(
+                request: request,
+                status: 200,
+                body: """
+                {"month":"2026-08","items":[\(Self.incomeJSON),{"id":"exp_test_ios_001","type":"EXPENSE","description":"Mercado sintético","amount":{"minor":\(maxAmount),"currency":"BRL"},"paymentMethod":"PIX","occurredAt":"2026-08-14T15:00:00Z","financialTimezone":"America/Sao_Paulo","origin":"IOS","status":"RECORDED","version":1,"createdAt":"2026-08-14T18:00:00Z","updatedAt":"2026-08-14T18:00:00Z"}]}
+                """
+            )
+        }
+
+        let response = try await makeClient().transactions(month: "2026-08")
+
+        XCTAssertEqual(response.items.map(\.type), [.income, .expense])
+        XCTAssertEqual(response.items[1].amount.minor, maxAmount)
+        guard case let .income(income) = response.items[0] else {
+            return XCTFail("Expected Income as the first item")
+        }
+        XCTAssertEqual(income.id, "inc_test_ios_001")
+    }
+
+    @MainActor
+    func testHistoryRejectsUnknownTypeAndMalformedIncomeShape() async {
+        let invalidBodies = [
+            #"{"month":"2026-08","items":[{"type":"TRANSFER"}]}"#,
+            #"{"month":"2026-08","items":[{"id":"inc_test_ios_001","type":"INCOME","description":"Receita sintética","amount":{"minor":8500,"currency":"BRL"},"occurredAt":"2026-08-14T16:00:00Z"}]}"#
+        ]
+
+        for body in invalidBodies {
+            URLProtocolStub.install { request in
+                Self.response(request: request, status: 200, body: body)
+            }
+            do {
+                _ = try await makeClient().transactions(month: "2026-08")
+                XCTFail("Expected invalid mixed history response")
+            } catch {
+                XCTAssertEqual(error as? FinancialAPIError, .invalidResponse)
+            }
+        }
+    }
+
+    @MainActor
+    func testIncomeResponsesRejectPaymentMethodEvenWhenNull() async {
+        let invalidIncomePreview = """
+        {"type":"INCOME","description":"Receita sintética","amount":{"minor":8500,"currency":"BRL"},"paymentMethod":null,"occurredAt":"2026-08-14T16:00:00Z","financialTimezone":"America/Sao_Paulo","origin":"IOS"}
+        """
+        URLProtocolStub.install { request in
+            Self.response(request: request, status: 200, body: invalidIncomePreview)
+        }
+
+        do {
+            _ = try await makeClient().preview(
+                IncomeRequest(
+                    description: "Receita sintética",
+                    amount: FinancialMoney(minor: 8_500, currency: .brl),
+                    occurredAt: "2026-08-14T16:00:00Z"
+                )
+            )
+            XCTFail("Income response must not contain paymentMethod")
+        } catch {
+            XCTAssertEqual(error as? FinancialAPIError, .invalidResponse)
+        }
     }
 
     @MainActor
@@ -186,6 +296,14 @@ final class FinancialAPIClientTests: XCTestCase {
 
     private static let expenseJSON = """
     {"id":"exp_test_ios_001","type":"EXPENSE","description":"Mercado sintético","amount":{"minor":4250,"currency":"BRL"},"paymentMethod":"PIX","occurredAt":"2026-08-14T15:00:00Z","financialTimezone":"America/Sao_Paulo","origin":"IOS","status":"RECORDED","version":1,"createdAt":"2026-08-14T18:00:00Z","updatedAt":"2026-08-14T18:00:00Z"}
+    """
+
+    private static let incomePreviewJSON = """
+    {"type":"INCOME","description":"Receita sintética","amount":{"minor":8500,"currency":"BRL"},"occurredAt":"2026-08-14T16:00:00Z","financialTimezone":"America/Sao_Paulo","origin":"IOS"}
+    """
+
+    private static let incomeJSON = """
+    {"id":"inc_test_ios_001","type":"INCOME","description":"Receita sintética","amount":{"minor":8500,"currency":"BRL"},"occurredAt":"2026-08-14T16:00:00Z","financialTimezone":"America/Sao_Paulo","origin":"IOS","status":"RECORDED","version":1,"createdAt":"2026-08-14T18:00:00Z","updatedAt":"2026-08-14T18:00:00Z"}
     """
 }
 

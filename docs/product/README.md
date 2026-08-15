@@ -64,7 +64,7 @@ Uma declaração de visão não comprova planejamento detalhado. Um item planeja
 - [Princípios de design](design-principles.md) — direção visual, experiência, acessibilidade e critérios para um futuro design system; **Proposed**, capacidade **Planned**.
 - [Roadmap estratégico](roadmap.md) — sequência de evolução, resultados, dependências e gates sem duplicar o backlog; **Proposed**, capacidades em estado **misto**.
 
-O Incremento 1 está concluído, auditado, aprovado e mergeado. O Product Book separa essas capacidades entregues da visão futura.
+O Incremento 1 está concluído, auditado, aprovado e mergeado. O Incremento 2 está **Implemented** e pronto para auditoria global independente; ainda não está **Verified**. O Product Book separa essas capacidades da visão futura.
 
 ## Regra de manutenção
 

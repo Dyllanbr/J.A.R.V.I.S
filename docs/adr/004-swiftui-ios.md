@@ -1,7 +1,7 @@
 # ADR-004: SwiftUI para o aplicativo iOS
 
 - Estado da decisão: Aceita
-- Estado de implementação: Etapa 3 implementada; revisão independente pendente
+- Estado de implementação: Incremento 1 verificado
 - Data: 2026-08-14
 
 ## Contexto

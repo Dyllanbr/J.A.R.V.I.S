@@ -1,20 +1,21 @@
 # Aplicativo iOS
 
-Estado: **IMPLEMENTADO na Etapa 3; revisão independente pendente**.
+Estado: **Incremento 2 implementado; pronto para auditoria global independente**. A capacidade ainda não está classificada como verificada.
 
 O primeiro cliente nativo do J.A.R.V.I.S. usa SwiftUI, Swift concurrency, Foundation e URLSession, sem dependências externas. O deployment target é iOS 17.0, o target/scheme compartilhado é `JARVIS` e o bundle identifier de desenvolvimento é `dev.jarvis.JARVIS`.
 
 ## Escopo atual
 
 - tab bar UIKit nativa com conteúdo SwiftUI para **Registrar** e **Histórico**;
-- formulário de despesa, preview obrigatório, revisão congelada e confirmação explícita;
+- seletor explícito Despesa/Receita, com Expense como default;
+- formulário discriminado, preview obrigatório, revisão congelada e confirmação explícita; Income não possui forma de pagamento;
 - retry em memória com a mesma `Idempotency-Key` durante uma tentativa lógica;
-- histórico mensal via `GET /v1/transactions?month=YYYY-MM`;
+- histórico mensal misto de despesas e receitas via `GET /v1/transactions?month=YYYY-MM`;
 - cliente HTTP explícito com `URLSessionConfiguration.ephemeral`;
 - testes XCTest e XCUITest com stub disponível apenas em `DEBUG` e selecionado explicitamente;
 - caminho automatizado Simulator → app → URLSession → API real → PostgreSQL real, com pós-condição no banco.
 
-O app somente registra uma despesa já ocorrida. Ele não executa Pix, pagamento, compra, transferência ou movimentação de fundos.
+O app somente registra despesas e receitas já ocorridas. Ele não executa Pix, recebimento, pagamento, compra, transferência ou movimentação de fundos.
 
 ## Abrir e executar
 
@@ -45,9 +46,9 @@ make test-ios-integration
 
 `make verify-ios` executa build, análise estática e XCTest/XCUITest com `JARVIS_IOS_API_MODE=stub`. O script exige Xcode 16+, considera somente runtimes iOS 17+, prefere iPhone 15 e, na ausência dele, escolhe deterministicamente outro iPhone no runtime mais recente. Device, runtime e UDID são informados. Um Simulator que já estava ligado é preservado; um Simulator iniciado pelo script é desligado e aguardado no cleanup. Resultados/DerivedData ficam fora do repositório.
 
-`make test-ios-integration` injeta `JARVIS_IOS_API_MODE=real`, a base URL e uma descrição sintética única no bundle do XCUITest; o test runner repassa esses valores ao processo do app. O modo real falha fechado se a URL estiver ausente, inválida ou indisponível e nunca usa o stub. O gate comprova no app preview → revisão → confirmação → sucesso → histórico e, ao final, consulta o PostgreSQL para exigir exatamente uma Expense, um `EXPENSE_RECORDED` e um registro idempotente concluído para a fixture. Ele exige Docker e limpa API, Simulator iniciado pelo script, container e volume mesmo em falha.
+`make test-ios-integration` injeta `JARVIS_IOS_API_MODE=real`, a base URL e uma descrição sintética única no bundle do XCUITest; o test runner repassa esses valores ao processo do app. O modo real falha fechado se a URL estiver ausente, inválida ou indisponível e nunca usa o stub. O gate comprova no app preview → revisão → confirmação → sucesso → histórico para Expense e Income e, ao final, consulta o PostgreSQL para exigir, por fixture, exatamente uma transação, um evento de auditoria e um registro idempotente concluído de cada tipo; Income também deve manter `payment_method` nulo. Ele exige Docker e limpa API, Simulator iniciado pelo script, container e volume mesmo em falha.
 
-Ações e navegação do XCUITest usam identifiers semânticos (`tab.*`, `register.*`, `review.*` e `history.*`), não textos traduzíveis. `RootView` usa um `UITabBarController` nativo com um `UIHostingController` por tab; cada hosting controller recebe diretamente seu próprio `UITabBarItem` e identifier. Não há barra customizada nem associação por posição, texto, símbolo ou espera temporal. `bash scripts/test-ios.sh --tab-regression` alterna Register/History dez vezes após Success; a suíte também cobre o inventário normal de History e o identifier de retry. Existe regressão em `UIContentSizeCategoryAccessibilityExtraExtraExtraLarge`; ela complementa, mas não substitui, VoiceOver e validação manual.
+Ações e navegação do XCUITest usam identifiers semânticos (`tab.*`, `register.*`, `review.*` e `history.*`), não textos traduzíveis. O seletor expõe `register.type`, `register.type.expense` e `register.type.income`; o novo fluxo usa `register.newIncome`, e itens do histórico usam `history.expense.<id>`/`history.income.<id>`. `RootView` usa um `UITabBarController` nativo com um `UIHostingController` por tab; cada hosting controller recebe diretamente seu próprio `UITabBarItem` e identifier. Não há barra customizada nem associação por posição, texto, símbolo ou espera temporal. `bash scripts/test-ios.sh --tab-regression` alterna Register/History dez vezes após Success; a suíte também cobre o inventário normal de History e o identifier de retry. Existe regressão em `UIContentSizeCategoryAccessibilityExtraExtraExtraLarge`; ela complementa, mas não substitui, VoiceOver e validação manual.
 
 O gate cross-platform `make verify` permanece separado e não exige macOS/Xcode.
 
@@ -62,4 +63,4 @@ O gate cross-platform `make verify` permanece separado e não exige macOS/Xcode.
 - recuperação após encerramento/restart depende de futura autenticação e armazenamento local seguro;
 - Simulator loopback é o alvo seguro atual; acesso por dispositivo físico/LAN permanece planejado e não justifica enfraquecer o backend.
 
-A UI aplica componentes e fontes do sistema, Dynamic Type, labels/hints VoiceOver, ordem semântica nativa, alvos mínimos de toque e Dark Mode. Isso é implementação de baseline, não alegação de conformidade WCAG 2.2 AA; validação manual com tecnologias assistivas e revisão independente ainda são obrigatórias.
+A UI aplica componentes e fontes do sistema, Dynamic Type, labels/hints VoiceOver, ordem semântica nativa, alvos mínimos de toque e Dark Mode. Entrada/Saída são anunciadas textualmente e não dependem apenas de cor. Isso é implementação de baseline, não alegação de conformidade WCAG 2.2 AA; validação manual com tecnologias assistivas e auditoria global do incremento ainda são obrigatórias.

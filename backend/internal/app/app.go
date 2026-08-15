@@ -69,12 +69,24 @@ func New(
 		pool.Close()
 		return nil, err
 	}
-	listExpenses, err := application.NewListExpensesByMonth(repository)
+	recordIncome, err := application.NewRecordIncome(repository, randomid.Generator{}, systemClock{})
 	if err != nil {
 		pool.Close()
 		return nil, err
 	}
-	financialRoutes := httpapi.New(cfg.OwnerID, application.PreviewExpense{}, recordExpense, listExpenses)
+	listTransactions, err := application.NewListTransactionsByMonth(repository)
+	if err != nil {
+		pool.Close()
+		return nil, err
+	}
+	financialRoutes := httpapi.New(
+		cfg.OwnerID,
+		application.PreviewExpense{},
+		application.PreviewIncome{},
+		recordExpense,
+		recordIncome,
+		listTransactions,
+	)
 	applicationInstance.server = httpserver.New(cfg.HTTPAddress, logger, financialRoutes)
 	return applicationInstance, nil
 }

@@ -4,7 +4,7 @@ import Observation
 enum HistoryState: Equatable {
     case idle
     case loading
-    case loaded([Expense])
+    case loaded([FinancialTransaction])
     case failed(String)
 }
 
@@ -25,7 +25,7 @@ final class HistoryViewModel {
     func load() async {
         state = .loading
         do {
-            let response = try await api.expenses(month: month.apiValue)
+            let response = try await api.transactions(month: month.apiValue)
             state = .loaded(response.items)
         } catch is CancellationError {
             state = .idle
@@ -50,7 +50,7 @@ final class HistoryViewModel {
         refreshRevision += 1
     }
 
-    func expenseWasRecorded() {
+    func transactionWasRecorded() {
         refreshRevision += 1
     }
 }

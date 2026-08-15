@@ -13,8 +13,8 @@ final class AppModel {
         registration = RegistrationViewModel(
             api: api,
             now: now,
-            onExpenseRecorded: { [weak history] in
-                history?.expenseWasRecorded()
+            onTransactionRecorded: { [weak history] in
+                history?.transactionWasRecorded()
             }
         )
     }

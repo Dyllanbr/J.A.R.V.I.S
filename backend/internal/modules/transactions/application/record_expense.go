@@ -2,10 +2,7 @@ package application
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/binary"
 	"errors"
-	"hash"
 
 	"jarvis/backend/internal/modules/transactions/domain"
 )
@@ -19,10 +16,6 @@ var (
 	ErrIdempotencyConflict       = errors.New("record expense: idempotency key was reused")
 	ErrExpenseCommandPersistence = errors.New("record expense: persistence failed")
 )
-
-// RequestFingerprint is the SHA-256 digest of canonical, normalized command
-// semantics. It contains no raw request representation.
-type RequestFingerprint [sha256.Size]byte
 
 // IdempotentExpenseCommand carries the minimum data an atomic write adapter
 // needs to reserve an operation and persist its Expense and audit event.
@@ -137,19 +130,14 @@ func ValidateIdempotencyKey(key string) error {
 	if key == "" {
 		return ErrIdempotencyKeyRequired
 	}
-	if len(key) > domain.MaxIdentifierBytes {
+	if !isValidIdempotencyKey(key) {
 		return ErrIdempotencyKeyInvalid
-	}
-	for index := 0; index < len(key); index++ {
-		if key[index] < '!' || key[index] > '~' {
-			return ErrIdempotencyKeyInvalid
-		}
 	}
 	return nil
 }
 
 func fingerprintExpense(details domain.ExpenseDetails) RequestFingerprint {
-	digest := sha256.New()
+	digest := newRequestFingerprintDigest()
 	writeFingerprintString(digest, string(domain.TransactionTypeExpense))
 	writeFingerprintString(digest, details.Description)
 	writeFingerprintInt64(digest, details.Amount.MinorUnits())
@@ -162,17 +150,4 @@ func fingerprintExpense(details domain.ExpenseDetails) RequestFingerprint {
 	var fingerprint RequestFingerprint
 	copy(fingerprint[:], digest.Sum(nil))
 	return fingerprint
-}
-
-func writeFingerprintString(digest hash.Hash, value string) {
-	var length [8]byte
-	binary.BigEndian.PutUint64(length[:], uint64(len(value)))
-	_, _ = digest.Write(length[:])
-	_, _ = digest.Write([]byte(value))
-}
-
-func writeFingerprintInt64(digest hash.Hash, value int64) {
-	var encoded [8]byte
-	binary.BigEndian.PutUint64(encoded[:], uint64(value))
-	_, _ = digest.Write(encoded[:])
 }
