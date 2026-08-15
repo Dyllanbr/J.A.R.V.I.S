@@ -3,8 +3,10 @@ import Foundation
 @MainActor
 protocol FinancialAPI {
     func preview(_ request: ExpenseRequest) async throws -> ExpensePreview
+    func preview(_ request: IncomeRequest) async throws -> IncomePreview
     func create(_ request: ExpenseRequest, idempotencyKey: String) async throws -> RecordedExpense
-    func expenses(month: String) async throws -> ExpenseMonth
+    func create(_ request: IncomeRequest, idempotencyKey: String) async throws -> RecordedIncome
+    func transactions(month: String) async throws -> TransactionMonth
 }
 
 enum FinancialAPIError: Error, Equatable {
@@ -53,6 +55,17 @@ final class URLSessionFinancialAPIClient: FinancialAPI {
         return preview
     }
 
+    func preview(_ requestBody: IncomeRequest) async throws -> IncomePreview {
+        let request = try makeRequest(path: "v1/transactions/preview", method: "POST", body: requestBody)
+        let (data, response) = try await perform(request)
+        try requireStatus(response, expected: 200, data: data)
+        let preview: IncomePreview = try decode(data)
+        guard (try? timestampCodec.decode(preview.occurredAt)) != nil else {
+            throw FinancialAPIError.invalidResponse
+        }
+        return preview
+    }
+
     func create(_ requestBody: ExpenseRequest, idempotencyKey: String) async throws -> RecordedExpense {
         var request = try makeRequest(path: "v1/transactions", method: "POST", body: requestBody)
         request.setValue(idempotencyKey, forHTTPHeaderField: "Idempotency-Key")
@@ -68,7 +81,22 @@ final class URLSessionFinancialAPIClient: FinancialAPI {
         )
     }
 
-    func expenses(month: String) async throws -> ExpenseMonth {
+    func create(_ requestBody: IncomeRequest, idempotencyKey: String) async throws -> RecordedIncome {
+        var request = try makeRequest(path: "v1/transactions", method: "POST", body: requestBody)
+        request.setValue(idempotencyKey, forHTTPHeaderField: "Idempotency-Key")
+        let (data, response) = try await perform(request)
+        try requireStatus(response, expected: 201, data: data)
+        let income: Income = try decode(data)
+        guard timestampsAreValid(income) else {
+            throw FinancialAPIError.invalidResponse
+        }
+        return RecordedIncome(
+            income: income,
+            replayed: response.value(forHTTPHeaderField: "Idempotency-Replayed") == "true"
+        )
+    }
+
+    func transactions(month: String) async throws -> TransactionMonth {
         guard var components = URLComponents(
             url: baseURL.appendingPathComponent("v1/transactions"),
             resolvingAgainstBaseURL: false
@@ -84,7 +112,7 @@ final class URLSessionFinancialAPIClient: FinancialAPI {
         request.cachePolicy = .reloadIgnoringLocalCacheData
         let (data, response) = try await perform(request)
         try requireStatus(response, expected: 200, data: data)
-        let monthResponse: ExpenseMonth = try decode(data)
+        let monthResponse: TransactionMonth = try decode(data)
         guard monthResponse.items.allSatisfy(timestampsAreValid) else {
             throw FinancialAPIError.invalidResponse
         }
@@ -157,6 +185,21 @@ final class URLSessionFinancialAPIClient: FinancialAPI {
         (try? timestampCodec.decode(expense.occurredAt)) != nil
             && (try? timestampCodec.decode(expense.createdAt)) != nil
             && (try? timestampCodec.decode(expense.updatedAt)) != nil
+    }
+
+    private func timestampsAreValid(_ income: Income) -> Bool {
+        (try? timestampCodec.decode(income.occurredAt)) != nil
+            && (try? timestampCodec.decode(income.createdAt)) != nil
+            && (try? timestampCodec.decode(income.updatedAt)) != nil
+    }
+
+    private func timestampsAreValid(_ transaction: FinancialTransaction) -> Bool {
+        switch transaction {
+        case let .expense(expense):
+            timestampsAreValid(expense)
+        case let .income(income):
+            timestampsAreValid(income)
+        }
     }
 
     private static func makeSession() -> URLSession {

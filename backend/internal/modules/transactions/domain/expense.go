@@ -2,19 +2,14 @@ package domain
 
 import (
 	"errors"
-	"strings"
 	"time"
-	"unicode"
-	"unicode/utf8"
 )
 
 const (
 	// MaxExpenseDescriptionRunes limits descriptions by Unicode characters,
 	// not encoded bytes, without changing their internal content.
-	MaxExpenseDescriptionRunes = 200
-	// MaxIdentifierBytes bounds opaque technical identifiers by UTF-8 bytes.
-	MaxIdentifierBytes    = 128
-	initialExpenseVersion = uint64(1)
+	MaxExpenseDescriptionRunes = maxFinancialDescriptionRunes
+	initialExpenseVersion      = uint64(1)
 )
 
 var (
@@ -29,11 +24,6 @@ var (
 	ErrInvalidCreatedAt         = errors.New("expense: invalid creation time")
 )
 
-// TransactionType identifies the financial meaning of a transaction.
-type TransactionType string
-
-const TransactionTypeExpense TransactionType = "EXPENSE"
-
 // PaymentMethod identifies how an expense was paid.
 type PaymentMethod string
 
@@ -42,14 +32,6 @@ const (
 	PaymentMethodDebit  PaymentMethod = "DEBIT"
 	PaymentMethodCredit PaymentMethod = "CREDIT"
 	PaymentMethodCash   PaymentMethod = "CASH"
-)
-
-// Origin identifies the channel that confirmed the expense command.
-type Origin string
-
-const (
-	OriginIOS      Origin = "IOS"
-	OriginWhatsApp Origin = "WHATSAPP"
 )
 
 // ExpenseStatus identifies the lifecycle state of an expense.
@@ -112,8 +94,8 @@ func NormalizeExpenseDetails(details ExpenseDetails) (ExpenseDetails, error) {
 		return ExpenseDetails{}, ErrInvalidUserID
 	}
 
-	description := strings.TrimSpace(details.Description)
-	if description == "" || !utf8.ValidString(description) || utf8.RuneCountInString(description) > MaxExpenseDescriptionRunes {
+	description, valid := normalizeFinancialDescription(details.Description)
+	if !valid {
 		return ExpenseDetails{}, ErrInvalidDescription
 	}
 
@@ -193,26 +175,6 @@ func (e Expense) Version() uint64              { return e.version }
 func (e Expense) CreatedAt() time.Time         { return e.createdAt }
 func (e Expense) UpdatedAt() time.Time         { return e.updatedAt }
 
-func isValidIdentifier(value string) bool {
-	if value == "" || value != strings.TrimSpace(value) || len(value) > MaxIdentifierBytes || !utf8.ValidString(value) {
-		return false
-	}
-	for _, character := range value {
-		if unicode.IsControl(character) {
-			return false
-		}
-	}
-	return true
-}
-
-func isValidTimezone(value string) bool {
-	if value == "" || value != strings.TrimSpace(value) || value == "Local" {
-		return false
-	}
-	_, err := time.LoadLocation(value)
-	return err == nil
-}
-
 func (method PaymentMethod) valid() bool {
 	switch method {
 	case PaymentMethodPIX, PaymentMethodDebit, PaymentMethodCredit, PaymentMethodCash:
@@ -220,17 +182,4 @@ func (method PaymentMethod) valid() bool {
 	default:
 		return false
 	}
-}
-
-func (origin Origin) valid() bool {
-	switch origin {
-	case OriginIOS, OriginWhatsApp:
-		return true
-	default:
-		return false
-	}
-}
-
-func normalizeInstant(value time.Time) time.Time {
-	return value.UTC().Round(0)
 }

@@ -6,10 +6,10 @@ Estes documentos são baselines e templates de privacy by design. Eles não afir
 
 É necessário distinguir três dimensões:
 
-- **Campos modelados:** `Expense` já representa ID, UserID, descrição, valor, forma de pagamento, data/hora, timezone financeiro e origem. UserID é um identificador opaco do modelo e não é considerado intrinsecamente anônimo ou sintético.
+- **Campos modelados:** `Expense` e `Income` são agregados separados e representam ID, UserID, tipo, descrição, valor, data/hora, timezone financeiro e origem; somente Expense possui forma de pagamento. UserID é um identificador opaco do modelo e não é considerado intrinsecamente anônimo ou sintético. Não existem campos estruturados para salário, empregador, source, categoria ou conta.
 - **Fixtures de teste:** os valores usados atualmente pelos testes automatizados são exclusivamente sintéticos.
 - **Operação local/teste:** PostgreSQL e a API financeira opt-in persistem dados financeiros exclusivamente sintéticos em desenvolvimento e em bancos descartáveis de integração. A metadata idempotente é técnica e mínima. Isso valida comportamento, não representa tratamento de usuário real.
-- **Cliente iOS:** a Etapa 3 mantém rascunho, preview e chave idempotente somente em memória, sem UserDefaults, banco local, analytics, telemetria ou owner. XCTest/XCUITest e a integração usam apenas fixtures sintéticas.
+- **Cliente iOS:** o app mantém rascunho Expense/Income, preview e chave idempotente somente em memória, sem UserDefaults, banco local, analytics, telemetria ou owner. A descrição livre pode conter informação financeira sensível, inclusive referência a renda ou empregador, por isso minimização e proibição de dados reais em fixtures continuam obrigatórias.
 - **Tratamento de produto:** ainda não existem conta ou usuário real, armazenamento aprovado de dados financeiros reais, autenticação, beta externo ou integração financeira externa. A presença dos endpoints não autoriza uso com dados reais antes do LGPD Readiness Gate.
 
 Enquanto o projeto for usado exclusivamente por pessoa natural para fins particulares e não econômicos, aplica-se a exceção do art. 4º, I, da LGPD. Essa exceção deve ser reavaliada se o contexto mudar e nunca autoriza ignorar segurança ou privacidade.

@@ -136,18 +136,20 @@ xcrun simctl bootstatus "$simulator_id" -b
 
 echo "Using iOS Simulator: device=$simulator_name runtime=$simulator_runtime UDID=$simulator_id"
 
-test_filter=""
+test_filters=()
 test_api_mode="stub"
 test_description="Mercado_sintetico_UI"
 case "$mode" in
   --unit)
-    test_filter="-only-testing:JARVISTests"
+    test_filters+=("-only-testing:JARVISTests")
     ;;
   --ui)
-    test_filter="-only-testing:JARVISUITests"
+    test_filters+=("-only-testing:JARVISUITests")
     ;;
   --tab-regression)
-    test_filter="-only-testing:JARVISUITests/JARVISUITests/testTabIdentifiersSurviveSuccessAndRepeatedNavigation"
+    test_filters+=(
+      "-only-testing:JARVISUITests/JARVISUITests/testTabIdentifiersSurviveSuccessAndRepeatedNavigation"
+    )
     ;;
   --real-api)
     if [[ -z "${JARVIS_IOS_E2E_BASE_URL:-}" ]]; then
@@ -163,7 +165,10 @@ case "$mode" in
     esac
     test_api_mode="real"
     test_description="${JARVIS_IOS_E2E_DESCRIPTION:-Mercado_sintetico_E2E_$$_$RANDOM}"
-    test_filter="-only-testing:JARVISUITests/JARVISUITests/testRegisterPreviewConfirmAndHistory"
+    test_filters+=(
+      "-only-testing:JARVISUITests/JARVISUITests/testRegisterPreviewConfirmAndHistory"
+      "-only-testing:JARVISUITests/JARVISUITests/testRegisterIncomePreviewConfirmAndHistory"
+    )
     ;;
 esac
 
@@ -183,8 +188,10 @@ xcodebuild_arguments=(
   "JARVIS_IOS_E2E_BASE_URL=${JARVIS_IOS_E2E_BASE_URL:-}"
   "JARVIS_IOS_E2E_DESCRIPTION=$test_description"
 )
-if [[ -n "$test_filter" ]]; then
-  xcodebuild_arguments+=("$test_filter")
+if ((${#test_filters[@]} > 0)); then
+  for test_filter in "${test_filters[@]}"; do
+    xcodebuild_arguments+=("$test_filter")
+  done
 fi
 xcodebuild "${xcodebuild_arguments[@]}"
 

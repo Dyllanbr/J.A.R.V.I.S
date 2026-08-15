@@ -1,12 +1,15 @@
 package postgres
 
 import (
+	"context"
 	"errors"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	"jarvis/backend/internal/modules/transactions/application"
 )
 
 func TestNewExpenseRepositoryValidatesDependencies(t *testing.T) {
@@ -19,6 +22,16 @@ func TestNewExpenseRepositoryValidatesDependencies(t *testing.T) {
 	}
 	if _, err := NewExpenseRepository(&pgxpool.Pool{}, 31*time.Second); !errors.Is(err, ErrInvalidTimeout) {
 		t.Fatalf("NewExpenseRepository(pool, 31s) error = %v, want %v", err, ErrInvalidTimeout)
+	}
+}
+
+func TestIncomeStoreRejectsCrossTypeOperationBeforeDatabaseAccess(t *testing.T) {
+	repository := &ExpenseRepository{}
+	_, err := repository.RecordIncome(context.Background(), application.IdempotentIncomeCommand{
+		Operation: application.IdempotencyOperationCreateExpense,
+	})
+	if !errors.Is(err, ErrInvalidIncomeOperation) {
+		t.Fatalf("RecordIncome(CREATE_EXPENSE) error = %v, want %v", err, ErrInvalidIncomeOperation)
 	}
 }
 

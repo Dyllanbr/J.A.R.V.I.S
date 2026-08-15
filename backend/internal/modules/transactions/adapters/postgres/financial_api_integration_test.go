@@ -152,9 +152,13 @@ func TestFinancialAPIReplayAfterRestartReturnsIdenticalCanonicalResource(t *test
 	insertSyntheticUser(t, ctx, pool, syntheticUserID)
 
 	requestBody := []byte(`{"type":"EXPENSE","description":"  Reinício sintético  ","amount":{"minor":4250,"currency":"BRL"},"paymentMethod":"PIX","occurredAt":"2026-08-14T15:00:00.000000123Z"}`)
-	serverA := newFinancialIntegrationServer(t, pool, fixedIntegrationIDGenerator{id: "exp_cross_restart"}, fixedFinancialClock{
-		now: time.Date(2026, time.August, 14, 18, 0, 0, 123_456_789, time.UTC),
-	})
+	serverA := newFinancialIntegrationServer(
+		t,
+		pool,
+		fixedIntegrationIDGenerator{id: "exp_cross_restart"},
+		fixedIncomeIntegrationIDGenerator{id: "inc_unused_expense_server_a"},
+		fixedFinancialClock{now: time.Date(2026, time.August, 14, 18, 0, 0, 123_456_789, time.UTC)},
+	)
 	defer serverA.Close()
 
 	preview := postFinancialJSON(t, serverA.Client(), serverA.URL+"/v1/transactions/preview", requestBody, "")
@@ -181,9 +185,13 @@ func TestFinancialAPIReplayAfterRestartReturnsIdenticalCanonicalResource(t *test
 	if err := poolB.Ping(ctx); err != nil {
 		t.Fatal("independent replay pool readiness failed")
 	}
-	serverB := newFinancialIntegrationServer(t, poolB, fixedIntegrationIDGenerator{id: "exp_unused_after_restart"}, fixedFinancialClock{
-		now: time.Date(2026, time.August, 15, 12, 0, 0, 987_654_321, time.UTC),
-	})
+	serverB := newFinancialIntegrationServer(
+		t,
+		poolB,
+		fixedIntegrationIDGenerator{id: "exp_unused_after_restart"},
+		fixedIncomeIntegrationIDGenerator{id: "inc_unused_expense_server_b"},
+		fixedFinancialClock{now: time.Date(2026, time.August, 15, 12, 0, 0, 987_654_321, time.UTC)},
+	)
 	defer serverB.Close()
 
 	replayed := postFinancialJSON(t, serverB.Client(), serverB.URL+"/v1/transactions", requestBody, "idem-cross-restart")
@@ -197,6 +205,67 @@ func TestFinancialAPIReplayAfterRestartReturnsIdenticalCanonicalResource(t *test
 		t.Fatal("cross-restart replay changed the resource ID")
 	}
 	assertFinancialRowCounts(t, ctx, pool, 1, 1, 1)
+}
+
+func TestIncomeFinancialAPIReplayAfterRestartReturnsIdenticalCanonicalResource(t *testing.T) {
+	pool := newMigratedTestDatabase(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	insertSyntheticUser(t, ctx, pool, syntheticUserID)
+
+	requestBody := []byte(`{"type":"INCOME","description":"  Salário reinício sintético  ","amount":{"minor":725000,"currency":"BRL"},"occurredAt":"2026-08-14T15:00:00.123456789Z"}`)
+	serverA := newFinancialIntegrationServer(
+		t,
+		pool,
+		fixedIntegrationIDGenerator{id: "exp_unused_income_server_a"},
+		fixedIncomeIntegrationIDGenerator{id: "inc_http_cross_restart"},
+		fixedFinancialClock{now: time.Date(2026, time.August, 14, 18, 0, 0, 987_654_321, time.UTC)},
+	)
+	defer serverA.Close()
+
+	preview := postFinancialJSON(t, serverA.Client(), serverA.URL+"/v1/transactions/preview", requestBody, "")
+	if preview.status != http.StatusOK || jsonStringField(t, preview.body, "occurredAt") != "2026-08-14T15:00:00.123456Z" ||
+		bytes.Contains(preview.body, []byte(`"paymentMethod"`)) {
+		t.Fatalf("Income preview response = %d %s", preview.status, preview.body)
+	}
+	assertIncomeFinancialRowCounts(t, ctx, pool, 0, 0, 0)
+
+	created := postFinancialJSON(t, serverA.Client(), serverA.URL+"/v1/transactions", requestBody, "income-http-cross-restart")
+	if created.status != http.StatusCreated || created.header.Get("Idempotency-Replayed") != "" ||
+		bytes.Contains(created.body, []byte(`"paymentMethod"`)) {
+		t.Fatalf("Income create response = %d headers=%v body=%s", created.status, created.header, created.body)
+	}
+	if jsonStringField(t, created.body, "occurredAt") != "2026-08-14T15:00:00.123456Z" ||
+		jsonStringField(t, created.body, "createdAt") != "2026-08-14T18:00:00.987654Z" {
+		t.Fatalf("Income create response is not canonical: %s", created.body)
+	}
+	serverA.Close()
+
+	poolB, err := pgxpool.New(ctx, pool.Config().ConnConfig.ConnString())
+	if err != nil {
+		t.Fatal("opening independent Income replay pool failed")
+	}
+	defer poolB.Close()
+	if err := poolB.Ping(ctx); err != nil {
+		t.Fatal("independent Income replay pool readiness failed")
+	}
+	serverB := newFinancialIntegrationServer(
+		t,
+		poolB,
+		fixedIntegrationIDGenerator{id: "exp_unused_income_server_b"},
+		fixedIncomeIntegrationIDGenerator{id: "inc_unused_after_http_restart"},
+		fixedFinancialClock{now: time.Date(2026, time.August, 15, 12, 0, 0, 123_456_789, time.UTC)},
+	)
+	defer serverB.Close()
+
+	replayed := postFinancialJSON(t, serverB.Client(), serverB.URL+"/v1/transactions", requestBody, "income-http-cross-restart")
+	if replayed.status != http.StatusCreated || replayed.header.Get("Idempotency-Replayed") != "true" {
+		t.Fatalf("Income replay response = %d headers=%v body=%s", replayed.status, replayed.header, replayed.body)
+	}
+	if !bytes.Equal(created.body, replayed.body) {
+		t.Fatalf("Income cross-restart bodies differ:\ncreated=%s\nreplayed=%s", created.body, replayed.body)
+	}
+	assertIncomeFinancialRowCounts(t, ctx, pool, 1, 1, 1)
 }
 
 func TestPreviewExpenseLeavesPostgresUnchanged(t *testing.T) {
@@ -654,20 +723,32 @@ type financialHTTPResponse struct {
 func newFinancialIntegrationServer(
 	t *testing.T,
 	pool *pgxpool.Pool,
-	idGenerator application.ExpenseIDGenerator,
+	expenseIDGenerator application.ExpenseIDGenerator,
+	incomeIDGenerator application.IncomeIDGenerator,
 	clock application.Clock,
 ) *httptest.Server {
 	t.Helper()
 	repository := newRepository(t, pool)
-	record, err := application.NewRecordExpense(repository, idGenerator, clock)
+	recordExpense, err := application.NewRecordExpense(repository, expenseIDGenerator, clock)
 	if err != nil {
 		t.Fatalf("NewRecordExpense() error = %v", err)
 	}
-	list, err := application.NewListExpensesByMonth(repository)
+	recordIncome, err := application.NewRecordIncome(repository, incomeIDGenerator, clock)
 	if err != nil {
-		t.Fatalf("NewListExpensesByMonth() error = %v", err)
+		t.Fatalf("NewRecordIncome() error = %v", err)
 	}
-	routes := httpapi.New(syntheticUserID, application.PreviewExpense{}, record, list)
+	list, err := application.NewListTransactionsByMonth(repository)
+	if err != nil {
+		t.Fatalf("NewListTransactionsByMonth() error = %v", err)
+	}
+	routes := httpapi.New(
+		syntheticUserID,
+		application.PreviewExpense{},
+		application.PreviewIncome{},
+		recordExpense,
+		recordIncome,
+		list,
+	)
 	mux := http.NewServeMux()
 	routes.Register(mux)
 	return httptest.NewServer(mux)

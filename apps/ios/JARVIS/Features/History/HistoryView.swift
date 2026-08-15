@@ -56,19 +56,19 @@ struct HistoryView: View {
             ProgressView("Carregando histórico")
                 .accessibilityIdentifier("history.loading")
             Spacer()
-        case let .loaded(expenses):
-            if expenses.isEmpty {
+        case let .loaded(transactions):
+            if transactions.isEmpty {
                 Spacer()
                 ContentUnavailableView(
-                    "Nenhuma despesa registrada neste mês",
+                    "Nenhuma movimentação registrada neste mês",
                     systemImage: "tray",
-                    description: Text("Quando você registrar uma despesa, ela aparecerá aqui.")
+                    description: Text("Quando você registrar uma despesa ou receita, ela aparecerá aqui.")
                 )
                 .accessibilityIdentifier("history.empty")
                 Spacer()
             } else {
-                List(expenses) { expense in
-                    expenseRow(expense)
+                List(transactions) { transaction in
+                    transactionRow(transaction)
                 }
                 .listStyle(.plain)
                 .refreshable { await model.load() }
@@ -90,6 +90,16 @@ struct HistoryView: View {
         }
     }
 
+    @ViewBuilder
+    private func transactionRow(_ transaction: FinancialTransaction) -> some View {
+        switch transaction {
+        case let .expense(expense):
+            expenseRow(expense)
+        case let .income(income):
+            incomeRow(income)
+        }
+    }
+
     private func expenseRow(_ expense: Expense) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(alignment: .firstTextBaseline) {
@@ -100,7 +110,7 @@ struct HistoryView: View {
                     .font(.headline)
             }
             HStack {
-                Text(expense.paymentMethod.displayName)
+                Text("Saída · \(expense.paymentMethod.displayName)")
                 Spacer()
                 Text(displayFormatter.dateTime(expense.occurredAt))
             }
@@ -110,9 +120,35 @@ struct HistoryView: View {
         .padding(.vertical, 4)
         .accessibilityElement(children: .combine)
         .accessibilityLabel(
-            "\(expense.description), \(moneyFormatter.string(minorUnits: expense.amount.minor)), "
+            "Saída, \(expense.description), \(moneyFormatter.string(minorUnits: expense.amount.minor)), "
                 + "\(expense.paymentMethod.displayName), \(displayFormatter.dateTime(expense.occurredAt))"
         )
         .accessibilityIdentifier("history.expense.\(expense.id)")
+    }
+
+    private func incomeRow(_ income: Income) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(alignment: .firstTextBaseline) {
+                Text(income.description)
+                    .font(.headline)
+                Spacer()
+                Text(moneyFormatter.string(minorUnits: income.amount.minor))
+                    .font(.headline)
+            }
+            HStack {
+                Text("Entrada")
+                Spacer()
+                Text(displayFormatter.dateTime(income.occurredAt))
+            }
+            .font(.subheadline)
+            .foregroundStyle(.secondary)
+        }
+        .padding(.vertical, 4)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(
+            "Entrada, \(income.description), \(moneyFormatter.string(minorUnits: income.amount.minor)), "
+                + displayFormatter.dateTime(income.occurredAt)
+        )
+        .accessibilityIdentifier("history.income.\(income.id)")
     }
 }

@@ -1,6 +1,10 @@
 # J.A.R.V.I.S.
 
-Monorepo do J.A.R.V.I.S., um assessor financeiro pessoal em construção. O núcleo, a persistência PostgreSQL e a Financial API da despesa simples estão verificados pelas etapas anteriores. A Etapa 3 implementa o primeiro app SwiftUI nativo, aguardando revisão independente. O sistema apenas registra informações no organizador: não executa Pix, pagamentos, compras, transferências ou qualquer movimentação de fundos.
+Monorepo do J.A.R.V.I.S., um assessor financeiro pessoal em construção. O Incremento 1 — Despesas está verificado. O Incremento 2 — Receitas está implementado e pronto para auditoria global independente, sem ainda ser classificado como verificado.
+
+> “O J.A.R.V.I.S. é uma plataforma de organização, acompanhamento, análise e aconselhamento financeiro pessoal. Ele não inicia, autoriza ou executa transações financeiras ou pagamentos.”
+
+O sistema registra no organizador que dinheiro saiu ou entrou. Ele não executa Pix, recebimentos, pagamentos, compras, transferências ou qualquer movimentação de fundos.
 
 ## Estado atual
 
@@ -8,10 +12,11 @@ Implementado:
 
 - backend Go em monólito modular;
 - `Money`, `Expense` e `CreateExpense` verificados no núcleo do módulo `transactions`;
-- migrations versionadas e adapter PostgreSQL verificados para `Expense` + `EXPENSE_RECORDED` atômicos;
-- API financeira opt-in com preview sem escrita, criação idempotente e listagem mensal, verificada pela Etapa 2B;
-- projeto iOS 17/SwiftUI, entrada com preview/revisão/confirmação e histórico mensal, implementados e aguardando revisão independente;
-- XCTest/XCUITest e integração automatizada Simulator → API → PostgreSQL, implementados;
+- `Income` como agregado de escrita separado, com magnitude positiva e sem forma de pagamento, implementado pelo Incremento 2;
+- migrations versionadas e adapter PostgreSQL com `EXPENSE_RECORDED`/`INCOME_RECORDED`, idempotência e auditoria atômicas;
+- API financeira opt-in com preview sem escrita, registro idempotente por tipo e histórico mensal misto, discriminado por `EXPENSE`/`INCOME`;
+- projeto iOS 17/SwiftUI com seletor Despesa/Receita, preview/revisão/confirmação, sucesso e histórico misto;
+- XCTest/XCUITest e integração automatizada Simulator → API → PostgreSQL para Expense e Income;
 - health check operacional, configuração e shutdown gracioso;
 - testes nativos Go e smoke de API com Playwright/TypeScript;
 - contrato OpenAPI 3.1 validado semanticamente;
@@ -116,7 +121,7 @@ cd backend
 go run ./cmd/api
 ```
 
-Esse owner vem do servidor e não é autenticação. O contrato expõe `POST /v1/transactions/preview`, `POST /v1/transactions` e `GET /v1/transactions?month=YYYY-MM`. O POST mutável deve ser chamado pelo canal somente depois de apresentar o preview e obter confirmação explícita. `origin=IOS` e `America/Sao_Paulo` são atribuídos pelo servidor; o cliente não envia `userId`, origin ou timezone.
+Esse owner vem do servidor e não é autenticação. O contrato expõe `POST /v1/transactions/preview`, `POST /v1/transactions` e `GET /v1/transactions?month=YYYY-MM`. Preview e registro usam o discriminador explícito `EXPENSE` ou `INCOME`; Expense exige `paymentMethod`, enquanto Income não possui esse campo. O POST mutável deve ser chamado pelo canal somente depois de apresentar o preview e obter confirmação explícita. `origin=IOS` e `America/Sao_Paulo` são atribuídos pelo servidor; o cliente não envia `userId`, origin ou timezone.
 
 ## Aplicativo iOS
 
@@ -128,7 +133,7 @@ make verify-ios
 make test-ios-integration
 ```
 
-O gate iOS é separado de `make verify`, que continua reproduzível no ambiente cross-platform do backend. XCUITest com stub cobre regressão de UI; a integração local real é fail-closed, gerencia PostgreSQL, migrations, owner/fixture sintéticos, API e Simulator, passa pelo app/URLSession e exige no banco uma Expense, um audit event e um registro idempotente concluído. Instruções de configuração e as limitações de segurança estão em [`apps/ios/README.md`](apps/ios/README.md).
+O gate iOS é separado de `make verify`, que continua reproduzível no ambiente cross-platform do backend. XCUITest com stub cobre regressão de UI; a integração local real é fail-closed, gerencia PostgreSQL, migrations, owner/fixtures sintéticos, API e Simulator, passa pelo app/URLSession e exige no banco, para cada tipo, exatamente uma transaction, um audit event e um registro idempotente concluído. Income também deve manter `payment_method` nulo. Instruções de configuração e as limitações de segurança estão em [`apps/ios/README.md`](apps/ios/README.md).
 
 ## Smoke test
 
@@ -146,4 +151,4 @@ As regras permanentes estão em [AGENTS.md](AGENTS.md). A [Definition of Done](d
 
 ## Limitações atuais
 
-A API financeira é um contexto local single-owner temporário, sem autenticação, autorização multiusuário, rate limiting distribuído ou uso real aprovado. O app iOS não persiste dados localmente, e o retry idempotente pendente não sobrevive a restart. Não há dados reais, banco de produção, receitas, parcelamentos, categorias funcionais, orçamento, metas, Face ID, passkeys, PIN, WhatsApp funcional, OpenAI, IA, MCP, agentes de produto, cloud ou Terraform funcional. Dispositivo físico/LAN permanece planejado até existir proteção apropriada. O audit event existe apenas junto ao novo registro; preview, replay e leitura não geram eventos. A retenção de metadata de idempotência e outcomes de commit indeterminado exigem política operacional antes de uso real. As baselines LGPD e WCAG não são alegações de conformidade.
+A API financeira é um contexto local single-owner temporário, sem autenticação, autorização multiusuário, rate limiting distribuído ou uso real aprovado. O app iOS não persiste dados localmente, e o retry idempotente pendente não sobrevive a restart. O histórico retorna apenas itens Expense/Income: não calcula totais, saldo, orçamento ou Disponível Seguro. Não há dados reais, banco de produção, parcelamentos, cartões, categorias funcionais, recorrências, orçamento, metas, Face ID, passkeys, PIN, WhatsApp funcional, Open Finance, OpenAI, IA, MCP, agentes de produto, cloud ou Terraform funcional. Dispositivo físico/LAN permanece planejado até existir proteção apropriada. Audit events existem apenas junto ao novo registro; preview, replay e leitura não geram eventos. A retenção de metadata de idempotência e outcomes de commit indeterminado exigem política operacional antes de uso real. As baselines LGPD e WCAG não são alegações de conformidade.

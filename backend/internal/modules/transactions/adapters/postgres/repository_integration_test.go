@@ -34,7 +34,7 @@ func TestMigrationsUpDownAndReapply(t *testing.T) {
 		if err := migrations.Up(ctx, connection); err != nil {
 			t.Fatal("migration UP failed")
 		}
-		assertMigrationVersion(t, ctx, connection, 2)
+		assertMigrationVersion(t, ctx, connection, 3)
 	})
 	assertTablesExist(t, ctx, pool, true)
 	assertTableExists(t, ctx, pool, "idempotency_records", true)
@@ -48,13 +48,23 @@ func TestMigrationsUpDownAndReapply(t *testing.T) {
 		if err := migrations.Up(ctx, connection); err != nil {
 			t.Fatal("reapplying migration UP failed")
 		}
+		assertMigrationVersion(t, ctx, connection, 3)
+		if err := migrations.Down(ctx, connection); err != nil {
+			t.Fatal("migration 003 DOWN failed")
+		}
 		assertMigrationVersion(t, ctx, connection, 2)
+	})
+	assertTablesExist(t, ctx, pool, true)
+	assertTableExists(t, ctx, pool, "idempotency_records", true)
+	assertMonthlyIndex(t, ctx, pool, true)
+	assertMigration002SchemaRestored(t, ctx, pool)
+
+	withConnection(t, ctx, pool, func(connection *pgx.Conn) {
 		if err := migrations.Down(ctx, connection); err != nil {
 			t.Fatal("migration 002 DOWN failed")
 		}
 		assertMigrationVersion(t, ctx, connection, 1)
 	})
-	assertTablesExist(t, ctx, pool, true)
 	assertTableExists(t, ctx, pool, "idempotency_records", false)
 	assertMonthlyIndex(t, ctx, pool, false)
 
@@ -62,7 +72,7 @@ func TestMigrationsUpDownAndReapply(t *testing.T) {
 		if err := migrations.Up(ctx, connection); err != nil {
 			t.Fatal("migration UP after DOWN failed")
 		}
-		assertMigrationVersion(t, ctx, connection, 2)
+		assertMigrationVersion(t, ctx, connection, 3)
 	})
 	assertTablesExist(t, ctx, pool, true)
 	assertTableExists(t, ctx, pool, "idempotency_records", true)
@@ -760,9 +770,25 @@ func assertIdempotencySchemaIsMinimal(t *testing.T, ctx context.Context, pool *p
 		"transaction_id",
 		"created_at",
 		"completed_at",
+		"transaction_type",
 	}
 	if fmt.Sprint(columns) != fmt.Sprint(expected) {
 		t.Fatalf("idempotency columns = %v, want minimal schema %v", columns, expected)
+	}
+
+	var generated, expression string
+	if err := pool.QueryRow(ctx, `
+		SELECT is_generated, generation_expression
+		FROM information_schema.columns
+		WHERE table_schema = 'public'
+		  AND table_name = 'idempotency_records'
+		  AND column_name = 'transaction_type'
+	`).Scan(&generated, &expression); err != nil {
+		t.Fatal("idempotency transaction_type generation lookup failed")
+	}
+	if generated != "ALWAYS" || !strings.Contains(expression, "CREATE_EXPENSE") ||
+		!strings.Contains(expression, "CREATE_INCOME") {
+		t.Fatal("idempotency transaction_type is not derived from operation")
 	}
 }
 
@@ -788,6 +814,62 @@ func assertMonthlyIndex(t *testing.T, ctx context.Context, pool *pgxpool.Pool, e
 	}
 }
 
+func assertMigration002SchemaRestored(t *testing.T, ctx context.Context, pool *pgxpool.Pool) {
+	t.Helper()
+
+	var paymentMethodNullable string
+	if err := pool.QueryRow(ctx, `
+		SELECT is_nullable
+		FROM information_schema.columns
+		WHERE table_schema = 'public'
+		  AND table_name = 'transactions'
+		  AND column_name = 'payment_method'
+	`).Scan(&paymentMethodNullable); err != nil {
+		t.Fatal("payment_method nullability lookup failed")
+	}
+	if paymentMethodNullable != "NO" {
+		t.Fatalf("migration 002 payment_method is_nullable = %q, want NO", paymentMethodNullable)
+	}
+
+	var transactionTypeColumnExists bool
+	if err := pool.QueryRow(ctx, `
+		SELECT EXISTS (
+			SELECT 1
+			FROM information_schema.columns
+			WHERE table_schema = 'public'
+			  AND table_name = 'idempotency_records'
+			  AND column_name = 'transaction_type'
+		)
+	`).Scan(&transactionTypeColumnExists); err != nil {
+		t.Fatal("migration 002 idempotency schema lookup failed")
+	}
+	if transactionTypeColumnExists {
+		t.Fatal("migration 003 generated column remained after DOWN")
+	}
+
+	for _, constraint := range []string{
+		"transactions_type_expense",
+		"transactions_payment_method_valid",
+		"audit_events_aggregate_type_expense",
+		"audit_events_event_type_recorded",
+		"audit_events_transaction_owner_fkey",
+		"idempotency_records_operation_create_expense",
+		"idempotency_records_transaction_owner_fkey",
+	} {
+		var exists bool
+		if err := pool.QueryRow(ctx, `
+			SELECT EXISTS (
+				SELECT 1 FROM pg_constraint WHERE conname = $1
+			)
+		`, constraint).Scan(&exists); err != nil {
+			t.Fatal("migration 002 constraint lookup failed")
+		}
+		if !exists {
+			t.Fatalf("migration 002 constraint %s was not restored", constraint)
+		}
+	}
+}
+
 func assertSchemaConstraints(t *testing.T, ctx context.Context, pool *pgxpool.Pool) {
 	t.Helper()
 	expectations := []struct {
@@ -798,12 +880,13 @@ func assertSchemaConstraints(t *testing.T, ctx context.Context, pool *pgxpool.Po
 		{table: "audit_events", name: "audit_events_pkey", kind: "p", definitionFragment: "PRIMARY KEY (id)"},
 		{table: "transactions", name: "transactions_user_id_fkey", kind: "f", definitionFragment: "FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE RESTRICT"},
 		{table: "audit_events", name: "audit_events_user_id_fkey", kind: "f", definitionFragment: "FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE RESTRICT"},
-		{table: "audit_events", name: "audit_events_transaction_owner_fkey", kind: "f", definitionFragment: "FOREIGN KEY (aggregate_id, user_id) REFERENCES transactions(id, user_id) ON DELETE RESTRICT"},
+		{table: "audit_events", name: "audit_events_transaction_owner_type_fkey", kind: "f", definitionFragment: "FOREIGN KEY (aggregate_id, user_id, aggregate_type) REFERENCES transactions(id, user_id, type) ON DELETE RESTRICT"},
 		{table: "transactions", name: "transactions_id_user_id_unique", kind: "u", definitionFragment: "UNIQUE (id, user_id)"},
+		{table: "transactions", name: "transactions_id_user_id_type_unique", kind: "u", definitionFragment: "UNIQUE (id, user_id, type)"},
 		{table: "audit_events", name: "audit_events_unique_version", kind: "u", definitionFragment: "UNIQUE (aggregate_type, aggregate_id, aggregate_version, event_type)"},
 		{table: "idempotency_records", name: "idempotency_records_pkey", kind: "p", definitionFragment: "PRIMARY KEY (user_id, operation, idempotency_key)"},
 		{table: "idempotency_records", name: "idempotency_records_user_id_fkey", kind: "f", definitionFragment: "FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE RESTRICT"},
-		{table: "idempotency_records", name: "idempotency_records_transaction_owner_fkey", kind: "f", definitionFragment: "FOREIGN KEY (transaction_id, user_id) REFERENCES transactions(id, user_id) ON DELETE RESTRICT"},
+		{table: "idempotency_records", name: "idempotency_records_transaction_owner_type_fkey", kind: "f", definitionFragment: "FOREIGN KEY (transaction_id, user_id, transaction_type) REFERENCES transactions(id, user_id, type) ON DELETE RESTRICT"},
 		{table: "idempotency_records", name: "idempotency_records_transaction_unique", kind: "u", definitionFragment: "UNIQUE (transaction_id)"},
 	}
 
@@ -821,11 +904,11 @@ func assertSchemaConstraints(t *testing.T, ctx context.Context, pool *pgxpool.Po
 			"transactions_user_id_length",
 			"transactions_user_id_trimmed",
 			"transactions_user_id_no_controls",
-			"transactions_type_expense",
+			"transactions_type_valid",
 			"transactions_description_valid",
 			"transactions_amount_positive",
 			"transactions_currency_brl",
-			"transactions_payment_method_valid",
+			"transactions_payment_method_by_type",
 			"transactions_timezone_present",
 			"transactions_origin_valid",
 			"transactions_status_recorded",
@@ -836,15 +919,15 @@ func assertSchemaConstraints(t *testing.T, ctx context.Context, pool *pgxpool.Po
 			"audit_events_user_id_length",
 			"audit_events_user_id_trimmed",
 			"audit_events_user_id_no_controls",
-			"audit_events_aggregate_type_expense",
+			"audit_events_aggregate_type_valid",
 			"audit_events_aggregate_id_length",
 			"audit_events_aggregate_id_trimmed",
 			"audit_events_aggregate_id_no_controls",
 			"audit_events_aggregate_version_positive",
-			"audit_events_event_type_recorded",
+			"audit_events_event_matches_aggregate",
 		},
 		"idempotency_records": {
-			"idempotency_records_operation_create_expense",
+			"idempotency_records_operation_valid",
 			"idempotency_records_key_length",
 			"idempotency_records_key_visible_ascii",
 			"idempotency_records_fingerprint_sha256",

@@ -34,6 +34,7 @@ func (repository *ExpenseRepository) ListByFinancialMonth(
 			status, version, created_at, updated_at
 		FROM transactions
 		WHERE user_id = $1
+		  AND type = 'EXPENSE'
 		  AND occurred_at >= $2
 		  AND occurred_at < $3
 		  AND financial_timezone = $4
@@ -69,7 +70,7 @@ func loadExpense(ctx context.Context, transaction pgx.Tx, id, userID string) (do
 			payment_method, occurred_at, financial_timezone, origin,
 			status, version, created_at, updated_at
 		FROM transactions
-		WHERE id = $1 AND user_id = $2
+		WHERE id = $1 AND user_id = $2 AND type = 'EXPENSE'
 	`, id, userID))
 }
 

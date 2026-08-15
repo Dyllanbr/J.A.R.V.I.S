@@ -41,6 +41,25 @@ final class AppConfigurationTests: XCTestCase {
         }
     }
 
+    func testExplicitRealModeAlsoFailsClosedForIncomeWithoutBaseURL() async {
+        let api = AppConfiguration.financialAPI(environment: [
+            "JARVIS_IOS_API_MODE": "real"
+        ])
+
+        do {
+            _ = try await api.preview(
+                IncomeRequest(
+                    description: "Receita de configuração sintética",
+                    amount: FinancialMoney(minor: 100, currency: .brl),
+                    occurredAt: "2026-08-14T15:00:00Z"
+                )
+            )
+            XCTFail("Real mode without a base URL must fail closed for Income")
+        } catch {
+            XCTAssertEqual(error as? FinancialAPIError, .configuration)
+        }
+    }
+
     func testExplicitStubModeUsesTheDevelopmentStub() {
         let api = AppConfiguration.financialAPI(environment: [
             "JARVIS_IOS_API_MODE": "stub"

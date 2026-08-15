@@ -29,8 +29,8 @@ struct RegisterView: View {
              let .retryable(reviewed),
              let .requiresEditing(reviewed):
             review(reviewed)
-        case let .success(expense):
-            success(expense)
+        case let .success(transaction):
+            success(transaction)
         }
     }
 
@@ -39,7 +39,8 @@ struct RegisterView: View {
         case .editing, .previewing:
             "Registrar"
         case .reviewing, .submitting, .retryable, .requiresEditing:
-            "Revisar despesa"
+            model.reviewedTransaction.map { "Revisar \($0.type.displayName.lowercased())" }
+                ?? "Revisar registro"
         case .success:
             "Registro concluído"
         }
@@ -47,7 +48,35 @@ struct RegisterView: View {
 
     private var form: some View {
         Form {
-            Section("Despesa") {
+            Section("Tipo de movimentação") {
+                HStack {
+                    ForEach(TransactionType.allCases) { type in
+                        Button {
+                            model.selectTransactionType(type)
+                        } label: {
+                            Label(
+                                type.displayName,
+                                systemImage: model.transactionType == type
+                                    ? "checkmark.circle.fill"
+                                    : "circle"
+                            )
+                            .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(.bordered)
+                        .accessibilityAddTraits(model.transactionType == type ? .isSelected : [])
+                        .accessibilityHint(
+                            model.transactionType == type
+                                ? "Selecionado"
+                                : "Seleciona \(type.displayName.lowercased())"
+                        )
+                        .accessibilityIdentifier("register.type.\(type.rawValue.lowercased())")
+                    }
+                }
+                .accessibilityElement(children: .contain)
+                .accessibilityIdentifier("register.type")
+            }
+
+            Section(model.transactionType.displayName) {
                 TextField("Descrição", text: $model.description)
                     .textContentType(.none)
                     .submitLabel(.next)
@@ -61,16 +90,18 @@ struct RegisterView: View {
                     .accessibilityHint("Use vírgula ou ponto e até duas casas decimais")
                     .accessibilityIdentifier("register.amount")
 
-                Picker("Forma de pagamento", selection: $model.paymentMethod) {
-                    ForEach(PaymentMethod.allCases) { method in
-                        Text(method.displayName)
-                            .tag(method)
-                            .accessibilityIdentifier(
-                                "register.paymentMethod.\(method.rawValue.lowercased())"
-                            )
+                if model.transactionType == .expense {
+                    Picker("Forma de pagamento", selection: $model.paymentMethod) {
+                        ForEach(PaymentMethod.allCases) { method in
+                            Text(method.displayName)
+                                .tag(method)
+                                .accessibilityIdentifier(
+                                    "register.paymentMethod.\(method.rawValue.lowercased())"
+                                )
+                        }
                     }
+                    .accessibilityIdentifier("register.paymentMethod")
                 }
-                .accessibilityIdentifier("register.paymentMethod")
 
                 DatePicker(
                     "Data e hora",
@@ -97,7 +128,7 @@ struct RegisterView: View {
                         Spacer()
                         if model.isBusy {
                             ProgressView()
-                                .accessibilityLabel("Revisando despesa")
+                                .accessibilityLabel("Revisando movimentação")
                         } else {
                             Text("Revisar")
                         }
@@ -113,26 +144,30 @@ struct RegisterView: View {
         .scrollDismissesKeyboard(.immediately)
     }
 
-    private func review(_ reviewed: ReviewedExpense) -> some View {
+    private func review(_ reviewed: ReviewedTransaction) -> some View {
         Form {
             Section("Confira antes de registrar") {
-                summaryRow("Tipo", value: "Despesa", identifier: "review.type")
-                summaryRow("Descrição", value: reviewed.preview.description, identifier: "review.description")
-                summaryRow(
-                    "Valor",
-                    value: moneyFormatter.string(minorUnits: reviewed.preview.amount.minor),
-                    identifier: "review.amount"
-                )
-                summaryRow(
-                    "Forma de pagamento",
-                    value: reviewed.preview.paymentMethod.displayName,
-                    identifier: "review.paymentMethod"
-                )
-                summaryRow(
-                    "Data e hora",
-                    value: displayFormatter.dateTime(reviewed.preview.occurredAt),
-                    identifier: "review.occurredAt"
-                )
+                switch reviewed {
+                case let .expense(expense):
+                    reviewCommonRows(
+                        type: .expense,
+                        description: expense.preview.description,
+                        amount: expense.preview.amount,
+                        occurredAt: expense.preview.occurredAt
+                    )
+                    summaryRow(
+                        "Forma de pagamento",
+                        value: expense.preview.paymentMethod.displayName,
+                        identifier: "review.paymentMethod"
+                    )
+                case let .income(income):
+                    reviewCommonRows(
+                        type: .income,
+                        description: income.preview.description,
+                        amount: income.preview.amount,
+                        occurredAt: income.preview.occurredAt
+                    )
+                }
             }
 
             if let errorMessage = model.errorMessage {
@@ -178,20 +213,58 @@ struct RegisterView: View {
         .accessibilityIdentifier("review.screen")
     }
 
-    private func success(_ expense: Expense) -> some View {
-        ContentUnavailableView {
-            Label("Despesa registrada", systemImage: "checkmark.circle.fill")
-                .accessibilityIdentifier("register.success")
-        } description: {
-            Text("\(expense.description) foi adicionada ao histórico.")
-        } actions: {
-            Button("Registrar nova despesa") {
-                model.startNewExpense()
+    private func success(_ transaction: FinancialTransaction) -> some View {
+        switch transaction {
+        case let .expense(expense):
+            ContentUnavailableView {
+                Label("Despesa registrada", systemImage: "checkmark.circle.fill")
+                    .accessibilityIdentifier("register.success")
+            } description: {
+                Text("\(expense.description) foi adicionada ao histórico.")
+            } actions: {
+                Button("Registrar nova despesa") {
+                    model.startNewExpense()
+                }
+                .buttonStyle(.borderedProminent)
+                .frame(minHeight: 44)
+                .accessibilityIdentifier("register.newExpense")
             }
-            .buttonStyle(.borderedProminent)
-            .frame(minHeight: 44)
-            .accessibilityIdentifier("register.newExpense")
+        case let .income(income):
+            ContentUnavailableView {
+                Label("Receita registrada", systemImage: "checkmark.circle.fill")
+                    .accessibilityIdentifier("register.success")
+            } description: {
+                Text("\(income.description) foi adicionada ao histórico.")
+            } actions: {
+                Button("Registrar nova receita") {
+                    model.startNewIncome()
+                }
+                .buttonStyle(.borderedProminent)
+                .frame(minHeight: 44)
+                .accessibilityIdentifier("register.newIncome")
+            }
         }
+    }
+
+    @ViewBuilder
+    private func reviewCommonRows(
+        type: TransactionType,
+        description: String,
+        amount: FinancialMoney,
+        occurredAt: String
+    ) -> some View {
+        summaryRow("Tipo", value: type.displayName, identifier: "review.type")
+        summaryRow("Descrição", value: description, identifier: "review.description")
+        summaryRow(
+            "Valor",
+            value: moneyFormatter.string(minorUnits: amount.minor),
+            identifier: "review.amount"
+        )
+        summaryRow(
+            "Data e hora",
+            value: displayFormatter.dateTime(occurredAt),
+            identifier: "review.occurredAt"
+        )
     }
 
     private func summaryRow(_ title: String, value: String, identifier: String) -> some View {
