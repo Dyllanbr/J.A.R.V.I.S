@@ -131,6 +131,69 @@ func TestIncomePreviewReturnsCanonicalShapeWithoutPaymentMethodOrWrites(t *testi
 	}
 }
 
+func TestCategorizedPreviewReturnsValidatedCategoryAndRejectsInvalidCategoryShapes(t *testing.T) {
+	store := &httpTestStore{}
+	handler := newTestHandler(t, store, &httpTestReader{})
+	for _, test := range []struct {
+		name       string
+		body       string
+		categoryID string
+	}{
+		{
+			name:       "Expense",
+			body:       strings.TrimSuffix(validBody, "}") + `,"categoryId":"expense.food"}`,
+			categoryID: "expense.food",
+		},
+		{
+			name:       "Income",
+			body:       strings.TrimSuffix(validIncomeBody, "}") + `,"categoryId":"income.salary"}`,
+			categoryID: "income.salary",
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			response := serve(handler, http.MethodPost, "/v1/transactions/preview", test.body,
+				map[string]string{"Content-Type": "application/json"})
+			if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"categoryId":"`+test.categoryID+`"`) {
+				t.Fatalf("categorized preview = %d %s", response.Code, response.Body.String())
+			}
+		})
+	}
+
+	invalid := []string{
+		strings.TrimSuffix(validBody, "}") + `,"categoryId":null}`,
+		strings.TrimSuffix(validBody, "}") + `,"categoryId":""}`,
+		strings.TrimSuffix(validBody, "}") + `,"categoryId":"Expense.Food"}`,
+		strings.TrimSuffix(validBody, "}") + `,"categoryId":"expense.unknown"}`,
+		strings.TrimSuffix(validBody, "}") + `,"categoryId":"income.salary"}`,
+		strings.TrimSuffix(validIncomeBody, "}") + `,"categoryId":"expense.food"}`,
+		strings.TrimSuffix(validIncomeBody, "}") + `,"categoryName":"Salário"}`,
+		strings.TrimSuffix(validIncomeBody, "}") + `,"sortOrder":10}`,
+	}
+	for _, body := range invalid {
+		response := serve(handler, http.MethodPost, "/v1/transactions/preview", body,
+			map[string]string{"Content-Type": "application/json"})
+		if response.Code != http.StatusBadRequest || !strings.Contains(response.Body.String(), `"code":"INVALID_REQUEST"`) {
+			t.Fatalf("invalid Category response = %d %s", response.Code, response.Body.String())
+		}
+	}
+	if store.calls != 0 || store.incomeCalls != 0 {
+		t.Fatal("preview Category validation reached a write store")
+	}
+}
+
+func TestCategoryCatalogFailureIsInternalAndSafe(t *testing.T) {
+	catalog := newHTTPTestCatalog(t)
+	catalog.findErr = errors.New("PRIVATE_CATEGORY_CATALOG_MARKER")
+	handler := newTestHandlerWithCatalog(t, &httpTestStore{}, &httpTestReader{}, catalog)
+	body := strings.TrimSuffix(validBody, "}") + `,"categoryId":"expense.food"}`
+	response := serve(handler, http.MethodPost, "/v1/transactions/preview", body,
+		map[string]string{"Content-Type": "application/json"})
+	if response.Code != http.StatusInternalServerError || !strings.Contains(response.Body.String(), `"code":"INTERNAL_ERROR"`) ||
+		strings.Contains(response.Body.String(), "PRIVATE_CATEGORY_CATALOG_MARKER") || strings.Contains(response.Body.String(), "expense.food") {
+		t.Fatalf("unsafe Category catalog failure = %d %s", response.Code, response.Body.String())
+	}
+}
+
 func TestDiscriminatedRequestRejectsInvalidTypesShapesAndServerOwnedFields(t *testing.T) {
 	serverOwned := []string{
 		"userId", "ownerId", "origin", "financialTimezone", "status", "version",
@@ -283,6 +346,55 @@ func TestCreateIncomeReturnsPersistedResourceReplayConflictAndSafeFailure(t *tes
 	}
 }
 
+func TestCategorizedCreateAndReplayPreserveCategoryByteForByte(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		body string
+	}{
+		{name: "Expense", body: strings.TrimSuffix(validBody, "}") + `,"categoryId":"expense.food"}`},
+		{name: "Income", body: strings.TrimSuffix(validIncomeBody, "}") + `,"categoryId":"income.salary"}`},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			store := &httpTestStore{}
+			handler := newTestHandler(t, store, &httpTestReader{})
+			headers := map[string]string{"Content-Type": "application/json", "Idempotency-Key": "category-replay-" + test.name}
+			created := serve(handler, http.MethodPost, "/v1/transactions", test.body, headers)
+			if created.Code != http.StatusCreated || !strings.Contains(created.Body.String(), `"categoryId"`) {
+				t.Fatalf("categorized create = %d %s", created.Code, created.Body.String())
+			}
+			if test.name == "Expense" {
+				store.replay = true
+			} else {
+				store.incomeReplay = true
+			}
+			replayed := serve(handler, http.MethodPost, "/v1/transactions", test.body, headers)
+			if replayed.Code != http.StatusCreated || replayed.Header().Get("Idempotency-Replayed") != "true" ||
+				replayed.Body.String() != created.Body.String() {
+				t.Fatalf("categorized replay differs: first=%s replay=%s", created.Body.String(), replayed.Body.String())
+			}
+		})
+	}
+}
+
+func TestCreateRejectsInvalidUnknownAndInapplicableCategoriesBeforeStore(t *testing.T) {
+	for _, body := range []string{
+		strings.TrimSuffix(validBody, "}") + `,"categoryId":null}`,
+		strings.TrimSuffix(validBody, "}") + `,"categoryId":"expense.unknown"}`,
+		strings.TrimSuffix(validBody, "}") + `,"categoryId":"income.salary"}`,
+		strings.TrimSuffix(validIncomeBody, "}") + `,"categoryId":"expense.food"}`,
+	} {
+		store := &httpTestStore{}
+		response := serve(newTestHandler(t, store, &httpTestReader{}), http.MethodPost, "/v1/transactions", body,
+			map[string]string{"Content-Type": "application/json", "Idempotency-Key": "invalid-category-create"})
+		if response.Code != http.StatusBadRequest || !strings.Contains(response.Body.String(), `"code":"INVALID_REQUEST"`) {
+			t.Fatalf("invalid categorized create = %d %s", response.Code, response.Body.String())
+		}
+		if store.calls != 0 || store.incomeCalls != 0 {
+			t.Fatal("invalid Category reached a write store")
+		}
+	}
+}
+
 func TestMonthlyListIsStrictOwnerFreeAndUsesEmptyArray(t *testing.T) {
 	reader := &httpTestReader{}
 	handler := newTestHandler(t, &httpTestStore{}, reader)
@@ -344,6 +456,78 @@ func TestMonthlyListSerializesDiscriminatedExpenseAndIncome(t *testing.T) {
 	}
 }
 
+func TestMonthlyListOmitsMissingCategoryAndPreservesCategorizedItems(t *testing.T) {
+	expenseCategory := domain.CategoryIDExpenseFood
+	incomeCategory := domain.CategoryIDIncomeSalary
+	expenseWithCategory := application.NewMonthlyTransactionFromExpense(mustHTTPExpense(t, "exp_http_category"))
+	expenseWithCategory.CategoryID = &expenseCategory
+	incomeWithCategory := application.NewMonthlyTransactionFromIncome(mustHTTPIncome(t, "inc_http_category"))
+	incomeWithCategory.CategoryID = &incomeCategory
+	items := []application.MonthlyTransaction{
+		incomeWithCategory,
+		application.NewMonthlyTransactionFromIncome(mustHTTPIncome(t, "inc_http_uncategorized")),
+		expenseWithCategory,
+		application.NewMonthlyTransactionFromExpense(mustHTTPExpense(t, "exp_http_uncategorized")),
+	}
+	response := serve(newTestHandler(t, &httpTestStore{}, &httpTestReader{items: items}), http.MethodGet,
+		"/v1/transactions?month=2026-08", "", nil)
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d; body=%s", response.Code, response.Body.String())
+	}
+	var body struct {
+		Items []map[string]any `json:"items"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode history: %v", err)
+	}
+	if len(body.Items) != 4 || body.Items[0]["categoryId"] != "income.salary" || body.Items[2]["categoryId"] != "expense.food" {
+		t.Fatalf("categorized history = %s", response.Body.String())
+	}
+	if _, ok := body.Items[1]["categoryId"]; ok {
+		t.Fatal("uncategorized Income exposed categoryId")
+	}
+	if _, ok := body.Items[3]["categoryId"]; ok {
+		t.Fatal("uncategorized Expense exposed categoryId")
+	}
+}
+
+func TestListCategoriesReturnsCompleteOrderedCatalogWithoutInternalFields(t *testing.T) {
+	handler := newTestHandler(t, &httpTestStore{}, &httpTestReader{})
+	response := serve(handler, http.MethodGet, "/v1/categories", "", nil)
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d; body=%s", response.Code, response.Body.String())
+	}
+	assertFinancialHeaders(t, response)
+	var items []map[string]any
+	if err := json.Unmarshal(response.Body.Bytes(), &items); err != nil {
+		t.Fatalf("decode categories: %v", err)
+	}
+	if len(items) != 17 || items[0]["id"] != "expense.food" || items[9]["id"] != "expense.other" ||
+		items[10]["id"] != "income.salary" || items[16]["id"] != "income.other" {
+		t.Fatalf("unexpected catalog ordering: %s", response.Body.String())
+	}
+	for _, item := range items {
+		if len(item) != 3 || item["id"] == "uncategorized" {
+			t.Fatalf("catalog item exposed unexpected shape: %#v", item)
+		}
+		if _, ok := item["sortOrder"]; ok {
+			t.Fatalf("catalog exposed sortOrder: %#v", item)
+		}
+	}
+}
+
+func TestListCategoriesDoesNotReturnPartialCatalogOnFailure(t *testing.T) {
+	catalog := newHTTPTestCatalog(t)
+	catalog.listErrType = domain.TransactionTypeIncome
+	catalog.listErr = errors.New("PRIVATE_LIST_CATEGORY_MARKER")
+	response := serve(newTestHandlerWithCatalog(t, &httpTestStore{}, &httpTestReader{}, catalog),
+		http.MethodGet, "/v1/categories", "", nil)
+	if response.Code != http.StatusInternalServerError || !strings.Contains(response.Body.String(), `"code":"INTERNAL_ERROR"`) ||
+		strings.Contains(response.Body.String(), "PRIVATE_LIST_CATEGORY_MARKER") || strings.Contains(response.Body.String(), "expense.food") {
+		t.Fatalf("partial or unsafe catalog failure = %d %s", response.Code, response.Body.String())
+	}
+}
+
 func TestFinancialRoutesReturnJSONMethodNotAllowed(t *testing.T) {
 	handler := newTestHandler(t, &httpTestStore{}, &httpTestReader{})
 	for _, test := range []struct {
@@ -353,6 +537,7 @@ func TestFinancialRoutesReturnJSONMethodNotAllowed(t *testing.T) {
 		{method: http.MethodDelete, target: "/v1/transactions"},
 		{method: http.MethodHead, target: "/v1/transactions"},
 		{method: http.MethodDelete, target: "/v1/transactions/preview"},
+		{method: http.MethodPost, target: "/v1/categories"},
 	} {
 		response := serve(handler, test.method, test.target, "", nil)
 		if response.Code != http.StatusMethodNotAllowed || !strings.Contains(response.Body.String(), `"code":"METHOD_NOT_ALLOWED"`) {
@@ -445,30 +630,129 @@ func (httpTestClock) Now() time.Time {
 }
 
 func newTestHandler(t *testing.T, store *httpTestStore, reader application.MonthlyTransactionReader) http.Handler {
+	return newTestHandlerWithCatalog(t, store, reader, newHTTPTestCatalog(t))
+}
+
+func newTestHandlerWithCatalog(
+	t *testing.T,
+	store *httpTestStore,
+	reader application.MonthlyTransactionReader,
+	catalog application.CategoryCatalog,
+) http.Handler {
 	t.Helper()
-	recordExpense, err := application.NewRecordExpense(store, httpTestIDGenerator{}, httpTestClock{})
+	previewExpense, err := application.NewPreviewExpenseWithCategoryCatalog(catalog)
 	if err != nil {
-		t.Fatalf("NewRecordExpense() error = %v", err)
+		t.Fatalf("NewPreviewExpenseWithCategoryCatalog() error = %v", err)
 	}
-	recordIncome, err := application.NewRecordIncome(store, httpTestIncomeIDGenerator{}, httpTestClock{})
+	previewIncome, err := application.NewPreviewIncomeWithCategoryCatalog(catalog)
 	if err != nil {
-		t.Fatalf("NewRecordIncome() error = %v", err)
+		t.Fatalf("NewPreviewIncomeWithCategoryCatalog() error = %v", err)
+	}
+	recordExpense, err := application.NewRecordExpenseWithCategoryCatalog(store, httpTestIDGenerator{}, httpTestClock{}, catalog)
+	if err != nil {
+		t.Fatalf("NewRecordExpenseWithCategoryCatalog() error = %v", err)
+	}
+	recordIncome, err := application.NewRecordIncomeWithCategoryCatalog(store, httpTestIncomeIDGenerator{}, httpTestClock{}, catalog)
+	if err != nil {
+		t.Fatalf("NewRecordIncomeWithCategoryCatalog() error = %v", err)
 	}
 	list, err := application.NewListTransactionsByMonth(reader)
 	if err != nil {
 		t.Fatalf("NewListTransactionsByMonth() error = %v", err)
 	}
+	listCategories, err := application.NewListCategories(catalog)
+	if err != nil {
+		t.Fatalf("NewListCategories() error = %v", err)
+	}
 	financial := httpapi.New(
 		testOwner,
-		application.PreviewExpense{},
-		application.PreviewIncome{},
+		previewExpense,
+		previewIncome,
 		recordExpense,
 		recordIncome,
 		list,
+		listCategories,
 	)
 	mux := http.NewServeMux()
 	financial.Register(mux)
 	return mux
+}
+
+type httpTestCatalog struct {
+	definitions map[domain.CategoryID]application.CategoryDefinition
+	byType      map[domain.TransactionType][]application.CategoryDefinition
+	findErr     error
+	listErrType domain.TransactionType
+	listErr     error
+}
+
+func (catalog *httpTestCatalog) FindCategory(
+	_ context.Context,
+	categoryID domain.CategoryID,
+) (application.CategoryDefinition, error) {
+	if catalog.findErr != nil {
+		return application.CategoryDefinition{}, catalog.findErr
+	}
+	definition, ok := catalog.definitions[categoryID]
+	if !ok {
+		return application.CategoryDefinition{}, application.ErrCategoryNotFound
+	}
+	return definition, nil
+}
+
+func (catalog *httpTestCatalog) ListCategories(
+	_ context.Context,
+	transactionType domain.TransactionType,
+) ([]application.CategoryDefinition, error) {
+	if catalog.listErr != nil && catalog.listErrType == transactionType {
+		return nil, catalog.listErr
+	}
+	return catalog.byType[transactionType], nil
+}
+
+func newHTTPTestCatalog(t *testing.T) *httpTestCatalog {
+	t.Helper()
+	entries := []struct {
+		id          string
+		typeValue   domain.TransactionType
+		displayName string
+		sortOrder   uint16
+	}{
+		{"expense.food", domain.TransactionTypeExpense, "Alimentação", 10},
+		{"expense.transport", domain.TransactionTypeExpense, "Transporte", 20},
+		{"expense.housing", domain.TransactionTypeExpense, "Moradia", 30},
+		{"expense.health", domain.TransactionTypeExpense, "Saúde", 40},
+		{"expense.leisure", domain.TransactionTypeExpense, "Lazer", 50},
+		{"expense.education", domain.TransactionTypeExpense, "Educação", 60},
+		{"expense.subscriptions", domain.TransactionTypeExpense, "Assinaturas", 70},
+		{"expense.shopping", domain.TransactionTypeExpense, "Compras", 80},
+		{"expense.taxes_fees", domain.TransactionTypeExpense, "Impostos e taxas", 90},
+		{"expense.other", domain.TransactionTypeExpense, "Outros", 100},
+		{"income.salary", domain.TransactionTypeIncome, "Salário", 10},
+		{"income.freelance", domain.TransactionTypeIncome, "Freelance", 20},
+		{"income.refund", domain.TransactionTypeIncome, "Reembolso", 30},
+		{"income.sale", domain.TransactionTypeIncome, "Venda", 40},
+		{"income.investment_return", domain.TransactionTypeIncome, "Rendimentos", 50},
+		{"income.benefits", domain.TransactionTypeIncome, "Benefícios", 60},
+		{"income.other", domain.TransactionTypeIncome, "Outros", 70},
+	}
+	catalog := &httpTestCatalog{
+		definitions: make(map[domain.CategoryID]application.CategoryDefinition, len(entries)),
+		byType:      make(map[domain.TransactionType][]application.CategoryDefinition, 2),
+	}
+	for _, entry := range entries {
+		categoryID, err := domain.NewCategoryID(entry.id)
+		if err != nil {
+			t.Fatalf("NewCategoryID(%q) error = %v", entry.id, err)
+		}
+		definition, err := application.NewCategoryDefinition(categoryID, entry.typeValue, entry.displayName, entry.sortOrder)
+		if err != nil {
+			t.Fatalf("NewCategoryDefinition(%q) error = %v", entry.id, err)
+		}
+		catalog.definitions[categoryID] = definition
+		catalog.byType[entry.typeValue] = append(catalog.byType[entry.typeValue], definition)
+	}
+	return catalog
 }
 
 func mustHTTPExpense(t *testing.T, id string) domain.Expense {

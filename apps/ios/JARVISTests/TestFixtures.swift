@@ -4,12 +4,14 @@ import Foundation
 func syntheticPreview(
     description: String = "Mercado sintético",
     amount: Int64 = 4_250,
+    categoryID: String? = nil,
     occurredAt: String = "2026-08-14T15:00:00Z"
 ) -> ExpensePreview {
     ExpensePreview(
         description: description,
         amount: ExpenseMoney(minor: amount, currency: .brl),
         paymentMethod: .pix,
+        categoryID: categoryID,
         occurredAt: occurredAt,
         financialTimezone: "America/Sao_Paulo",
         origin: .ios
@@ -20,6 +22,7 @@ func syntheticExpense(
     id: String = "exp_test_ios_001",
     description: String = "Mercado sintético",
     amount: Int64 = 4_250,
+    categoryID: String? = nil,
     occurredAt: String = "2026-08-14T15:00:00Z"
 ) -> Expense {
     Expense(
@@ -27,6 +30,7 @@ func syntheticExpense(
         description: description,
         amount: ExpenseMoney(minor: amount, currency: .brl),
         paymentMethod: .pix,
+        categoryID: categoryID,
         occurredAt: occurredAt,
         financialTimezone: "America/Sao_Paulo",
         origin: .ios,
@@ -40,11 +44,13 @@ func syntheticExpense(
 func syntheticIncomePreview(
     description: String = "Receita sintética",
     amount: Int64 = 8_500,
+    categoryID: String? = nil,
     occurredAt: String = "2026-08-14T16:00:00Z"
 ) -> IncomePreview {
     IncomePreview(
         description: description,
         amount: FinancialMoney(minor: amount, currency: .brl),
+        categoryID: categoryID,
         occurredAt: occurredAt,
         financialTimezone: "America/Sao_Paulo",
         origin: .ios
@@ -55,12 +61,14 @@ func syntheticIncome(
     id: String = "inc_test_ios_001",
     description: String = "Receita sintética",
     amount: Int64 = 8_500,
+    categoryID: String? = nil,
     occurredAt: String = "2026-08-14T16:00:00Z"
 ) -> Income {
     Income(
         id: id,
         description: description,
         amount: FinancialMoney(minor: amount, currency: .brl),
+        categoryID: categoryID,
         occurredAt: occurredAt,
         financialTimezone: "America/Sao_Paulo",
         origin: .ios,
@@ -71,13 +79,23 @@ func syntheticIncome(
     )
 }
 
+let syntheticCategories = [
+    CategoryDefinition(id: "expense.food", type: .expense, displayName: "Alimentação"),
+    CategoryDefinition(id: "expense.other", type: .expense, displayName: "Outros"),
+    CategoryDefinition(id: "income.salary", type: .income, displayName: "Salário"),
+    CategoryDefinition(id: "income.other", type: .income, displayName: "Outros")
+]
+
 @MainActor
 final class FinancialAPISpy: FinancialAPI {
+    var categoryRequestCount = 0
     var previewRequests: [ExpenseRequest] = []
     var createRequests: [(request: ExpenseRequest, key: String)] = []
     var incomePreviewRequests: [IncomeRequest] = []
     var incomeCreateRequests: [(request: IncomeRequest, key: String)] = []
     var requestedMonths: [String] = []
+
+    var categoriesResult: Result<[CategoryDefinition], Error> = .success(syntheticCategories)
 
     var previewResult: Result<ExpensePreview, Error> = .success(syntheticPreview())
     var createResults: [Result<RecordedExpense, Error>] = [
@@ -88,6 +106,11 @@ final class FinancialAPISpy: FinancialAPI {
         .success(RecordedIncome(income: syntheticIncome(), replayed: false))
     ]
     var monthResult: Result<TransactionMonth, Error> = .success(TransactionMonth(month: "2026-08", items: []))
+
+    func categories() async throws -> [CategoryDefinition] {
+        categoryRequestCount += 1
+        return try categoriesResult.get()
+    }
 
     func preview(_ request: ExpenseRequest) async throws -> ExpensePreview {
         previewRequests.append(request)

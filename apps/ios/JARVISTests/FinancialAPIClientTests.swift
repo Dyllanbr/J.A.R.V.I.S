@@ -9,6 +9,50 @@ final class FinancialAPIClientTests: XCTestCase {
     }
 
     @MainActor
+    func testCategoriesUsesGETAndDecodesCanonicalBackendOrdering() async throws {
+        URLProtocolStub.install { request in
+            XCTAssertEqual(request.httpMethod, "GET")
+            XCTAssertEqual(request.url?.path, "/v1/categories")
+            XCTAssertNil(request.httpBody)
+            XCTAssertEqual(request.cachePolicy, .reloadIgnoringLocalCacheData)
+            return Self.response(request: request, status: 200, body: Self.categoryCatalogJSON)
+        }
+
+        let categories = try await makeClient().categories()
+
+        XCTAssertEqual(categories.count, 17)
+        XCTAssertEqual(categories.first, CategoryDefinition(id: "expense.food", type: .expense, displayName: "Alimentação"))
+        XCTAssertEqual(categories[9].id, "expense.other")
+        XCTAssertEqual(categories[10].id, "income.salary")
+        XCTAssertEqual(categories.last?.id, "income.other")
+    }
+
+    @MainActor
+    func testCategoriesFailsClosedForHTTPMalformedAndDuplicateCatalogs() async {
+        let cases = [
+            (503, #"{"error":{"code":"INTERNAL_ERROR","message":"private"}}"#),
+            (200, "not-json"),
+            (200, #"[{"id":"expense.food","type":"EXPENSE"}]"#),
+            (200, #"[{"id":"expense.food","type":"EXPENSE","displayName":"Alimentação"},{"id":"expense.food","type":"EXPENSE","displayName":"Duplicada"}]"#)
+        ]
+
+        for (status, body) in cases {
+            URLProtocolStub.install { request in
+                Self.response(request: request, status: status, body: body)
+            }
+            do {
+                _ = try await makeClient().categories()
+                XCTFail("Expected the catalog response to fail")
+            } catch {
+                XCTAssertTrue(
+                    error is FinancialAPIError,
+                    "Catalog failures must remain mapped to a safe API error"
+                )
+            }
+        }
+    }
+
+    @MainActor
     func testPreviewEncodesOnlyContractFieldsAndDecodesCanonicalResponse() async throws {
         URLProtocolStub.install { request in
             let body = try XCTUnwrap(Self.requestBody(request))
@@ -65,6 +109,50 @@ final class FinancialAPIClientTests: XCTestCase {
         let preview = try await makeClient().preview(request)
 
         XCTAssertEqual(preview, syntheticIncomePreview())
+    }
+
+    @MainActor
+    func testCategorizedRequestsUseCanonicalCategoryIdAndNilStillOmitsIt() async throws {
+        URLProtocolStub.install { request in
+            let body = try XCTUnwrap(Self.requestBody(request))
+            let object = try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [String: Any])
+            XCTAssertEqual(object["categoryId"] as? String, "expense.food")
+            XCTAssertNil(object["categoryID"])
+            return Self.response(
+                request: request,
+                status: 200,
+                body: Self.categorizedExpensePreviewJSON
+            )
+        }
+
+        _ = try await makeClient().preview(
+            ExpenseRequest(
+                description: "Mercado sintético",
+                amount: FinancialMoney(minor: 4_250, currency: .brl),
+                paymentMethod: .pix,
+                categoryID: "expense.food",
+                occurredAt: "2026-08-14T15:00:00Z"
+            )
+        )
+        URLProtocolStub.install { request in
+            let body = try XCTUnwrap(Self.requestBody(request))
+            let object = try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [String: Any])
+            XCTAssertEqual(object["categoryId"] as? String, "income.salary")
+            XCTAssertNil(object["paymentMethod"])
+            return Self.response(
+                request: request,
+                status: 200,
+                body: Self.categorizedIncomePreviewJSON
+            )
+        }
+        _ = try await makeClient().preview(
+            IncomeRequest(
+                description: "Receita sintética",
+                amount: FinancialMoney(minor: 8_500, currency: .brl),
+                categoryID: "income.salary",
+                occurredAt: "2026-08-14T16:00:00Z"
+            )
+        )
     }
 
     @MainActor
@@ -191,6 +279,68 @@ final class FinancialAPIClientTests: XCTestCase {
     }
 
     @MainActor
+    func testPreviewCreateAndHistoryDecodeOptionalCategoryWithoutAcceptingNull() async throws {
+        URLProtocolStub.install { request in
+            if request.url?.path == "/v1/transactions/preview" {
+                return Self.response(request: request, status: 200, body: Self.categorizedExpensePreviewJSON)
+            }
+            return Self.response(
+                request: request,
+                status: 200,
+                body: """
+                {"month":"2026-08","items":[\(Self.categorizedIncomeJSON),\(Self.expenseJSON)]}
+                """
+            )
+        }
+
+        let preview = try await makeClient().preview(syntheticRequest())
+        XCTAssertEqual(preview.categoryID, "expense.food")
+        URLProtocolStub.install { request in
+            Self.response(request: request, status: 201, body: Self.categorizedExpenseJSON)
+        }
+        let created = try await makeClient().create(
+            ExpenseRequest(
+                description: "Mercado sintético",
+                amount: FinancialMoney(minor: 4_250, currency: .brl),
+                paymentMethod: .pix,
+                categoryID: "expense.food",
+                occurredAt: "2026-08-14T15:00:00Z"
+            ),
+            idempotencyKey: "category-key"
+        )
+        XCTAssertEqual(created.expense.categoryID, "expense.food")
+
+        URLProtocolStub.install { request in
+            Self.response(
+                request: request,
+                status: 200,
+                body: """
+                {"month":"2026-08","items":[\(Self.categorizedIncomeJSON),\(Self.expenseJSON)]}
+                """
+            )
+        }
+        let history = try await makeClient().transactions(month: "2026-08")
+        XCTAssertEqual(history.items.map(\.categoryID), ["income.salary", nil])
+
+        URLProtocolStub.install { request in
+            Self.response(
+                request: request,
+                status: 200,
+                body: Self.categorizedExpensePreviewJSON.replacingOccurrences(
+                    of: #""categoryId":"expense.food""#,
+                    with: #""categoryId":null"#
+                )
+            )
+        }
+        do {
+            _ = try await makeClient().preview(syntheticRequest())
+            XCTFail("categoryId null must not be accepted as uncategorized")
+        } catch {
+            XCTAssertEqual(error as? FinancialAPIError, .invalidResponse)
+        }
+    }
+
+    @MainActor
     func testHistoryRejectsUnknownTypeAndMalformedIncomeShape() async {
         let invalidBodies = [
             #"{"month":"2026-08","items":[{"type":"TRANSFER"}]}"#,
@@ -304,6 +454,44 @@ final class FinancialAPIClientTests: XCTestCase {
 
     private static let incomeJSON = """
     {"id":"inc_test_ios_001","type":"INCOME","description":"Receita sintética","amount":{"minor":8500,"currency":"BRL"},"occurredAt":"2026-08-14T16:00:00Z","financialTimezone":"America/Sao_Paulo","origin":"IOS","status":"RECORDED","version":1,"createdAt":"2026-08-14T18:00:00Z","updatedAt":"2026-08-14T18:00:00Z"}
+    """
+
+    private static let categorizedExpensePreviewJSON = """
+    {"type":"EXPENSE","description":"Mercado sintético","amount":{"minor":4250,"currency":"BRL"},"paymentMethod":"PIX","categoryId":"expense.food","occurredAt":"2026-08-14T15:00:00Z","financialTimezone":"America/Sao_Paulo","origin":"IOS"}
+    """
+
+    private static let categorizedExpenseJSON = """
+    {"id":"exp_test_ios_001","type":"EXPENSE","description":"Mercado sintético","amount":{"minor":4250,"currency":"BRL"},"paymentMethod":"PIX","categoryId":"expense.food","occurredAt":"2026-08-14T15:00:00Z","financialTimezone":"America/Sao_Paulo","origin":"IOS","status":"RECORDED","version":1,"createdAt":"2026-08-14T18:00:00Z","updatedAt":"2026-08-14T18:00:00Z"}
+    """
+
+    private static let categorizedIncomePreviewJSON = """
+    {"type":"INCOME","description":"Receita sintética","amount":{"minor":8500,"currency":"BRL"},"categoryId":"income.salary","occurredAt":"2026-08-14T16:00:00Z","financialTimezone":"America/Sao_Paulo","origin":"IOS"}
+    """
+
+    private static let categorizedIncomeJSON = """
+    {"id":"inc_test_ios_001","type":"INCOME","description":"Receita sintética","amount":{"minor":8500,"currency":"BRL"},"categoryId":"income.salary","occurredAt":"2026-08-14T16:00:00Z","financialTimezone":"America/Sao_Paulo","origin":"IOS","status":"RECORDED","version":1,"createdAt":"2026-08-14T18:00:00Z","updatedAt":"2026-08-14T18:00:00Z"}
+    """
+
+    private static let categoryCatalogJSON = """
+    [
+      {"id":"expense.food","type":"EXPENSE","displayName":"Alimentação"},
+      {"id":"expense.transport","type":"EXPENSE","displayName":"Transporte"},
+      {"id":"expense.housing","type":"EXPENSE","displayName":"Moradia"},
+      {"id":"expense.health","type":"EXPENSE","displayName":"Saúde"},
+      {"id":"expense.leisure","type":"EXPENSE","displayName":"Lazer"},
+      {"id":"expense.education","type":"EXPENSE","displayName":"Educação"},
+      {"id":"expense.subscriptions","type":"EXPENSE","displayName":"Assinaturas"},
+      {"id":"expense.shopping","type":"EXPENSE","displayName":"Compras"},
+      {"id":"expense.taxes_fees","type":"EXPENSE","displayName":"Impostos e taxas"},
+      {"id":"expense.other","type":"EXPENSE","displayName":"Outros"},
+      {"id":"income.salary","type":"INCOME","displayName":"Salário"},
+      {"id":"income.freelance","type":"INCOME","displayName":"Freelance"},
+      {"id":"income.refund","type":"INCOME","displayName":"Reembolso"},
+      {"id":"income.sale","type":"INCOME","displayName":"Venda"},
+      {"id":"income.investment_return","type":"INCOME","displayName":"Rendimentos"},
+      {"id":"income.benefits","type":"INCOME","displayName":"Benefícios"},
+      {"id":"income.other","type":"INCOME","displayName":"Outros"}
+    ]
     """
 }
 

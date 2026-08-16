@@ -37,6 +37,7 @@ WITH expense_target AS (
       AND amount_minor = 4250
       AND currency = 'BRL'
       AND payment_method = 'PIX'
+      AND category_id = 'expense.food'
       AND origin = 'IOS'
       AND status = 'RECORDED'
 ),
@@ -49,6 +50,7 @@ income_target AS (
       AND amount_minor = 4250
       AND currency = 'BRL'
       AND payment_method IS NULL
+      AND category_id = 'income.salary'
       AND origin = 'IOS'
       AND status = 'RECORDED'
 ),
@@ -110,4 +112,4 @@ if [[ "$counts" != "1|1|1|1|1|1" ]]; then
   exit 1
 fi
 
-echo "iOS real integration PostgreSQL postcondition passed for Expense and Income (1 transaction, 1 audit event, 1 idempotency record each)."
+echo "iOS real integration PostgreSQL postcondition passed for categorized Expense and Income (1 transaction, 1 audit event, 1 idempotency record each)."

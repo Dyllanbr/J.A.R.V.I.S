@@ -16,7 +16,7 @@ func loadIncome(ctx context.Context, transaction pgx.Tx, id, userID string) (dom
 	return scanIncome(transaction.QueryRow(ctx, `
 		SELECT
 			id, user_id, type, description, amount_minor, currency,
-			payment_method, occurred_at, financial_timezone, origin,
+			payment_method, category_id, occurred_at, financial_timezone, origin,
 			status, version, created_at, updated_at
 		FROM transactions
 		WHERE id = $1 AND user_id = $2 AND type = 'INCOME'
@@ -28,12 +28,13 @@ func scanIncome(row rowScanner) (domain.Income, error) {
 		id, userID, transactionType, description string
 		currency, timezone, origin, status       string
 		paymentMethod                            *string
+		categoryID                               *string
 		amountMinor, version                     int64
 		occurredAt, createdAt, updatedAt         time.Time
 	)
 	if err := row.Scan(
 		&id, &userID, &transactionType, &description, &amountMinor, &currency,
-		&paymentMethod, &occurredAt, &timezone, &origin, &status, &version,
+		&paymentMethod, &categoryID, &occurredAt, &timezone, &origin, &status, &version,
 		&createdAt, &updatedAt,
 	); err != nil {
 		return domain.Income{}, newRepositoryError(ErrLoadIncome, err)
@@ -48,12 +49,17 @@ func scanIncome(row rowScanner) (domain.Income, error) {
 	if err != nil {
 		return domain.Income{}, newRepositoryError(ErrLoadIncome, err)
 	}
+	storedCategoryID, err := categoryIDFromDatabase(categoryID)
+	if err != nil {
+		return domain.Income{}, newRepositoryError(ErrLoadIncome, err)
+	}
 	income, err := domain.NewIncome(domain.IncomeParams{
 		ID: id,
 		Details: domain.IncomeDetails{
 			UserID:            userID,
 			Description:       description,
 			Amount:            amount,
+			CategoryID:        storedCategoryID,
 			OccurredAt:        occurredAt,
 			FinancialTimezone: timezone,
 			Origin:            domain.Origin(origin),

@@ -1,6 +1,6 @@
 # Playwright para API
 
-Suíte TypeScript strict para o smoke da fundação e o E2E financeiro. O modo padrão verifica `GET /healthz` e método não permitido. O lifecycle de integração habilita também preview, criação/replay/conflito idempotente de Expense e Income e histórico mensal misto contra API e PostgreSQL reais. Retries são zero.
+Suíte TypeScript strict para o smoke da fundação e o E2E financeiro. O modo padrão verifica `GET /healthz` e método não permitido. O lifecycle de integração habilita também preview, criação/replay/conflito idempotente de Expense e Income, catálogo de categorias e histórico mensal misto contra API e PostgreSQL reais. Retries são zero.
 
 Da raiz, o comando recomendado compila, inicia, aguarda e encerra exatamente o backend testado:
 

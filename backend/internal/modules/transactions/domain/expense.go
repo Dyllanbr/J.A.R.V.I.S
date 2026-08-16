@@ -50,6 +50,7 @@ type ExpenseDetails struct {
 	Description       string
 	Amount            Money
 	PaymentMethod     PaymentMethod
+	CategoryID        *CategoryID
 	OccurredAt        time.Time
 	FinancialTimezone string
 	Origin            Origin
@@ -71,6 +72,7 @@ type Expense struct {
 	description       string
 	amount            Money
 	paymentMethod     PaymentMethod
+	categoryID        *CategoryID
 	occurredAt        time.Time
 	financialTimezone string
 	origin            Origin
@@ -105,6 +107,10 @@ func NormalizeExpenseDetails(details ExpenseDetails) (ExpenseDetails, error) {
 	if !details.PaymentMethod.valid() {
 		return ExpenseDetails{}, ErrInvalidPaymentMethod
 	}
+	categoryID, err := normalizeOptionalCategoryID(details.CategoryID)
+	if err != nil {
+		return ExpenseDetails{}, err
+	}
 	if details.OccurredAt.IsZero() {
 		return ExpenseDetails{}, ErrInvalidOccurredAt
 	}
@@ -116,6 +122,7 @@ func NormalizeExpenseDetails(details ExpenseDetails) (ExpenseDetails, error) {
 	}
 
 	details.Description = description
+	details.CategoryID = categoryID
 	details.OccurredAt = normalizeInstant(details.OccurredAt)
 	return details, nil
 }
@@ -142,6 +149,7 @@ func NewExpense(params ExpenseParams) (Expense, error) {
 		description:       details.Description,
 		amount:            details.Amount,
 		paymentMethod:     details.PaymentMethod,
+		categoryID:        details.CategoryID,
 		occurredAt:        details.OccurredAt,
 		financialTimezone: details.FinancialTimezone,
 		origin:            details.Origin,
@@ -167,13 +175,19 @@ func (e Expense) Type() TransactionType        { return e.transactionType }
 func (e Expense) Description() string          { return e.description }
 func (e Expense) Amount() Money                { return e.amount }
 func (e Expense) PaymentMethod() PaymentMethod { return e.paymentMethod }
-func (e Expense) OccurredAt() time.Time        { return e.occurredAt }
-func (e Expense) FinancialTimezone() string    { return e.financialTimezone }
-func (e Expense) Origin() Origin               { return e.origin }
-func (e Expense) Status() ExpenseStatus        { return e.status }
-func (e Expense) Version() uint64              { return e.version }
-func (e Expense) CreatedAt() time.Time         { return e.createdAt }
-func (e Expense) UpdatedAt() time.Time         { return e.updatedAt }
+func (e Expense) CategoryID() (CategoryID, bool) {
+	if e.categoryID == nil {
+		return "", false
+	}
+	return *e.categoryID, true
+}
+func (e Expense) OccurredAt() time.Time     { return e.occurredAt }
+func (e Expense) FinancialTimezone() string { return e.financialTimezone }
+func (e Expense) Origin() Origin            { return e.origin }
+func (e Expense) Status() ExpenseStatus     { return e.status }
+func (e Expense) Version() uint64           { return e.version }
+func (e Expense) CreatedAt() time.Time      { return e.createdAt }
+func (e Expense) UpdatedAt() time.Time      { return e.updatedAt }
 
 func (method PaymentMethod) valid() bool {
 	switch method {

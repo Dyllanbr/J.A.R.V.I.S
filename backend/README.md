@@ -8,15 +8,17 @@ Backend Go em monólito modular. O processo permanece health-only por padrão; q
 - `internal/app`: composição e execução da aplicação.
 - `internal/config`: configuração explícita por ambiente.
 - `internal/platform/httpserver`: adaptador HTTP e limites do servidor.
-- `internal/modules/transactions/domain`: `Money` e os agregados separados `Expense`/`Income`, sem infraestrutura.
-- `internal/modules/transactions/application`: preview, registro confirmado/idempotente e projeção mensal mista com portas consumidoras mínimas.
+- `internal/modules/transactions/domain`: `Money`, `CategoryID` opcional e os agregados separados `Expense`/`Income`, sem infraestrutura.
+- `internal/modules/transactions/application`: catálogo de categorias, preview, registro confirmado/idempotente e projeção mensal mista com portas consumidoras mínimas.
 - `internal/modules/transactions/adapters/httpapi`: DTOs, decoding estrito e mapeamento HTTP fino.
-- `internal/modules/transactions/adapters/postgres`: persistência Expense/Income, command stores idempotentes e readers mensais.
+- `internal/modules/transactions/adapters/postgres`: catálogo read-only, persistência Expense/Income, command stores idempotentes e readers mensais.
 - `internal/modules/transactions/adapters/randomid`: geração criptográfica de IDs opacos de Expense e Income.
 - `internal/platform/postgres`: configuração, pool e migrations fora do domínio.
 - `cmd/migrate`: comando explícito para aplicar ou reverter migrations.
 
 O Incremento 1 — Despesas está **VERIFICADO**. O Incremento 2 acrescenta `Income`, migration 003, `CREATE_INCOME`/`INCOME_RECORDED`, API discriminada e histórico misto; está **IMPLEMENTADO** e pronto para auditoria global independente, sem ainda ser classificado como verificado.
+
+O Incremento 3A acrescenta Category opcional, migration 004, catálogo de sistema, `GET /v1/categories` e `categoryId` em preview/create/history; está **IMPLEMENTADO** e aguarda auditoria final independente, sem ainda ser classificado como verificado.
 
 O módulo Go usa o caminho local `jarvis/backend` enquanto o repositório não possui URL canônica. Uma URL de módulo pública deve ser decidida antes da primeira publicação externa.
 
@@ -53,3 +55,5 @@ make db-down
 Os command stores usam queries parametrizadas e uma única DB transaction para reserva/conclusão idempotente, `transactions` e `audit_events`. `CREATE_EXPENSE`/`EXPENSE_RECORDED` e `CREATE_INCOME`/`INCOME_RECORDED` permanecem coerentes com o tipo da transaction por constraints do PostgreSQL. Replay carrega o recurso original do banco, e conflito de fingerprint não grava. Migrations não inserem fixtures. Os testes criam bancos descartáveis por caso; o lifecycle E2E migra, cria um owner sintético, executa a API/Playwright e remove processo, container, rede e volume mesmo em falha.
 
 `make migrate-down` reverte uma migration por chamada. O DOWN da migration 003 retorna ao schema anterior quando não existem Income rows; se existir qualquer Income persistida, falha atomicamente sem apagar ou converter dados.
+
+A migration 004 cria o catálogo global de categorias do sistema e `transactions.category_id` nullable. Uma FK composta entre tipo e Category impede combinações incompatíveis no banco. O adapter de catálogo é somente leitura; ausência de Category permanece `NULL`, sem conversão para “Outros”. O DOWN obtém lock exclusivo, executa o guard sob esse lock e recusa atomicamente remover a infraestrutura enquanto existir transaction categorizada.

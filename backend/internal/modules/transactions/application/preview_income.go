@@ -14,15 +14,26 @@ type PreviewIncomeResult struct {
 
 // PreviewIncome validates and normalizes income without generated values or
 // persistence dependencies.
-type PreviewIncome struct{}
+type PreviewIncome struct {
+	categoryCatalog CategoryCatalog
+}
+
+// NewPreviewIncomeWithCategoryCatalog composes category validation while the
+// zero value remains compatible with uncategorized previews.
+func NewPreviewIncomeWithCategoryCatalog(categoryCatalog CategoryCatalog) (PreviewIncome, error) {
+	if categoryCatalog == nil {
+		return PreviewIncome{}, ErrMissingCategoryCatalog
+	}
+	return PreviewIncome{categoryCatalog: categoryCatalog}, nil
+}
 
 // Execute returns the same canonical details used by RecordIncome.
-func (PreviewIncome) Execute(ctx context.Context, input CreateIncomeInput) (PreviewIncomeResult, error) {
+func (useCase PreviewIncome) Execute(ctx context.Context, input CreateIncomeInput) (PreviewIncomeResult, error) {
 	if err := ctx.Err(); err != nil {
 		return PreviewIncomeResult{}, err
 	}
 
-	details, err := normalizeIncomeInput(input)
+	details, err := normalizeIncomeInput(ctx, useCase.categoryCatalog, input)
 	if err != nil {
 		return PreviewIncomeResult{}, err
 	}

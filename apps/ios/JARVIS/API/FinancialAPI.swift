@@ -2,6 +2,7 @@ import Foundation
 
 @MainActor
 protocol FinancialAPI {
+    func categories() async throws -> [CategoryDefinition]
     func preview(_ request: ExpenseRequest) async throws -> ExpensePreview
     func preview(_ request: IncomeRequest) async throws -> IncomePreview
     func create(_ request: ExpenseRequest, idempotencyKey: String) async throws -> RecordedExpense
@@ -42,6 +43,21 @@ final class URLSessionFinancialAPIClient: FinancialAPI {
     init(baseURL: URL, session: URLSession? = nil) {
         self.baseURL = baseURL
         self.session = session ?? Self.makeSession()
+    }
+
+    func categories() async throws -> [CategoryDefinition] {
+        var request = baseRequest(
+            url: baseURL.appendingPathComponent("v1/categories"),
+            method: "GET"
+        )
+        request.cachePolicy = .reloadIgnoringLocalCacheData
+        let (data, response) = try await perform(request)
+        try requireStatus(response, expected: 200, data: data)
+        let definitions: [CategoryDefinition] = try decode(data)
+        guard Set(definitions.map(\.id)).count == definitions.count else {
+            throw FinancialAPIError.invalidResponse
+        }
+        return definitions
     }
 
     func preview(_ requestBody: ExpenseRequest) async throws -> ExpensePreview {

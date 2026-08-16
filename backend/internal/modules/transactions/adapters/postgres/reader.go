@@ -30,7 +30,7 @@ func (repository *ExpenseRepository) ListByFinancialMonth(
 	rows, err := repository.pool.Query(operationContext, `
 		SELECT
 			id, user_id, type, description, amount_minor, currency,
-			payment_method, occurred_at, financial_timezone, origin,
+			payment_method, category_id, occurred_at, financial_timezone, origin,
 			status, version, created_at, updated_at
 		FROM transactions
 		WHERE user_id = $1
@@ -67,7 +67,7 @@ func loadExpense(ctx context.Context, transaction pgx.Tx, id, userID string) (do
 	return scanExpense(transaction.QueryRow(ctx, `
 		SELECT
 			id, user_id, type, description, amount_minor, currency,
-			payment_method, occurred_at, financial_timezone, origin,
+			payment_method, category_id, occurred_at, financial_timezone, origin,
 			status, version, created_at, updated_at
 		FROM transactions
 		WHERE id = $1 AND user_id = $2 AND type = 'EXPENSE'
@@ -79,12 +79,13 @@ func scanExpense(row rowScanner) (domain.Expense, error) {
 		id, userID, transactionType, description string
 		currency, paymentMethod, timezone        string
 		origin, status                           string
+		categoryID                               *string
 		amountMinor, version                     int64
 		occurredAt, createdAt, updatedAt         time.Time
 	)
 	if err := row.Scan(
 		&id, &userID, &transactionType, &description, &amountMinor, &currency,
-		&paymentMethod, &occurredAt, &timezone, &origin, &status, &version,
+		&paymentMethod, &categoryID, &occurredAt, &timezone, &origin, &status, &version,
 		&createdAt, &updatedAt,
 	); err != nil {
 		return domain.Expense{}, newRepositoryError(ErrLoadExpense, err)
@@ -99,6 +100,10 @@ func scanExpense(row rowScanner) (domain.Expense, error) {
 	if err != nil {
 		return domain.Expense{}, newRepositoryError(ErrLoadExpense, err)
 	}
+	storedCategoryID, err := categoryIDFromDatabase(categoryID)
+	if err != nil {
+		return domain.Expense{}, newRepositoryError(ErrLoadExpense, err)
+	}
 	expense, err := domain.NewExpense(domain.ExpenseParams{
 		ID: id,
 		Details: domain.ExpenseDetails{
@@ -106,6 +111,7 @@ func scanExpense(row rowScanner) (domain.Expense, error) {
 			Description:       description,
 			Amount:            amount,
 			PaymentMethod:     domain.PaymentMethod(paymentMethod),
+			CategoryID:        storedCategoryID,
 			OccurredAt:        occurredAt,
 			FinancialTimezone: timezone,
 			Origin:            domain.Origin(origin),
@@ -116,4 +122,15 @@ func scanExpense(row rowScanner) (domain.Expense, error) {
 		return domain.Expense{}, newRepositoryError(ErrLoadExpense, err)
 	}
 	return expense, nil
+}
+
+func categoryIDFromDatabase(value *string) (*domain.CategoryID, error) {
+	if value == nil {
+		return nil, nil
+	}
+	categoryID, err := domain.NewCategoryID(*value)
+	if err != nil {
+		return nil, err
+	}
+	return &categoryID, nil
 }

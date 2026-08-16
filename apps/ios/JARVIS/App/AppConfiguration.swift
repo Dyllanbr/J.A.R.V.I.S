@@ -64,6 +64,10 @@ enum AppConfiguration {
 
 @MainActor
 private struct UnavailableFinancialAPI: FinancialAPI {
+    func categories() async throws -> [CategoryDefinition] {
+        throw FinancialAPIError.configuration
+    }
+
     func preview(_: ExpenseRequest) async throws -> ExpensePreview {
         throw FinancialAPIError.configuration
     }
