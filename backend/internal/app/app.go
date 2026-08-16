@@ -64,12 +64,22 @@ func New(
 		pool.Close()
 		return nil, err
 	}
-	recordExpense, err := application.NewRecordExpense(repository, randomid.Generator{}, systemClock{})
+	previewExpense, err := application.NewPreviewExpenseWithCategoryCatalog(repository)
 	if err != nil {
 		pool.Close()
 		return nil, err
 	}
-	recordIncome, err := application.NewRecordIncome(repository, randomid.Generator{}, systemClock{})
+	previewIncome, err := application.NewPreviewIncomeWithCategoryCatalog(repository)
+	if err != nil {
+		pool.Close()
+		return nil, err
+	}
+	recordExpense, err := application.NewRecordExpenseWithCategoryCatalog(repository, randomid.Generator{}, systemClock{}, repository)
+	if err != nil {
+		pool.Close()
+		return nil, err
+	}
+	recordIncome, err := application.NewRecordIncomeWithCategoryCatalog(repository, randomid.Generator{}, systemClock{}, repository)
 	if err != nil {
 		pool.Close()
 		return nil, err
@@ -79,13 +89,19 @@ func New(
 		pool.Close()
 		return nil, err
 	}
+	listCategories, err := application.NewListCategories(repository)
+	if err != nil {
+		pool.Close()
+		return nil, err
+	}
 	financialRoutes := httpapi.New(
 		cfg.OwnerID,
-		application.PreviewExpense{},
-		application.PreviewIncome{},
+		previewExpense,
+		previewIncome,
 		recordExpense,
 		recordIncome,
 		listTransactions,
+		listCategories,
 	)
 	applicationInstance.server = httpserver.New(cfg.HTTPAddress, logger, financialRoutes)
 	return applicationInstance, nil

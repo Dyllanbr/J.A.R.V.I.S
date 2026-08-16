@@ -61,9 +61,10 @@ type RecordIncomeResult struct {
 
 // RecordIncome prepares a confirmed, idempotent income command.
 type RecordIncome struct {
-	store       IncomeCommandStore
-	idGenerator IncomeIDGenerator
-	clock       Clock
+	store           IncomeCommandStore
+	idGenerator     IncomeIDGenerator
+	clock           Clock
+	categoryCatalog CategoryCatalog
 }
 
 // NewRecordIncome composes the command with only its required ports.
@@ -71,6 +72,29 @@ func NewRecordIncome(
 	store IncomeCommandStore,
 	idGenerator IncomeIDGenerator,
 	clock Clock,
+) (*RecordIncome, error) {
+	return newRecordIncome(store, idGenerator, clock, nil)
+}
+
+// NewRecordIncomeWithCategoryCatalog composes validation for categorized
+// writes without changing the legacy uncategorized constructor.
+func NewRecordIncomeWithCategoryCatalog(
+	store IncomeCommandStore,
+	idGenerator IncomeIDGenerator,
+	clock Clock,
+	categoryCatalog CategoryCatalog,
+) (*RecordIncome, error) {
+	if categoryCatalog == nil {
+		return nil, ErrMissingCategoryCatalog
+	}
+	return newRecordIncome(store, idGenerator, clock, categoryCatalog)
+}
+
+func newRecordIncome(
+	store IncomeCommandStore,
+	idGenerator IncomeIDGenerator,
+	clock Clock,
+	categoryCatalog CategoryCatalog,
 ) (*RecordIncome, error) {
 	if store == nil {
 		return nil, ErrMissingIncomeCommandStore
@@ -81,7 +105,7 @@ func NewRecordIncome(
 	if clock == nil {
 		return nil, ErrMissingIncomeClock
 	}
-	return &RecordIncome{store: store, idGenerator: idGenerator, clock: clock}, nil
+	return &RecordIncome{store: store, idGenerator: idGenerator, clock: clock, categoryCatalog: categoryCatalog}, nil
 }
 
 // Execute validates command semantics before consuming generated values and
@@ -94,7 +118,7 @@ func (useCase *RecordIncome) Execute(ctx context.Context, input RecordIncomeInpu
 		return RecordIncomeResult{}, err
 	}
 
-	details, err := normalizeIncomeInput(input.Income)
+	details, err := normalizeIncomeInput(ctx, useCase.categoryCatalog, input.Income)
 	if err != nil {
 		return RecordIncomeResult{}, err
 	}
@@ -148,6 +172,9 @@ func fingerprintIncome(details domain.IncomeDetails) RequestFingerprint {
 	writeFingerprintString(digest, details.OccurredAt.UTC().Format("2006-01-02T15:04:05.999999999Z07:00"))
 	writeFingerprintString(digest, details.FinancialTimezone)
 	writeFingerprintString(digest, string(details.Origin))
+	if details.CategoryID != nil {
+		writeFingerprintString(digest, details.CategoryID.String())
+	}
 
 	var fingerprint RequestFingerprint
 	copy(fingerprint[:], digest.Sum(nil))

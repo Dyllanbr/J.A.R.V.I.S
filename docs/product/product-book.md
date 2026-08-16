@@ -1,7 +1,7 @@
 # Product Book do J.A.R.V.I.S.
 
 - Maturidade documental: **Proposed**
-- Estado das capacidades: **misto** — Incremento 1 **Verified**; Incremento 2 **Implemented**; visão futura **Planned**
+- Estado das capacidades: **misto** — Incremento 1 **Verified**; Incrementos 2 e 3A **Implemented**; visão futura, incluindo Incremento 3B, **Planned**
 
 ## Propósito do documento
 
@@ -123,13 +123,26 @@ O Incremento 2 está **Implemented** e pronto para auditoria global independente
 
 Income significa registrar que dinheiro entrou. Não significa receber dinheiro, cobrar alguém, executar depósito, iniciar Pix, movimentar conta ou conectar banco. O histórico atual não calcula totais, saldo, orçamento ou Disponível Seguro.
 
+## Estado atual — Incremento 3A
+
+O Incremento 3A — Categorias e filtros do histórico está **Implemented** e aguarda auditoria final independente; ainda não está **Verified**. Dentro desse limite, o sistema agora também:
+
+- classifica opcionalmente Expense e Income por uma `CategoryID` técnica;
+- distingue ausência (“Sem categoria”) das categorias reais “Outros”;
+- usa um catálogo PostgreSQL read-only de categorias do sistema, com conjuntos aplicáveis a Expense e Income;
+- valida Category no preview e no registro, incluindo-a no fingerprint somente quando presente;
+- expõe `GET /v1/categories` e retorna `categoryId` opcional no histórico;
+- oferece no iOS picker de Category, revisão congelada, labels no histórico e filtros locais por tipo/Category.
+
+Category apenas organiza um registro financeiro já ocorrido; classificá-lo não movimenta dinheiro. O catálogo não possui categorias customizadas, CRUD ou reclassificação. O histórico não possui search, totais, saldo, agrupamento ou análise. A categoria `expense.subscriptions` é somente classificação; não detecta nem agenda recorrências. Recorrências e assinaturas formam o Incremento 3B, que permanece **Planned** e será tratado separadamente.
+
 Detalhes e evidências permanecem nas fontes especializadas de [arquitetura](../architecture/overview.md), [ADRs](../adr/README.md), [segurança](../security/baseline.md), [privacidade](../privacy/README.md), [acessibilidade](../accessibility/baseline.md), [QA](../qa/testing-strategy.md) e [performance](../performance/baseline.md).
 
 ## Visão futura
 
 As capacidades a seguir estão **Planned**. A presença nesta visão não define ordem, prazo, escopo técnico nem compromisso de entrega:
 
-- categorias;
+- categorias customizadas e reclassificação;
 - recorrências e assinaturas;
 - cartões e parcelas;
 - compromissos futuros;

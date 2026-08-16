@@ -40,6 +40,7 @@ type CreateExpenseInput struct {
 	AmountMinor       int64
 	Currency          domain.Currency
 	PaymentMethod     domain.PaymentMethod
+	CategoryID        *domain.CategoryID
 	OccurredAt        time.Time
 	FinancialTimezone string
 	Origin            domain.Origin
@@ -52,13 +53,37 @@ type CreateExpenseResult struct {
 
 // CreateExpense executes creation after explicit confirmation by the caller.
 type CreateExpense struct {
-	repository  ExpenseRepository
-	idGenerator ExpenseIDGenerator
-	clock       Clock
+	repository      ExpenseRepository
+	idGenerator     ExpenseIDGenerator
+	clock           Clock
+	categoryCatalog CategoryCatalog
 }
 
 // NewCreateExpense builds the use case with explicit dependencies.
 func NewCreateExpense(repository ExpenseRepository, idGenerator ExpenseIDGenerator, clock Clock) (*CreateExpense, error) {
+	return newCreateExpense(repository, idGenerator, clock, nil)
+}
+
+// NewCreateExpenseWithCategoryCatalog composes category validation while the
+// legacy constructor remains compatible with uncategorized commands.
+func NewCreateExpenseWithCategoryCatalog(
+	repository ExpenseRepository,
+	idGenerator ExpenseIDGenerator,
+	clock Clock,
+	categoryCatalog CategoryCatalog,
+) (*CreateExpense, error) {
+	if categoryCatalog == nil {
+		return nil, ErrMissingCategoryCatalog
+	}
+	return newCreateExpense(repository, idGenerator, clock, categoryCatalog)
+}
+
+func newCreateExpense(
+	repository ExpenseRepository,
+	idGenerator ExpenseIDGenerator,
+	clock Clock,
+	categoryCatalog CategoryCatalog,
+) (*CreateExpense, error) {
 	if repository == nil {
 		return nil, ErrMissingRepository
 	}
@@ -70,9 +95,10 @@ func NewCreateExpense(repository ExpenseRepository, idGenerator ExpenseIDGenerat
 	}
 
 	return &CreateExpense{
-		repository:  repository,
-		idGenerator: idGenerator,
-		clock:       clock,
+		repository:      repository,
+		idGenerator:     idGenerator,
+		clock:           clock,
+		categoryCatalog: categoryCatalog,
 	}, nil
 }
 
@@ -82,7 +108,7 @@ func (useCase *CreateExpense) Execute(ctx context.Context, input CreateExpenseIn
 		return CreateExpenseResult{}, err
 	}
 
-	details, err := normalizeExpenseInput(input)
+	details, err := normalizeExpenseInput(ctx, useCase.categoryCatalog, input)
 	if err != nil {
 		return CreateExpenseResult{}, err
 	}
@@ -108,7 +134,11 @@ func (useCase *CreateExpense) Execute(ctx context.Context, input CreateExpenseIn
 	return CreateExpenseResult{Expense: expense}, nil
 }
 
-func normalizeExpenseInput(input CreateExpenseInput) (domain.ExpenseDetails, error) {
+func normalizeExpenseInput(
+	ctx context.Context,
+	categoryCatalog CategoryCatalog,
+	input CreateExpenseInput,
+) (domain.ExpenseDetails, error) {
 	amount, err := domain.NewMoney(input.AmountMinor, input.Currency)
 	if err != nil {
 		return domain.ExpenseDetails{}, err
@@ -119,10 +149,15 @@ func normalizeExpenseInput(input CreateExpenseInput) (domain.ExpenseDetails, err
 		Description:       input.Description,
 		Amount:            amount,
 		PaymentMethod:     input.PaymentMethod,
+		CategoryID:        input.CategoryID,
 		OccurredAt:        input.OccurredAt,
 		FinancialTimezone: input.FinancialTimezone,
 		Origin:            input.Origin,
 	})
+	if err != nil {
+		return domain.ExpenseDetails{}, err
+	}
+	details.CategoryID, err = validateCategoryForType(ctx, categoryCatalog, details.CategoryID, domain.TransactionTypeExpense)
 	if err != nil {
 		return domain.ExpenseDetails{}, err
 	}

@@ -4,11 +4,13 @@ import Observation
 struct ReviewedExpense: Equatable, Sendable {
     let preview: ExpensePreview
     let request: ExpenseRequest
+    let categoryDisplayName: String
 }
 
 struct ReviewedIncome: Equatable, Sendable {
     let preview: IncomePreview
     let request: IncomeRequest
+    let categoryDisplayName: String
 }
 
 enum ReviewedTransaction: Equatable, Sendable {
@@ -37,6 +39,7 @@ enum RegistrationState: Equatable {
 @Observable
 final class RegistrationViewModel {
     private(set) var transactionType: TransactionType = .expense
+    private(set) var selectedCategoryID: String?
     var description = "" {
         didSet {
             guard description != oldValue else { return }
@@ -65,6 +68,7 @@ final class RegistrationViewModel {
     private(set) var errorMessage: String?
 
     private let api: any FinancialAPI
+    private let categories: CategoryCatalogModel
     private let moneyParser: BRLMoneyParser
     private let timestampCodec: RFC3339DateCodec
     private let makeIdempotencyKey: () -> String
@@ -74,6 +78,7 @@ final class RegistrationViewModel {
 
     init(
         api: any FinancialAPI,
+        categories: CategoryCatalogModel? = nil,
         now: Date = Date(),
         moneyParser: BRLMoneyParser = BRLMoneyParser(),
         timestampCodec: RFC3339DateCodec = RFC3339DateCodec(),
@@ -81,6 +86,7 @@ final class RegistrationViewModel {
         onTransactionRecorded: @escaping () -> Void = {}
     ) {
         self.api = api
+        self.categories = categories ?? CategoryCatalogModel(api: api)
         occurredAt = now
         self.moneyParser = moneyParser
         self.timestampCodec = timestampCodec
@@ -129,11 +135,43 @@ final class RegistrationViewModel {
         }
     }
 
+    var categoryCatalogState: CategoryCatalogState {
+        categories.state
+    }
+
+    var availableCategories: [CategoryDefinition] {
+        categories.definitions(for: transactionType)
+    }
+
+    var selectedCategoryDisplayName: String {
+        categories.displayName(for: selectedCategoryID)
+    }
+
+    func loadCategoriesIfNeeded() async {
+        await categories.loadIfNeeded()
+    }
+
+    func retryCategories() async {
+        await categories.retry()
+    }
+
+    func selectCategory(_ categoryID: String?) {
+        guard categoryID != selectedCategoryID else { return }
+        if let categoryID {
+            guard categories.definition(for: categoryID)?.type == transactionType else { return }
+        }
+        if case .submitting = state { return }
+
+        selectedCategoryID = categoryID
+        draftDidChange()
+    }
+
     func selectTransactionType(_ newType: TransactionType) {
         guard newType != transactionType else { return }
         if case .submitting = state { return }
 
         transactionType = newType
+        selectedCategoryID = nil
         paymentMethod = .pix
         draftDidChange()
         errorMessage = nil
@@ -159,6 +197,7 @@ final class RegistrationViewModel {
         let amount = FinancialMoney(minor: amountMinor, currency: .brl)
         let occurredAt = timestampCodec.encode(occurredAt)
         let requestedType = transactionType
+        let requestedCategoryID = selectedCategoryID
         let previewGeneration = draftGeneration
         state = .previewing
 
@@ -169,6 +208,7 @@ final class RegistrationViewModel {
                     description: description,
                     amount: amount,
                     paymentMethod: paymentMethod,
+                    categoryID: requestedCategoryID,
                     occurredAt: occurredAt
                 )
                 let preview = try await api.preview(request)
@@ -177,14 +217,24 @@ final class RegistrationViewModel {
                     description: preview.description,
                     amount: preview.amount,
                     paymentMethod: preview.paymentMethod,
+                    categoryID: preview.categoryID,
                     occurredAt: preview.occurredAt
                 )
                 pendingIdempotencyKey = nil
-                state = .reviewing(.expense(ReviewedExpense(preview: preview, request: frozenRequest)))
+                state = .reviewing(
+                    .expense(
+                        ReviewedExpense(
+                            preview: preview,
+                            request: frozenRequest,
+                            categoryDisplayName: categories.displayName(for: preview.categoryID)
+                        )
+                    )
+                )
             case .income:
                 let request = IncomeRequest(
                     description: description,
                     amount: amount,
+                    categoryID: requestedCategoryID,
                     occurredAt: occurredAt
                 )
                 let preview = try await api.preview(request)
@@ -192,10 +242,19 @@ final class RegistrationViewModel {
                 let frozenRequest = IncomeRequest(
                     description: preview.description,
                     amount: preview.amount,
+                    categoryID: preview.categoryID,
                     occurredAt: preview.occurredAt
                 )
                 pendingIdempotencyKey = nil
-                state = .reviewing(.income(ReviewedIncome(preview: preview, request: frozenRequest)))
+                state = .reviewing(
+                    .income(
+                        ReviewedIncome(
+                            preview: preview,
+                            request: frozenRequest,
+                            categoryDisplayName: categories.displayName(for: preview.categoryID)
+                        )
+                    )
+                )
             }
         } catch is CancellationError {
             guard canInstallPreview(generation: previewGeneration) else { return }
@@ -270,6 +329,7 @@ final class RegistrationViewModel {
     private func startNew(type: TransactionType, now: Date) {
         guard case .success = state else { return }
         transactionType = type
+        selectedCategoryID = nil
         occurredAt = now
         pendingIdempotencyKey = nil
         errorMessage = nil
@@ -280,6 +340,7 @@ final class RegistrationViewModel {
         description = ""
         amountText = ""
         paymentMethod = .pix
+        selectedCategoryID = nil
     }
 
     private func draftDidChange() {

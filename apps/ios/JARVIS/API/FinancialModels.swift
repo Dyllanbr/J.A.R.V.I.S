@@ -51,6 +51,36 @@ enum FinancialStatus: String, Codable, Sendable {
     case recorded = "RECORDED"
 }
 
+struct CategoryDefinition: Decodable, Equatable, Identifiable, Sendable {
+    let id: String
+    let type: TransactionType
+    let displayName: String
+
+    init(id: String, type: TransactionType, displayName: String) {
+        self.id = id
+        self.type = type
+        self.displayName = displayName
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
+        type = try container.decode(TransactionType.self, forKey: .type)
+        displayName = try container.decode(String.self, forKey: .displayName)
+        guard !id.isEmpty, !displayName.isEmpty else {
+            throw DecodingError.dataCorruptedError(
+                forKey: id.isEmpty ? .id : .displayName,
+                in: container,
+                debugDescription: "Category identity and display name must not be empty"
+            )
+        }
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, type, displayName
+    }
+}
+
 typealias ExpenseOrigin = FinancialOrigin
 typealias ExpenseStatus = FinancialStatus
 
@@ -66,19 +96,27 @@ struct ExpenseRequest: Encodable, Equatable, Sendable {
     let description: String
     let amount: FinancialMoney
     let paymentMethod: PaymentMethod
+    let categoryID: String?
     let occurredAt: String
 
     init(
         description: String,
         amount: FinancialMoney,
         paymentMethod: PaymentMethod,
+        categoryID: String? = nil,
         occurredAt: String
     ) {
         type = .expense
         self.description = description
         self.amount = amount
         self.paymentMethod = paymentMethod
+        self.categoryID = categoryID
         self.occurredAt = occurredAt
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case type, description, amount, paymentMethod, occurredAt
+        case categoryID = "categoryId"
     }
 }
 
@@ -86,13 +124,20 @@ struct IncomeRequest: Encodable, Equatable, Sendable {
     let type: TransactionType
     let description: String
     let amount: FinancialMoney
+    let categoryID: String?
     let occurredAt: String
 
-    init(description: String, amount: FinancialMoney, occurredAt: String) {
+    init(description: String, amount: FinancialMoney, categoryID: String? = nil, occurredAt: String) {
         type = .income
         self.description = description
         self.amount = amount
+        self.categoryID = categoryID
         self.occurredAt = occurredAt
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case type, description, amount, occurredAt
+        case categoryID = "categoryId"
     }
 }
 
@@ -101,6 +146,7 @@ struct ExpensePreview: Decodable, Equatable, Sendable {
     let description: String
     let amount: FinancialMoney
     let paymentMethod: PaymentMethod
+    let categoryID: String?
     let occurredAt: String
     let financialTimezone: String
     let origin: FinancialOrigin
@@ -109,6 +155,7 @@ struct ExpensePreview: Decodable, Equatable, Sendable {
         description: String,
         amount: FinancialMoney,
         paymentMethod: PaymentMethod,
+        categoryID: String? = nil,
         occurredAt: String,
         financialTimezone: String,
         origin: FinancialOrigin
@@ -117,6 +164,7 @@ struct ExpensePreview: Decodable, Equatable, Sendable {
         self.description = description
         self.amount = amount
         self.paymentMethod = paymentMethod
+        self.categoryID = categoryID
         self.occurredAt = occurredAt
         self.financialTimezone = financialTimezone
         self.origin = origin
@@ -131,6 +179,7 @@ struct ExpensePreview: Decodable, Equatable, Sendable {
         description = try container.decode(String.self, forKey: .description)
         amount = try container.decode(FinancialMoney.self, forKey: .amount)
         paymentMethod = try container.decode(PaymentMethod.self, forKey: .paymentMethod)
+        categoryID = try container.decodeStrictOptionalString(forKey: .categoryID)
         occurredAt = try container.decode(String.self, forKey: .occurredAt)
         financialTimezone = try container.decode(String.self, forKey: .financialTimezone)
         origin = try container.decode(FinancialOrigin.self, forKey: .origin)
@@ -138,6 +187,7 @@ struct ExpensePreview: Decodable, Equatable, Sendable {
 
     private enum CodingKeys: String, CodingKey {
         case type, description, amount, paymentMethod, occurredAt, financialTimezone, origin
+        case categoryID = "categoryId"
     }
 }
 
@@ -145,6 +195,7 @@ struct IncomePreview: Decodable, Equatable, Sendable {
     let type: TransactionType
     let description: String
     let amount: FinancialMoney
+    let categoryID: String?
     let occurredAt: String
     let financialTimezone: String
     let origin: FinancialOrigin
@@ -152,6 +203,7 @@ struct IncomePreview: Decodable, Equatable, Sendable {
     init(
         description: String,
         amount: FinancialMoney,
+        categoryID: String? = nil,
         occurredAt: String,
         financialTimezone: String,
         origin: FinancialOrigin
@@ -159,6 +211,7 @@ struct IncomePreview: Decodable, Equatable, Sendable {
         type = .income
         self.description = description
         self.amount = amount
+        self.categoryID = categoryID
         self.occurredAt = occurredAt
         self.financialTimezone = financialTimezone
         self.origin = origin
@@ -179,6 +232,7 @@ struct IncomePreview: Decodable, Equatable, Sendable {
         }
         description = try container.decode(String.self, forKey: .description)
         amount = try container.decode(FinancialMoney.self, forKey: .amount)
+        categoryID = try container.decodeStrictOptionalString(forKey: .categoryID)
         occurredAt = try container.decode(String.self, forKey: .occurredAt)
         financialTimezone = try container.decode(String.self, forKey: .financialTimezone)
         origin = try container.decode(FinancialOrigin.self, forKey: .origin)
@@ -186,6 +240,7 @@ struct IncomePreview: Decodable, Equatable, Sendable {
 
     private enum CodingKeys: String, CodingKey {
         case type, description, amount, paymentMethod, occurredAt, financialTimezone, origin
+        case categoryID = "categoryId"
     }
 }
 
@@ -195,6 +250,7 @@ struct Expense: Decodable, Equatable, Identifiable, Sendable {
     let description: String
     let amount: FinancialMoney
     let paymentMethod: PaymentMethod
+    let categoryID: String?
     let occurredAt: String
     let financialTimezone: String
     let origin: FinancialOrigin
@@ -208,6 +264,7 @@ struct Expense: Decodable, Equatable, Identifiable, Sendable {
         description: String,
         amount: FinancialMoney,
         paymentMethod: PaymentMethod,
+        categoryID: String? = nil,
         occurredAt: String,
         financialTimezone: String,
         origin: FinancialOrigin,
@@ -221,6 +278,7 @@ struct Expense: Decodable, Equatable, Identifiable, Sendable {
         self.description = description
         self.amount = amount
         self.paymentMethod = paymentMethod
+        self.categoryID = categoryID
         self.occurredAt = occurredAt
         self.financialTimezone = financialTimezone
         self.origin = origin
@@ -240,6 +298,7 @@ struct Expense: Decodable, Equatable, Identifiable, Sendable {
         description = try container.decode(String.self, forKey: .description)
         amount = try container.decode(FinancialMoney.self, forKey: .amount)
         paymentMethod = try container.decode(PaymentMethod.self, forKey: .paymentMethod)
+        categoryID = try container.decodeStrictOptionalString(forKey: .categoryID)
         occurredAt = try container.decode(String.self, forKey: .occurredAt)
         financialTimezone = try container.decode(String.self, forKey: .financialTimezone)
         origin = try container.decode(FinancialOrigin.self, forKey: .origin)
@@ -251,6 +310,7 @@ struct Expense: Decodable, Equatable, Identifiable, Sendable {
 
     private enum CodingKeys: String, CodingKey {
         case id, type, description, amount, paymentMethod, occurredAt, financialTimezone, origin
+        case categoryID = "categoryId"
         case status, version, createdAt, updatedAt
     }
 }
@@ -260,6 +320,7 @@ struct Income: Decodable, Equatable, Identifiable, Sendable {
     let type: TransactionType
     let description: String
     let amount: FinancialMoney
+    let categoryID: String?
     let occurredAt: String
     let financialTimezone: String
     let origin: FinancialOrigin
@@ -272,6 +333,7 @@ struct Income: Decodable, Equatable, Identifiable, Sendable {
         id: String,
         description: String,
         amount: FinancialMoney,
+        categoryID: String? = nil,
         occurredAt: String,
         financialTimezone: String,
         origin: FinancialOrigin,
@@ -284,6 +346,7 @@ struct Income: Decodable, Equatable, Identifiable, Sendable {
         type = .income
         self.description = description
         self.amount = amount
+        self.categoryID = categoryID
         self.occurredAt = occurredAt
         self.financialTimezone = financialTimezone
         self.origin = origin
@@ -309,6 +372,7 @@ struct Income: Decodable, Equatable, Identifiable, Sendable {
         }
         description = try container.decode(String.self, forKey: .description)
         amount = try container.decode(FinancialMoney.self, forKey: .amount)
+        categoryID = try container.decodeStrictOptionalString(forKey: .categoryID)
         occurredAt = try container.decode(String.self, forKey: .occurredAt)
         financialTimezone = try container.decode(String.self, forKey: .financialTimezone)
         origin = try container.decode(FinancialOrigin.self, forKey: .origin)
@@ -320,6 +384,7 @@ struct Income: Decodable, Equatable, Identifiable, Sendable {
 
     private enum CodingKeys: String, CodingKey {
         case id, type, description, amount, paymentMethod, occurredAt, financialTimezone, origin
+        case categoryID = "categoryId"
         case status, version, createdAt, updatedAt
     }
 }
@@ -353,6 +418,13 @@ enum FinancialTransaction: Decodable, Equatable, Identifiable, Sendable {
         switch self {
         case let .expense(expense): expense.amount
         case let .income(income): income.amount
+        }
+    }
+
+    var categoryID: String? {
+        switch self {
+        case let .expense(expense): expense.categoryID
+        case let .income(income): income.categoryID
         }
     }
 
@@ -400,4 +472,11 @@ struct APIErrorEnvelope: Decodable, Sendable {
     }
 
     let error: Body
+}
+
+private extension KeyedDecodingContainer {
+    func decodeStrictOptionalString(forKey key: Key) throws -> String? {
+        guard contains(key) else { return nil }
+        return try decode(String.self, forKey: key)
+    }
 }

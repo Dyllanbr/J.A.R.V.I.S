@@ -27,6 +27,223 @@ final class RegistrationViewModelTests: XCTestCase {
         }
     }
 
+    func testCatalogIsSharedAndUncategorizedRemainsTheDefault() async {
+        let api = FinancialAPISpy()
+        let appModel = AppModel(api: api, now: fixedNow)
+
+        XCTAssertNil(appModel.registration.selectedCategoryID)
+        async let registerLoad: Void = appModel.registration.loadCategoriesIfNeeded()
+        async let historyLoad: Void = appModel.history.loadCategoriesIfNeeded()
+        _ = await (registerLoad, historyLoad)
+
+        XCTAssertEqual(api.categoryRequestCount, 1)
+        XCTAssertEqual(appModel.registration.availableCategories.map(\.id), ["expense.food", "expense.other"])
+    }
+
+    func testCatalogLoadSurvivesInitiatingCallerCancellation() async {
+        let api = SuspendedCategoryAPI()
+        let catalog = CategoryCatalogModel(api: api)
+
+        let initiatingCaller = Task { await catalog.loadIfNeeded() }
+        await api.waitForCategoryRequest()
+        XCTAssertEqual(api.categoryRequestCount, 1)
+
+        var secondCallerCompleted = false
+        let secondCallerEntered = MainActorTestSignal()
+        let secondCaller = Task {
+            secondCallerEntered.signal()
+            await catalog.loadIfNeeded()
+            secondCallerCompleted = true
+        }
+        await secondCallerEntered.wait()
+
+        XCTAssertEqual(api.categoryRequestCount, 1)
+        XCTAssertFalse(secondCallerCompleted, "A concurrent caller must await the shared catalog fetch")
+
+        initiatingCaller.cancel()
+        await Task.yield()
+
+        XCTAssertEqual(api.categoryCancellationCount, 0, "A waiting View must not own or cancel the shared fetch")
+        XCTAssertTrue(api.resolveCategories(syntheticCategories))
+        await initiatingCaller.value
+        await secondCaller.value
+
+        XCTAssertEqual(catalog.state, .loaded(syntheticCategories))
+        XCTAssertEqual(catalog.definitions, syntheticCategories)
+        XCTAssertTrue(secondCallerCompleted)
+        XCTAssertEqual(api.categoryRequestCount, 1)
+        XCTAssertEqual(api.categoryCancellationCount, 0)
+    }
+
+    func testCatalogFailureStillAllowsSafeUncategorizedPreviewAndRetry() async {
+        let api = FinancialAPISpy()
+        api.categoriesResult = .failure(FinancialAPIError.serviceUnavailable)
+        let model = makeModel(api: api)
+
+        await model.loadCategoriesIfNeeded()
+        guard case .failed = model.categoryCatalogState else {
+            return XCTFail("Expected a visible catalog failure")
+        }
+        XCTAssertNil(model.selectedCategoryID)
+        fillValidDraft(model)
+        await model.review()
+
+        XCTAssertNil(api.previewRequests.first?.categoryID)
+        XCTAssertNotNil(model.reviewedExpense)
+
+        model.edit()
+        api.categoriesResult = .success(syntheticCategories)
+        await model.retryCategories()
+        XCTAssertEqual(model.availableCategories.map(\.id), ["expense.food", "expense.other"])
+    }
+
+    func testCategoryOptionsFollowTypeAndTypeSwitchClearsWithoutMappingOther() {
+        let api = FinancialAPISpy()
+        let model = makeModel(api: api, categories: makeCatalog(api: api))
+
+        XCTAssertEqual(model.availableCategories.map(\.id), ["expense.food", "expense.other"])
+        model.selectCategory("expense.other")
+        XCTAssertEqual(model.selectedCategoryID, "expense.other")
+
+        model.selectTransactionType(.income)
+        XCTAssertNil(model.selectedCategoryID)
+        XCTAssertEqual(model.availableCategories.map(\.id), ["income.salary", "income.other"])
+
+        model.selectCategory("income.other")
+        model.selectTransactionType(.expense)
+        XCTAssertNil(model.selectedCategoryID)
+        XCTAssertEqual(model.selectedCategoryDisplayName, "Sem categoria")
+    }
+
+    func testPreviewFreezesBackendCategoryAndRetryKeepsCategoryAndIdempotencyKey() async {
+        let api = FinancialAPISpy()
+        api.previewResult = .success(syntheticPreview(categoryID: "expense.food"))
+        api.createResults = [
+            .failure(FinancialAPIError.connectionUnavailable),
+            .success(
+                RecordedExpense(
+                    expense: syntheticExpense(categoryID: "expense.food"),
+                    replayed: true
+                )
+            )
+        ]
+        let model = makeModel(
+            api: api,
+            categories: makeCatalog(api: api),
+            makeKey: { "categorized-attempt" }
+        )
+        fillValidDraft(model)
+        model.selectCategory("expense.food")
+
+        await model.review()
+
+        XCTAssertEqual(api.previewRequests.first?.categoryID, "expense.food")
+        XCTAssertEqual(model.reviewedExpense?.preview.categoryID, "expense.food")
+        XCTAssertEqual(model.reviewedExpense?.request.categoryID, "expense.food")
+        XCTAssertEqual(model.reviewedExpense?.categoryDisplayName, "Alimentação")
+
+        await model.confirm()
+        await model.confirm()
+
+        XCTAssertEqual(api.createRequests.map(\.request.categoryID), ["expense.food", "expense.food"])
+        XCTAssertEqual(api.createRequests.map(\.key), ["categorized-attempt", "categorized-attempt"])
+    }
+
+    func testEditingCategoryAfterRetryStartsANewLogicalAttempt() async {
+        let api = FinancialAPISpy()
+        api.previewResult = .success(syntheticPreview(categoryID: "expense.food"))
+        api.createResults = [.failure(FinancialAPIError.connectionUnavailable)]
+        var keys = ["food-attempt", "other-attempt"]
+        let model = makeModel(
+            api: api,
+            categories: makeCatalog(api: api),
+            makeKey: { keys.removeFirst() }
+        )
+        fillValidDraft(model)
+        model.selectCategory("expense.food")
+        await model.review()
+        await model.confirm()
+
+        model.edit()
+        model.selectCategory("expense.other")
+        api.previewResult = .success(syntheticPreview(categoryID: "expense.other"))
+        api.createResults = [
+            .success(
+                RecordedExpense(
+                    expense: syntheticExpense(categoryID: "expense.other"),
+                    replayed: false
+                )
+            )
+        ]
+        await model.review()
+        await model.confirm()
+
+        XCTAssertEqual(api.createRequests.map(\.key), ["food-attempt", "other-attempt"])
+        XCTAssertEqual(api.createRequests.map(\.request.categoryID), ["expense.food", "expense.other"])
+    }
+
+    func testIncomePreviewAndConfirmUseBackendValidatedCategory() async {
+        let api = FinancialAPISpy()
+        api.incomePreviewResult = .success(syntheticIncomePreview(categoryID: "income.salary"))
+        api.incomeCreateResults = [
+            .success(
+                RecordedIncome(
+                    income: syntheticIncome(categoryID: "income.salary"),
+                    replayed: false
+                )
+            )
+        ]
+        let model = makeModel(api: api, categories: makeCatalog(api: api))
+        model.selectTransactionType(.income)
+        model.selectCategory("income.salary")
+        fillValidDraft(model, description: "Receita sintética", amount: "85,00")
+
+        await model.review()
+        XCTAssertEqual(model.reviewedIncome?.categoryDisplayName, "Salário")
+        XCTAssertEqual(model.reviewedIncome?.request.categoryID, "income.salary")
+        await model.confirm()
+
+        XCTAssertEqual(api.incomeCreateRequests.first?.request.categoryID, "income.salary")
+        XCTAssertNotNil(model.successfulIncome)
+    }
+
+    func testChangingCategoryDuringSuspendedPreviewDiscardsStaleResponse() async {
+        let api = SuspendedPreviewAPI()
+        let model = makeModel(api: api, categories: makeCatalog(api: api))
+        fillValidDraft(model)
+        model.selectCategory("expense.food")
+
+        let previewTask = Task { await model.review() }
+        await api.waitForExpensePreviewCall()
+        model.selectCategory("expense.other")
+        api.resolveExpensePreview(syntheticPreview(categoryID: "expense.food"))
+        await previewTask.value
+
+        XCTAssertEqual(api.expensePreviewRequests.first?.categoryID, "expense.food")
+        XCTAssertEqual(model.selectedCategoryID, "expense.other")
+        XCTAssertEqual(model.state, .editing)
+        XCTAssertNil(model.reviewedTransaction)
+        XCTAssertNil(model.errorMessage)
+    }
+
+    func testTypeSwitchDuringCategorizedPreviewClearsCategoryAndDiscardsResponse() async {
+        let api = SuspendedPreviewAPI()
+        let model = makeModel(api: api, categories: makeCatalog(api: api))
+        fillValidDraft(model)
+        model.selectCategory("expense.food")
+
+        let previewTask = Task { await model.review() }
+        await api.waitForExpensePreviewCall()
+        model.selectTransactionType(.income)
+        api.resolveExpensePreview(syntheticPreview(categoryID: "expense.food"))
+        await previewTask.value
+
+        XCTAssertEqual(model.transactionType, .income)
+        XCTAssertNil(model.selectedCategoryID)
+        XCTAssertEqual(model.state, .editing)
+        XCTAssertNil(model.reviewedTransaction)
+    }
+
     func testExpenseStalePreviewIsDiscardedWhenDraftChangesWhileSuspended() async {
         let api = SuspendedPreviewAPI()
         var generatedKeyCount = 0
@@ -462,15 +679,21 @@ final class RegistrationViewModelTests: XCTestCase {
 
     private func makeModel(
         api: any FinancialAPI,
+        categories: CategoryCatalogModel? = nil,
         makeKey: @escaping () -> String = { "key-synthetic" },
         onRecorded: @escaping () -> Void = {}
     ) -> RegistrationViewModel {
         RegistrationViewModel(
             api: api,
+            categories: categories,
             now: fixedNow,
             makeIdempotencyKey: makeKey,
             onTransactionRecorded: onRecorded
         )
+    }
+
+    private func makeCatalog(api: any FinancialAPI) -> CategoryCatalogModel {
+        CategoryCatalogModel(api: api, definitions: syntheticCategories)
     }
 
     private func fillValidDraft(
@@ -494,9 +717,16 @@ private final class SuspendedPreviewAPI: FinancialAPI {
 
     private(set) var expenseCreateRequests: [(request: ExpenseRequest, key: String)] = []
     private(set) var incomeCreateRequests: [(request: IncomeRequest, key: String)] = []
+    private(set) var expensePreviewRequests: [ExpenseRequest] = []
+    private(set) var incomePreviewRequests: [IncomeRequest] = []
 
-    func preview(_: ExpenseRequest) async throws -> ExpensePreview {
-        try await withCheckedThrowingContinuation { continuation in
+    func categories() async throws -> [CategoryDefinition] {
+        syntheticCategories
+    }
+
+    func preview(_ request: ExpenseRequest) async throws -> ExpensePreview {
+        expensePreviewRequests.append(request)
+        return try await withCheckedThrowingContinuation { continuation in
             precondition(expensePreviewContinuation == nil, "Only one suspended Expense Preview is supported")
             expensePreviewContinuation = continuation
             expensePreviewCallWaiter?.resume()
@@ -504,8 +734,9 @@ private final class SuspendedPreviewAPI: FinancialAPI {
         }
     }
 
-    func preview(_: IncomeRequest) async throws -> IncomePreview {
-        try await withCheckedThrowingContinuation { continuation in
+    func preview(_ request: IncomeRequest) async throws -> IncomePreview {
+        incomePreviewRequests.append(request)
+        return try await withCheckedThrowingContinuation { continuation in
             precondition(incomePreviewContinuation == nil, "Only one suspended Income Preview is supported")
             incomePreviewContinuation = continuation
             incomePreviewCallWaiter?.resume()
@@ -559,5 +790,90 @@ private final class SuspendedPreviewAPI: FinancialAPI {
         }
         expensePreviewContinuation = nil
         continuation.resume(throwing: error)
+    }
+}
+
+@MainActor
+private final class SuspendedCategoryAPI: FinancialAPI {
+    private var categoryContinuation: CheckedContinuation<[CategoryDefinition], Error>?
+    private var categoryRequestWaiter: CheckedContinuation<Void, Never>?
+
+    private(set) var categoryRequestCount = 0
+    private(set) var categoryCancellationCount = 0
+
+    func categories() async throws -> [CategoryDefinition] {
+        categoryRequestCount += 1
+        return try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { continuation in
+                precondition(categoryContinuation == nil, "Only one suspended Category request is supported")
+                categoryContinuation = continuation
+                categoryRequestWaiter?.resume()
+                categoryRequestWaiter = nil
+            }
+        } onCancel: { [weak self] in
+            Task { @MainActor in
+                self?.cancelCategoryRequest()
+            }
+        }
+    }
+
+    func preview(_: ExpenseRequest) async throws -> ExpensePreview {
+        throw FinancialAPIError.invalidResponse
+    }
+
+    func preview(_: IncomeRequest) async throws -> IncomePreview {
+        throw FinancialAPIError.invalidResponse
+    }
+
+    func create(_: ExpenseRequest, idempotencyKey _: String) async throws -> RecordedExpense {
+        throw FinancialAPIError.invalidResponse
+    }
+
+    func create(_: IncomeRequest, idempotencyKey _: String) async throws -> RecordedIncome {
+        throw FinancialAPIError.invalidResponse
+    }
+
+    func transactions(month _: String) async throws -> TransactionMonth {
+        throw FinancialAPIError.invalidResponse
+    }
+
+    func waitForCategoryRequest() async {
+        guard categoryContinuation == nil else { return }
+        await withCheckedContinuation { categoryRequestWaiter = $0 }
+    }
+
+    func resolveCategories(_ definitions: [CategoryDefinition]) -> Bool {
+        guard let continuation = categoryContinuation else { return false }
+        categoryContinuation = nil
+        continuation.resume(returning: definitions)
+        return true
+    }
+
+    private func cancelCategoryRequest() {
+        categoryCancellationCount += 1
+        guard let continuation = categoryContinuation else { return }
+        categoryContinuation = nil
+        continuation.resume(throwing: CancellationError())
+    }
+}
+
+@MainActor
+private final class MainActorTestSignal {
+    private var isSignaled = false
+    private var waiter: CheckedContinuation<Void, Never>?
+
+    func signal() {
+        precondition(!isSignaled, "The test signal may only be delivered once")
+        isSignaled = true
+        waiter?.resume()
+        waiter = nil
+    }
+
+    func wait() async {
+        guard !isSignaled else { return }
+        await withCheckedContinuation { continuation in
+            precondition(waiter == nil, "The test signal supports only one waiter")
+            waiter = continuation
+        }
     }
 }

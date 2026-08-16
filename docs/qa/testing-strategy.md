@@ -11,20 +11,22 @@
 ## Implementado
 
 - Testes Go para configuração, limites HTTP, health, 405, bind, cancelamento e shutdown gracioso.
-- Testes unitários do domínio e aplicação para `Money`, `Expense`, `Income`, preview, record, fingerprints e projeção mensal; fuzz permanece focado nas invariantes em que agrega valor.
-- Testes de integração contra PostgreSQL 18.6 real para migrations 001–003, matriz de tipos/payment method/audit/operação, ownership, limites Unicode/whitespace, rollback, concorrência, restart, DOWN seguro e consulta mensal mista.
+- Testes unitários do domínio e aplicação para `Money`, `Expense`, `Income`, `CategoryID`, definitions/applicability, preview, record, fingerprints e projeção mensal; a semântica idempotente categorizada também possui cobertura direta, e fuzz permanece focado nas invariantes em que agrega valor.
+- Testes de integração contra PostgreSQL 18.6 real para migrations 001–004, seed/FK composta de Category, matriz de tipos/payment method/audit/operação, ownership, limites Unicode/whitespace, rollback, concorrência, restart, DOWN seguro sob lock e consulta mensal mista.
 - Testes de reserva/replay/conflito idempotente para `CREATE_EXPENSE` e `CREATE_INCOME`, incluindo payload igual/diferente concorrente, retry após falhas de transaction/audit/completion/commit, escopo por owner e defesa cross-type.
 - Regressão HTTP/PostgreSQL entre instâncias independentes para replay após restart, precisão sub-microssegundo, body persistido estável e contagens `1 transaction + 1 AuditEvent + 1 idempotency record` por tipo.
 - Prova durável do round trip `TIMESTAMPTZ` via pgx e testes unitários da canonicalização UTC/microssegundos usada por preview, fingerprint e criação.
 - Lifecycle Docker compartilhado com porta efêmera, banco por teste e cleanup de container/volume em sucesso ou falha.
-- Smoke Playwright health-only e E2E financeiro black-box contra API/PostgreSQL reais para preview, create/replay/conflict de Expense/Income e histórico misto, com zero retries.
+- Smoke Playwright health-only e E2E financeiro black-box contra API/PostgreSQL reais para catálogo, preview, create/replay/conflict de Expense/Income categorizados e histórico misto, com zero retries.
 - Lifecycle compartilhado que valida porta, readiness do PID atual, cleanup e shutdown gracioso.
 - Formatação, vet, lint TypeScript sem warnings, type-check, testes com detector de corrida, OpenAPI semântico, auditoria, scanner e build no CI.
-- XCTest para Money input, codecs e modelos discriminados, cliente HTTP, cancelamento, máquina de estados/retry, stale Preview e histórico misto; XCUITest com stub `DEBUG` explícito para Expense/Income, alternância repetida das tabs por identifiers semânticos, History normal/erro/misto e Dynamic Type extremo.
-- Gate local fail-closed para os dois fluxos `Simulator → SwiftUI → URLSession → Go → PostgreSQL`, com fixtures sintéticas únicas e pós-condição direta de `1 transaction + 1 AuditEvent + 1 idempotency record` por tipo; Income também exige `payment_method IS NULL`.
+- XCTest para Money input, codecs e modelos discriminados, cliente HTTP, cancelamento, catálogo compartilhado, máquina de estados/retry, stale Preview e histórico misto; a regressão de cancellation usa barreira positiva determinística entre waiters. XCUITest com stub `DEBUG` explícito cobre Expense/Income categorizados, picker/filtros de Category, alternância repetida das tabs por identifiers semânticos, History normal/erro/misto e Dynamic Type extremo.
+- Gate local fail-closed para os dois fluxos `Simulator → SwiftUI → URLSession → Go → PostgreSQL`, com fixtures sintéticas únicas e pós-condição direta de `1 transaction + 1 AuditEvent + 1 idempotency record` por tipo e `category_id` esperado; Income também exige `payment_method IS NULL`.
 - Job macOS independente para `make verify-ios`; o `make verify` cross-platform permanece inalterado.
 
 O Incremento 1 — Despesas, incluindo o primeiro fluxo iOS, está **VERIFICADO**. O Incremento 2 — Receitas, incluindo domínio/aplicação, migration 003, PostgreSQL, API/OpenAPI, Playwright, iOS e E2E real, está **IMPLEMENTADO** e pronto para auditoria global independente; ainda não está classificado como verificado.
+
+O Incremento 3A — Categorias e filtros do histórico está **IMPLEMENTADO** e aguarda auditoria final independente; ainda não está classificado como verificado.
 
 ## Ainda planejado
 

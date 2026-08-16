@@ -39,6 +39,7 @@ type IncomeDetails struct {
 	UserID            string
 	Description       string
 	Amount            Money
+	CategoryID        *CategoryID
 	OccurredAt        time.Time
 	FinancialTimezone string
 	Origin            Origin
@@ -59,6 +60,7 @@ type Income struct {
 	transactionType   TransactionType
 	description       string
 	amount            Money
+	categoryID        *CategoryID
 	occurredAt        time.Time
 	financialTimezone string
 	origin            Origin
@@ -88,6 +90,10 @@ func NormalizeIncomeDetails(details IncomeDetails) (IncomeDetails, error) {
 	if details.Amount.MinorUnits() <= 0 {
 		return IncomeDetails{}, ErrInvalidIncomeAmount
 	}
+	categoryID, err := normalizeOptionalCategoryID(details.CategoryID)
+	if err != nil {
+		return IncomeDetails{}, err
+	}
 	if details.OccurredAt.IsZero() {
 		return IncomeDetails{}, ErrInvalidIncomeOccurredAt
 	}
@@ -99,6 +105,7 @@ func NormalizeIncomeDetails(details IncomeDetails) (IncomeDetails, error) {
 	}
 
 	details.Description = description
+	details.CategoryID = categoryID
 	details.OccurredAt = normalizeInstant(details.OccurredAt)
 	return details, nil
 }
@@ -124,6 +131,7 @@ func NewIncome(params IncomeParams) (Income, error) {
 		transactionType:   TransactionTypeIncome,
 		description:       details.Description,
 		amount:            details.Amount,
+		categoryID:        details.CategoryID,
 		occurredAt:        details.OccurredAt,
 		financialTimezone: details.FinancialTimezone,
 		origin:            details.Origin,
@@ -134,11 +142,17 @@ func NewIncome(params IncomeParams) (Income, error) {
 	}, nil
 }
 
-func (income Income) ID() string                { return income.id }
-func (income Income) UserID() string            { return income.userID }
-func (income Income) Type() TransactionType     { return income.transactionType }
-func (income Income) Description() string       { return income.description }
-func (income Income) Amount() Money             { return income.amount }
+func (income Income) ID() string            { return income.id }
+func (income Income) UserID() string        { return income.userID }
+func (income Income) Type() TransactionType { return income.transactionType }
+func (income Income) Description() string   { return income.description }
+func (income Income) Amount() Money         { return income.amount }
+func (income Income) CategoryID() (CategoryID, bool) {
+	if income.categoryID == nil {
+		return "", false
+	}
+	return *income.categoryID, true
+}
 func (income Income) OccurredAt() time.Time     { return income.occurredAt }
 func (income Income) FinancialTimezone() string { return income.financialTimezone }
 func (income Income) Origin() Origin            { return income.origin }

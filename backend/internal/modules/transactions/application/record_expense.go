@@ -56,9 +56,10 @@ type RecordExpenseResult struct {
 // RecordExpense executes the mutating command after explicit confirmation by
 // the caller. Confirmation itself is intentionally not represented here.
 type RecordExpense struct {
-	store       ExpenseCommandStore
-	idGenerator ExpenseIDGenerator
-	clock       Clock
+	store           ExpenseCommandStore
+	idGenerator     ExpenseIDGenerator
+	clock           Clock
+	categoryCatalog CategoryCatalog
 }
 
 // NewRecordExpense composes the command with its concrete required ports.
@@ -66,6 +67,29 @@ func NewRecordExpense(
 	store ExpenseCommandStore,
 	idGenerator ExpenseIDGenerator,
 	clock Clock,
+) (*RecordExpense, error) {
+	return newRecordExpense(store, idGenerator, clock, nil)
+}
+
+// NewRecordExpenseWithCategoryCatalog composes validation for categorized
+// writes without changing the legacy uncategorized constructor.
+func NewRecordExpenseWithCategoryCatalog(
+	store ExpenseCommandStore,
+	idGenerator ExpenseIDGenerator,
+	clock Clock,
+	categoryCatalog CategoryCatalog,
+) (*RecordExpense, error) {
+	if categoryCatalog == nil {
+		return nil, ErrMissingCategoryCatalog
+	}
+	return newRecordExpense(store, idGenerator, clock, categoryCatalog)
+}
+
+func newRecordExpense(
+	store ExpenseCommandStore,
+	idGenerator ExpenseIDGenerator,
+	clock Clock,
+	categoryCatalog CategoryCatalog,
 ) (*RecordExpense, error) {
 	if store == nil {
 		return nil, ErrMissingCommandStore
@@ -76,7 +100,7 @@ func NewRecordExpense(
 	if clock == nil {
 		return nil, ErrMissingClock
 	}
-	return &RecordExpense{store: store, idGenerator: idGenerator, clock: clock}, nil
+	return &RecordExpense{store: store, idGenerator: idGenerator, clock: clock, categoryCatalog: categoryCatalog}, nil
 }
 
 // Execute validates command semantics before consuming generated values and
@@ -89,7 +113,7 @@ func (useCase *RecordExpense) Execute(ctx context.Context, input RecordExpenseIn
 		return RecordExpenseResult{}, err
 	}
 
-	details, err := normalizeExpenseInput(input.Expense)
+	details, err := normalizeExpenseInput(ctx, useCase.categoryCatalog, input.Expense)
 	if err != nil {
 		return RecordExpenseResult{}, err
 	}
@@ -146,6 +170,9 @@ func fingerprintExpense(details domain.ExpenseDetails) RequestFingerprint {
 	writeFingerprintString(digest, details.OccurredAt.UTC().Format("2006-01-02T15:04:05.999999999Z07:00"))
 	writeFingerprintString(digest, details.FinancialTimezone)
 	writeFingerprintString(digest, string(details.Origin))
+	if details.CategoryID != nil {
+		writeFingerprintString(digest, details.CategoryID.String())
+	}
 
 	var fingerprint RequestFingerprint
 	copy(fingerprint[:], digest.Sum(nil))

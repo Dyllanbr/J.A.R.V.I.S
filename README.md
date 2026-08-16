@@ -1,6 +1,6 @@
 # J.A.R.V.I.S.
 
-Monorepo do J.A.R.V.I.S., um assessor financeiro pessoal em construção. O Incremento 1 — Despesas está verificado. O Incremento 2 — Receitas está implementado e pronto para auditoria global independente, sem ainda ser classificado como verificado.
+Monorepo do J.A.R.V.I.S., um assessor financeiro pessoal em construção. O Incremento 1 — Despesas está verificado. O Incremento 2 — Receitas está implementado e pronto para auditoria global independente, sem ainda ser classificado como verificado. O Incremento 3A — Categorias e filtros do histórico está implementado e aguarda auditoria final independente.
 
 > “O J.A.R.V.I.S. é uma plataforma de organização, acompanhamento, análise e aconselhamento financeiro pessoal. Ele não inicia, autoriza ou executa transações financeiras ou pagamentos.”
 
@@ -13,9 +13,10 @@ Implementado:
 - backend Go em monólito modular;
 - `Money`, `Expense` e `CreateExpense` verificados no núcleo do módulo `transactions`;
 - `Income` como agregado de escrita separado, com magnitude positiva e sem forma de pagamento, implementado pelo Incremento 2;
+- `CategoryID` opcional para Expense/Income e catálogo read-only de categorias do sistema, com PostgreSQL como source of truth;
 - migrations versionadas e adapter PostgreSQL com `EXPENSE_RECORDED`/`INCOME_RECORDED`, idempotência e auditoria atômicas;
-- API financeira opt-in com preview sem escrita, registro idempotente por tipo e histórico mensal misto, discriminado por `EXPENSE`/`INCOME`;
-- projeto iOS 17/SwiftUI com seletor Despesa/Receita, preview/revisão/confirmação, sucesso e histórico misto;
+- API financeira opt-in com descoberta de categorias, preview sem escrita, registro idempotente por tipo e histórico mensal misto, discriminado por `EXPENSE`/`INCOME`;
+- projeto iOS 17/SwiftUI com seletor Despesa/Receita, Category opcional, preview/revisão/confirmação, sucesso e histórico misto com filtros locais;
 - XCTest/XCUITest e integração automatizada Simulator → API → PostgreSQL para Expense e Income;
 - health check operacional, configuração e shutdown gracioso;
 - testes nativos Go e smoke de API com Playwright/TypeScript;
@@ -121,7 +122,7 @@ cd backend
 go run ./cmd/api
 ```
 
-Esse owner vem do servidor e não é autenticação. O contrato expõe `POST /v1/transactions/preview`, `POST /v1/transactions` e `GET /v1/transactions?month=YYYY-MM`. Preview e registro usam o discriminador explícito `EXPENSE` ou `INCOME`; Expense exige `paymentMethod`, enquanto Income não possui esse campo. O POST mutável deve ser chamado pelo canal somente depois de apresentar o preview e obter confirmação explícita. `origin=IOS` e `America/Sao_Paulo` são atribuídos pelo servidor; o cliente não envia `userId`, origin ou timezone.
+Esse owner vem do servidor e não é autenticação. O contrato expõe `GET /v1/categories`, `POST /v1/transactions/preview`, `POST /v1/transactions` e `GET /v1/transactions?month=YYYY-MM`. Preview e registro usam o discriminador explícito `EXPENSE` ou `INCOME`; Expense exige `paymentMethod`, enquanto Income não possui esse campo. `categoryId` é opcional, precisa existir no catálogo e ser aplicável ao tipo. O POST mutável deve ser chamado pelo canal somente depois de apresentar o preview e obter confirmação explícita. `origin=IOS` e `America/Sao_Paulo` são atribuídos pelo servidor; o cliente não envia `userId`, origin ou timezone.
 
 ## Aplicativo iOS
 
@@ -151,4 +152,4 @@ As regras permanentes estão em [AGENTS.md](AGENTS.md). A [Definition of Done](d
 
 ## Limitações atuais
 
-A API financeira é um contexto local single-owner temporário, sem autenticação, autorização multiusuário, rate limiting distribuído ou uso real aprovado. O app iOS não persiste dados localmente, e o retry idempotente pendente não sobrevive a restart. O histórico retorna apenas itens Expense/Income: não calcula totais, saldo, orçamento ou Disponível Seguro. Não há dados reais, banco de produção, parcelamentos, cartões, categorias funcionais, recorrências, orçamento, metas, Face ID, passkeys, PIN, WhatsApp funcional, Open Finance, OpenAI, IA, MCP, agentes de produto, cloud ou Terraform funcional. Dispositivo físico/LAN permanece planejado até existir proteção apropriada. Audit events existem apenas junto ao novo registro; preview, replay e leitura não geram eventos. A retenção de metadata de idempotência e outcomes de commit indeterminado exigem política operacional antes de uso real. As baselines LGPD e WCAG não são alegações de conformidade.
+A API financeira é um contexto local single-owner temporário, sem autenticação, autorização multiusuário, rate limiting distribuído ou uso real aprovado. O app iOS não persiste dados localmente, e o retry idempotente pendente não sobrevive a restart. O histórico retorna apenas itens Expense/Income e seus `categoryId` opcionais: filtros de tipo/Category são locais no iOS, sem totais, saldo, orçamento ou Disponível Seguro. O catálogo atual contém somente categorias do sistema; não há categorias customizadas, CRUD ou reclassificação após o registro. Também não há dados reais, banco de produção, parcelamentos, cartões, recorrências, orçamento, metas, Face ID, passkeys, PIN, WhatsApp funcional, Open Finance, OpenAI, IA, MCP, agentes de produto, cloud ou Terraform funcional. Dispositivo físico/LAN permanece planejado até existir proteção apropriada. Audit events existem apenas junto ao novo registro; preview, replay e leitura não geram eventos. A retenção de metadata de idempotência e outcomes de commit indeterminado exigem política operacional antes de uso real. As baselines LGPD e WCAG não são alegações de conformidade.

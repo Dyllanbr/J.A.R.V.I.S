@@ -28,7 +28,7 @@ func (repository *ExpenseRepository) ListMonthlyTransactions(
 	rows, err := repository.pool.Query(operationContext, `
 		SELECT
 			id, user_id, type, description, amount_minor, currency,
-			payment_method, occurred_at, financial_timezone, origin,
+			payment_method, category_id, occurred_at, financial_timezone, origin,
 			status, version, created_at, updated_at
 		FROM transactions
 		WHERE user_id = $1
@@ -61,12 +61,13 @@ func scanMonthlyTransaction(row rowScanner) (application.MonthlyTransaction, err
 		id, userID, transactionType, description string
 		currency, timezone, origin, status       string
 		paymentMethod                            *string
+		categoryID                               *string
 		amountMinor, version                     int64
 		occurredAt, createdAt, updatedAt         time.Time
 	)
 	if err := row.Scan(
 		&id, &userID, &transactionType, &description, &amountMinor, &currency,
-		&paymentMethod, &occurredAt, &timezone, &origin, &status, &version,
+		&paymentMethod, &categoryID, &occurredAt, &timezone, &origin, &status, &version,
 		&createdAt, &updatedAt,
 	); err != nil {
 		return application.MonthlyTransaction{}, newRepositoryError(ErrLoadMonthlyTransaction, err)
@@ -76,6 +77,10 @@ func scanMonthlyTransaction(row rowScanner) (application.MonthlyTransaction, err
 	}
 
 	amount, err := domain.NewMoney(amountMinor, domain.Currency(currency))
+	if err != nil {
+		return application.MonthlyTransaction{}, newRepositoryError(ErrLoadMonthlyTransaction, err)
+	}
+	storedCategoryID, err := categoryIDFromDatabase(categoryID)
 	if err != nil {
 		return application.MonthlyTransaction{}, newRepositoryError(ErrLoadMonthlyTransaction, err)
 	}
@@ -92,6 +97,7 @@ func scanMonthlyTransaction(row rowScanner) (application.MonthlyTransaction, err
 				Description:       description,
 				Amount:            amount,
 				PaymentMethod:     domain.PaymentMethod(*paymentMethod),
+				CategoryID:        storedCategoryID,
 				OccurredAt:        occurredAt,
 				FinancialTimezone: timezone,
 				Origin:            domain.Origin(origin),
@@ -113,6 +119,7 @@ func scanMonthlyTransaction(row rowScanner) (application.MonthlyTransaction, err
 				UserID:            userID,
 				Description:       description,
 				Amount:            amount,
+				CategoryID:        storedCategoryID,
 				OccurredAt:        occurredAt,
 				FinancialTimezone: timezone,
 				Origin:            domain.Origin(origin),

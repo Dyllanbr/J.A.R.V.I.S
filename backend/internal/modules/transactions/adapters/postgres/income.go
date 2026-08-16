@@ -163,6 +163,12 @@ func replayIncome(
 }
 
 func insertIncome(ctx context.Context, transaction pgx.Tx, income domain.Income) error {
+	categoryID, hasCategory := income.CategoryID()
+	var storedCategoryID any
+	if hasCategory {
+		storedCategoryID = categoryID.String()
+	}
+
 	if _, err := transaction.Exec(ctx, `
 		INSERT INTO transactions (
 			id,
@@ -172,6 +178,7 @@ func insertIncome(ctx context.Context, transaction pgx.Tx, income domain.Income)
 			amount_minor,
 			currency,
 			payment_method,
+			category_id,
 			occurred_at,
 			financial_timezone,
 			origin,
@@ -179,7 +186,7 @@ func insertIncome(ctx context.Context, transaction pgx.Tx, income domain.Income)
 			version,
 			created_at,
 			updated_at
-		) VALUES ($1, $2, $3, $4, $5, $6, NULL, $7, $8, $9, $10, $11, $12, $13)
+		) VALUES ($1, $2, $3, $4, $5, $6, NULL, $7, $8, $9, $10, $11, $12, $13, $14)
 	`,
 		income.ID(),
 		income.UserID(),
@@ -187,6 +194,7 @@ func insertIncome(ctx context.Context, transaction pgx.Tx, income domain.Income)
 		income.Description(),
 		income.Amount().MinorUnits(),
 		income.Amount().Currency(),
+		storedCategoryID,
 		income.OccurredAt(),
 		income.FinancialTimezone(),
 		income.Origin(),

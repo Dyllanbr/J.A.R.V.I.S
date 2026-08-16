@@ -360,3 +360,162 @@ test("monthly history lists only the requested financial month", async ({
   const invalid = await request.get("/v1/transactions?month=2026-8");
   expect(invalid.status()).toBe(400);
 });
+
+test("system category catalog is complete and deterministically ordered", async ({
+  request,
+}) => {
+  const response = await request.get("/v1/categories");
+  expect(response.status()).toBe(200);
+  expect(response.headers()["content-type"]).toBe(contentType);
+  expect(response.headers()["cache-control"]).toBe("no-store");
+  const categories = (await response.json()) as Array<Record<string, unknown>>;
+  expect(categories).toHaveLength(17);
+  expect(categories.map((category) => category.id)).toEqual([
+    "expense.food",
+    "expense.transport",
+    "expense.housing",
+    "expense.health",
+    "expense.leisure",
+    "expense.education",
+    "expense.subscriptions",
+    "expense.shopping",
+    "expense.taxes_fees",
+    "expense.other",
+    "income.salary",
+    "income.freelance",
+    "income.refund",
+    "income.sale",
+    "income.investment_return",
+    "income.benefits",
+    "income.other",
+  ]);
+  expect(categories[0]).toEqual({
+    id: "expense.food",
+    type: "EXPENSE",
+    displayName: "Alimentação",
+  });
+  expect(categories[10]).toEqual({
+    id: "income.salary",
+    type: "INCOME",
+    displayName: "Salário",
+  });
+  expect(categories.every((category) => !("sortOrder" in category))).toBe(true);
+});
+
+test("categorized previews validate applicability and reject ambiguous category shapes", async ({
+  request,
+}) => {
+  const expense = expenseRequest(
+    "Preview despesa categorizada sintética",
+    "2026-04-10T15:00:00Z",
+  );
+  const expensePreview = await request.post("/v1/transactions/preview", {
+    data: { ...expense, categoryId: "expense.food" },
+  });
+  expect(expensePreview.status()).toBe(200);
+  expect(await expensePreview.json()).toMatchObject({
+    type: "EXPENSE",
+    categoryId: "expense.food",
+  });
+
+  const income = incomeRequest(
+    "Preview receita categorizada sintética",
+    "2026-04-10T16:00:00Z",
+  );
+  const incomePreview = await request.post("/v1/transactions/preview", {
+    data: { ...income, categoryId: "income.salary" },
+  });
+  expect(incomePreview.status()).toBe(200);
+  expect(await incomePreview.json()).toMatchObject({
+    type: "INCOME",
+    categoryId: "income.salary",
+  });
+
+  for (const data of [
+    { ...expense, categoryId: null },
+    { ...expense, categoryId: "" },
+    { ...expense, categoryId: "income.salary" },
+    { ...expense, categoryId: "expense.unknown" },
+    { ...expense, categoryName: "Alimentação" },
+    { ...income, categoryId: "expense.food" },
+  ]) {
+    const invalid = await request.post("/v1/transactions/preview", { data });
+    expect(invalid.status()).toBe(400);
+    expect(await invalid.json()).toEqual({
+      error: { code: "INVALID_REQUEST", message: "request is invalid" },
+    });
+  }
+});
+
+test("categorized Expense and Income replay and remain classified in mixed history", async ({
+  request,
+}) => {
+  const expenseDescription = "Despesa categorizada Playwright sintética";
+  const expense = {
+    ...expenseRequest(expenseDescription, "2026-04-11T15:00:00Z"),
+    categoryId: "expense.food",
+  };
+  const expenseHeaders = {
+    "Idempotency-Key": "pw-synthetic-category-expense-001",
+  };
+  const createdExpense = await request.post("/v1/transactions", {
+    data: expense,
+    headers: expenseHeaders,
+  });
+  expect(createdExpense.status()).toBe(201);
+  const expenseBytes = await createdExpense.body();
+  expect(JSON.parse(expenseBytes.toString())).toMatchObject({
+    type: "EXPENSE",
+    categoryId: "expense.food",
+  });
+  const replayedExpense = await request.post("/v1/transactions", {
+    data: expense,
+    headers: expenseHeaders,
+  });
+  expect(replayedExpense.status()).toBe(201);
+  expect(replayedExpense.headers()["idempotency-replayed"]).toBe("true");
+  expect(await replayedExpense.body()).toEqual(expenseBytes);
+  const categoryConflict = await request.post("/v1/transactions", {
+    data: { ...expense, categoryId: "expense.transport" },
+    headers: expenseHeaders,
+  });
+  expect(categoryConflict.status()).toBe(409);
+
+  const incomeDescription = "Receita categorizada Playwright sintética";
+  const income = {
+    ...incomeRequest(incomeDescription, "2026-04-11T16:00:00Z"),
+    categoryId: "income.salary",
+  };
+  const createdIncome = await request.post("/v1/transactions", {
+    data: income,
+    headers: { "Idempotency-Key": "pw-synthetic-category-income-001" },
+  });
+  expect(createdIncome.status()).toBe(201);
+  const incomeBody = (await createdIncome.json()) as Record<string, unknown>;
+  expect(incomeBody).toMatchObject({
+    type: "INCOME",
+    categoryId: "income.salary",
+  });
+  expect("paymentMethod" in incomeBody).toBe(false);
+
+  const history = await request.get("/v1/transactions?month=2026-04");
+  expect(history.status()).toBe(200);
+  const historyBody = (await history.json()) as {
+    items: Array<Record<string, unknown>>;
+  };
+  const relevant = historyBody.items.filter((item) =>
+    [expenseDescription, incomeDescription].includes(
+      item.description as string,
+    ),
+  );
+  expect(relevant).toHaveLength(2);
+  expect(relevant[0]).toMatchObject({
+    type: "INCOME",
+    categoryId: "income.salary",
+  });
+  expect(relevant[1]).toMatchObject({
+    type: "EXPENSE",
+    categoryId: "expense.food",
+    paymentMethod: "PIX",
+  });
+});

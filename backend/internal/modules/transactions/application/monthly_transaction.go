@@ -16,6 +16,7 @@ type MonthlyTransaction struct {
 	Description       string
 	Amount            domain.Money
 	PaymentMethod     *domain.PaymentMethod
+	CategoryID        *domain.CategoryID
 	OccurredAt        time.Time
 	FinancialTimezone string
 	Origin            domain.Origin
@@ -29,6 +30,11 @@ type MonthlyTransaction struct {
 // the Expense aggregate.
 func NewMonthlyTransactionFromExpense(expense domain.Expense) MonthlyTransaction {
 	paymentMethod := expense.PaymentMethod()
+	categoryID, hasCategory := expense.CategoryID()
+	var categoryIDPointer *domain.CategoryID
+	if hasCategory {
+		categoryIDPointer = &categoryID
+	}
 	return MonthlyTransaction{
 		ID:                expense.ID(),
 		UserID:            expense.UserID(),
@@ -36,6 +42,7 @@ func NewMonthlyTransactionFromExpense(expense domain.Expense) MonthlyTransaction
 		Description:       expense.Description(),
 		Amount:            expense.Amount(),
 		PaymentMethod:     &paymentMethod,
+		CategoryID:        categoryIDPointer,
 		OccurredAt:        expense.OccurredAt(),
 		FinancialTimezone: expense.FinancialTimezone(),
 		Origin:            expense.Origin(),
@@ -49,12 +56,18 @@ func NewMonthlyTransactionFromExpense(expense domain.Expense) MonthlyTransaction
 // NewMonthlyTransactionFromIncome creates a read projection with no payment
 // method.
 func NewMonthlyTransactionFromIncome(income domain.Income) MonthlyTransaction {
+	categoryID, hasCategory := income.CategoryID()
+	var categoryIDPointer *domain.CategoryID
+	if hasCategory {
+		categoryIDPointer = &categoryID
+	}
 	return MonthlyTransaction{
 		ID:                income.ID(),
 		UserID:            income.UserID(),
 		Type:              income.Type(),
 		Description:       income.Description(),
 		Amount:            income.Amount(),
+		CategoryID:        categoryIDPointer,
 		OccurredAt:        income.OccurredAt(),
 		FinancialTimezone: income.FinancialTimezone(),
 		Origin:            income.Origin(),

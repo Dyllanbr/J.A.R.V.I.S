@@ -21,12 +21,14 @@ final class JARVISUITests: XCTestCase {
         defer { app.terminate() }
 
         XCTAssertTrue(element("tab.register", in: app).waitForExistence(timeout: 8))
+        selectRegisterCategory("expense.food", in: app)
         fillForm(in: app, description: launched.description)
 
         element("register.review", in: app).tap()
         XCTAssertTrue(element("review.screen", in: app).waitForExistence(timeout: 8))
         XCTAssertTrue(element("review.description", in: app).label.contains(launched.description))
         XCTAssertTrue(element("review.amount", in: app).label.contains("R$ 42,50"))
+        XCTAssertTrue(element("review.category", in: app).label.contains("Alimentação"))
 
         element("review.confirm", in: app).tap()
         XCTAssertTrue(element("register.success", in: app).waitForExistence(timeout: 10))
@@ -51,6 +53,7 @@ final class JARVISUITests: XCTestCase {
         XCTAssertTrue(expense.label.contains(launched.description))
         XCTAssertTrue(expense.label.contains("R$ 42,50"))
         XCTAssertTrue(expense.label.contains("Saída"))
+        XCTAssertTrue(expense.label.contains("Alimentação"))
     }
 
     @MainActor
@@ -64,6 +67,7 @@ final class JARVISUITests: XCTestCase {
         XCTAssertTrue(element("tab.register", in: app).waitForExistence(timeout: 8))
         selectIncome(in: app)
         XCTAssertFalse(element("register.paymentMethod", in: app).exists)
+        selectRegisterCategory("income.salary", in: app)
         fillForm(in: app, description: description)
 
         element("register.review", in: app).tap()
@@ -71,6 +75,7 @@ final class JARVISUITests: XCTestCase {
         XCTAssertTrue(element("review.type", in: app).label.contains("Receita"))
         XCTAssertTrue(element("review.description", in: app).label.contains(description))
         XCTAssertTrue(element("review.amount", in: app).label.contains("R$ 42,50"))
+        XCTAssertTrue(element("review.category", in: app).label.contains("Salário"))
         XCTAssertFalse(element("review.paymentMethod", in: app).exists)
 
         element("review.confirm", in: app).tap()
@@ -86,6 +91,7 @@ final class JARVISUITests: XCTestCase {
         XCTAssertTrue(income.label.contains(description))
         XCTAssertTrue(income.label.contains("R$ 42,50"))
         XCTAssertTrue(income.label.contains("Entrada"))
+        XCTAssertTrue(income.label.contains("Salário"))
         XCTAssertFalse(income.label.contains("PIX"))
     }
 
@@ -105,6 +111,7 @@ final class JARVISUITests: XCTestCase {
             "register.description",
             "register.amount",
             "register.paymentMethod",
+            "register.category",
             "register.occurredAt",
             "register.review"
         ] {
@@ -121,6 +128,7 @@ final class JARVISUITests: XCTestCase {
             "review.description",
             "review.amount",
             "review.paymentMethod",
+            "review.category",
             "review.occurredAt",
             "review.edit",
             "review.confirm"
@@ -138,6 +146,8 @@ final class JARVISUITests: XCTestCase {
         XCTAssertTrue(element("tab.history", in: app).waitForExistence(timeout: 5))
         element("tab.history", in: app).tap()
         XCTAssertTrue(element("history.list", in: app).waitForExistence(timeout: 10))
+        XCTAssertTrue(element("history.filter.type", in: app).exists)
+        XCTAssertTrue(element("history.filter.category", in: app).exists)
     }
 
     @MainActor
@@ -250,6 +260,7 @@ final class JARVISUITests: XCTestCase {
         defer { app.terminate() }
 
         fillForm(in: app, description: "Despesa_mista_sintetica_UI")
+        selectRegisterCategory("expense.food", in: app)
         element("register.review", in: app).tap()
         XCTAssertTrue(element("review.confirm", in: app).waitForExistence(timeout: 8))
         element("review.confirm", in: app).tap()
@@ -257,6 +268,7 @@ final class JARVISUITests: XCTestCase {
         element("register.newExpense", in: app).tap()
 
         selectIncome(in: app)
+        selectRegisterCategory("income.salary", in: app)
         fillForm(in: app, description: "Receita_mista_sintetica_UI")
         element("register.review", in: app).tap()
         XCTAssertTrue(element("review.confirm", in: app).waitForExistence(timeout: 8))
@@ -275,8 +287,22 @@ final class JARVISUITests: XCTestCase {
         XCTAssertTrue(income.waitForExistence(timeout: 8))
         XCTAssertTrue(expense.label.contains("Saída"))
         XCTAssertTrue(expense.label.contains("PIX"))
+        XCTAssertTrue(expense.label.contains("Alimentação"))
         XCTAssertTrue(income.label.contains("Entrada"))
+        XCTAssertTrue(income.label.contains("Salário"))
         XCTAssertFalse(income.label.contains("PIX"))
+
+        selectHistoryTypeFilter("expense", in: app)
+        XCTAssertTrue(expense.waitForExistence(timeout: 5))
+        XCTAssertFalse(income.exists)
+        selectHistoryCategoryFilter("expense.food", in: app)
+        XCTAssertTrue(expense.waitForExistence(timeout: 5))
+
+        selectHistoryTypeFilter("income", in: app)
+        XCTAssertTrue(income.waitForExistence(timeout: 5), "Changing type must reset an incompatible Category filter")
+
+        selectHistoryCategoryFilter("none", in: app)
+        XCTAssertTrue(element("history.filteredEmpty", in: app).waitForExistence(timeout: 5))
     }
 
     @MainActor
@@ -287,6 +313,7 @@ final class JARVISUITests: XCTestCase {
         defer { app.terminate() }
 
         XCTAssertTrue(reveal("register.description", in: app))
+        XCTAssertTrue(reveal("register.category", in: app))
         fillForm(in: app, description: "Dynamic_Type_sintetico")
         XCTAssertTrue(reveal("register.review", in: app))
         element("register.review", in: app).tap()
@@ -315,6 +342,8 @@ final class JARVISUITests: XCTestCase {
         XCTAssertTrue(reveal("tab.history", in: app))
         element("tab.history", in: app).tap()
         XCTAssertTrue(element("history.list", in: app).waitForExistence(timeout: 10))
+        XCTAssertTrue(reveal("history.filter.type", in: app))
+        XCTAssertTrue(reveal("history.filter.category", in: app))
         XCTAssertTrue(
             app.descendants(matching: .any)
                 .matching(NSPredicate(format: "identifier BEGINSWITH %@", "history.expense."))
@@ -404,6 +433,47 @@ final class JARVISUITests: XCTestCase {
             XCTAssertTrue(reveal("register.type.income", in: app))
         }
         selector.tap()
+    }
+
+    @MainActor
+    private func selectRegisterCategory(_ categoryID: String, in app: XCUIApplication) {
+        let picker = element("register.category", in: app)
+        XCTAssertTrue(picker.waitForExistence(timeout: 8))
+        XCTAssertEqual(
+            XCTWaiter().wait(
+                for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "enabled == true"), object: picker)],
+                timeout: 8
+            ),
+            .completed,
+            "Category catalog did not become available\n\(app.debugDescription)"
+        )
+        if !picker.isHittable {
+            XCTAssertTrue(reveal("register.category", in: app))
+        }
+        picker.tap()
+        let option = element("register.category.option.\(categoryID)", in: app)
+        XCTAssertTrue(option.waitForExistence(timeout: 5), "Missing Category option \(categoryID)\n\(app.debugDescription)")
+        option.tap()
+    }
+
+    @MainActor
+    private func selectHistoryTypeFilter(_ value: String, in app: XCUIApplication) {
+        let picker = element("history.filter.type", in: app)
+        XCTAssertTrue(picker.waitForExistence(timeout: 5))
+        picker.tap()
+        let option = element("history.filter.type.\(value)", in: app)
+        XCTAssertTrue(option.waitForExistence(timeout: 5))
+        option.tap()
+    }
+
+    @MainActor
+    private func selectHistoryCategoryFilter(_ value: String, in app: XCUIApplication) {
+        let picker = element("history.filter.category", in: app)
+        XCTAssertTrue(picker.waitForExistence(timeout: 5))
+        picker.tap()
+        let option = element("history.filter.category.option.\(value)", in: app)
+        XCTAssertTrue(option.waitForExistence(timeout: 5))
+        option.tap()
     }
 
     private func incomeDescription(from base: String) -> String {

@@ -31,6 +31,9 @@ func TestMigration003PreservesVersion2ExpenseData(t *testing.T) {
 			t.Fatal("migration UP failed")
 		}
 		if err := migrations.Down(ctx, connection); err != nil {
+			t.Fatal("migration 004 DOWN failed")
+		}
+		if err := migrations.Down(ctx, connection); err != nil {
 			t.Fatal("migration 003 DOWN failed")
 		}
 		assertMigrationVersion(t, ctx, connection, 2)
@@ -56,9 +59,9 @@ func TestMigration003PreservesVersion2ExpenseData(t *testing.T) {
 
 	withConnection(t, ctx, pool, func(connection *pgx.Conn) {
 		if err := migrations.Up(ctx, connection); err != nil {
-			t.Fatal("migration 002 to 003 failed")
+			t.Fatal("migration 002 to current failed")
 		}
-		assertMigrationVersion(t, ctx, connection, 3)
+		assertMigrationVersion(t, ctx, connection, 4)
 	})
 
 	var transactionType, paymentMethod, operationType string
@@ -81,6 +84,10 @@ func TestMigration003PreservesVersion2ExpenseData(t *testing.T) {
 
 	withConnection(t, ctx, pool, func(connection *pgx.Conn) {
 		if err := migrations.Down(ctx, connection); err != nil {
+			t.Fatal("migration 004 DOWN with uncategorized data failed")
+		}
+		assertMigrationVersion(t, ctx, connection, 3)
+		if err := migrations.Down(ctx, connection); err != nil {
 			t.Fatal("migration 003 DOWN with Expense-only data failed")
 		}
 		assertMigrationVersion(t, ctx, connection, 2)
@@ -102,6 +109,10 @@ func TestMigration003DownFailsAtomicallyWhenIncomeExists(t *testing.T) {
 	}
 
 	withConnection(t, ctx, pool, func(connection *pgx.Conn) {
+		if err := migrations.Down(ctx, connection); err != nil {
+			t.Fatal("migration 004 DOWN with uncategorized Income failed")
+		}
+		assertMigrationVersion(t, ctx, connection, 3)
 		err := migrations.Down(ctx, connection)
 		if !errors.Is(err, migrations.ErrRollback) {
 			t.Fatalf("migration 003 DOWN error = %v, want rollback category", err)
@@ -823,12 +834,15 @@ func assertStoredIncomeMetadata(
 
 func assertSameIncome(t *testing.T, actual, expected domain.Income) {
 	t.Helper()
+	actualCategoryID, actualHasCategory := actual.CategoryID()
+	expectedCategoryID, expectedHasCategory := expected.CategoryID()
 	if actual.ID() != expected.ID() || actual.UserID() != expected.UserID() ||
 		actual.Type() != expected.Type() || actual.Description() != expected.Description() ||
 		!actual.Amount().Equal(expected.Amount()) || actual.OccurredAt() != expected.OccurredAt() ||
 		actual.FinancialTimezone() != expected.FinancialTimezone() || actual.Origin() != expected.Origin() ||
 		actual.Status() != expected.Status() || actual.Version() != expected.Version() ||
-		actual.CreatedAt() != expected.CreatedAt() || actual.UpdatedAt() != expected.UpdatedAt() {
+		actual.CreatedAt() != expected.CreatedAt() || actual.UpdatedAt() != expected.UpdatedAt() ||
+		actualHasCategory != expectedHasCategory || actualCategoryID != expectedCategoryID {
 		t.Fatal("replayed Income differs from the original persisted aggregate")
 	}
 }

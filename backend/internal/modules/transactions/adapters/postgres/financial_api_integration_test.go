@@ -268,6 +268,135 @@ func TestIncomeFinancialAPIReplayAfterRestartReturnsIdenticalCanonicalResource(t
 	assertIncomeFinancialRowCounts(t, ctx, pool, 1, 1, 1)
 }
 
+func TestCategorizedFinancialAPIUsesRealCatalogPersistenceAndHistory(t *testing.T) {
+	pool := newMigratedTestDatabase(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	insertSyntheticUser(t, ctx, pool, syntheticUserID)
+
+	server := newFinancialIntegrationServer(
+		t,
+		pool,
+		&sequenceIDGenerator{prefix: "exp_http_category"},
+		&sequenceIncomeIDGenerator{prefix: "inc_http_category"},
+		fixedFinancialClock{now: time.Date(2026, time.August, 14, 18, 0, 0, 123_456_789, time.UTC)},
+	)
+	defer server.Close()
+
+	categories := getFinancialJSON(t, server.Client(), server.URL+"/v1/categories")
+	if categories.status != http.StatusOK {
+		t.Fatalf("GET categories = %d %s", categories.status, categories.body)
+	}
+	var catalog []struct {
+		ID          string `json:"id"`
+		Type        string `json:"type"`
+		DisplayName string `json:"displayName"`
+	}
+	if err := json.Unmarshal(categories.body, &catalog); err != nil {
+		t.Fatalf("decode real catalog: %v", err)
+	}
+	if len(catalog) != 17 || catalog[0].ID != "expense.food" || catalog[9].ID != "expense.other" ||
+		catalog[10].ID != "income.salary" || catalog[16].ID != "income.other" {
+		t.Fatalf("real catalog ordering/content = %s", categories.body)
+	}
+
+	expenseBody := []byte(`{"type":"EXPENSE","description":"Despesa categorizada HTTP","amount":{"minor":4250,"currency":"BRL"},"paymentMethod":"PIX","categoryId":"expense.food","occurredAt":"2026-08-14T15:00:00.000000123Z"}`)
+	preview := postFinancialJSON(t, server.Client(), server.URL+"/v1/transactions/preview", expenseBody, "")
+	if preview.status != http.StatusOK || jsonStringField(t, preview.body, "categoryId") != "expense.food" {
+		t.Fatalf("categorized Expense preview = %d %s", preview.status, preview.body)
+	}
+	assertFinancialRowCounts(t, ctx, pool, 0, 0, 0)
+
+	createdExpense := postFinancialJSON(t, server.Client(), server.URL+"/v1/transactions", expenseBody, "http-expense-category")
+	if createdExpense.status != http.StatusCreated || jsonStringField(t, createdExpense.body, "categoryId") != "expense.food" {
+		t.Fatalf("categorized Expense create = %d %s", createdExpense.status, createdExpense.body)
+	}
+	replayedExpense := postFinancialJSON(t, server.Client(), server.URL+"/v1/transactions", expenseBody, "http-expense-category")
+	if replayedExpense.status != http.StatusCreated || replayedExpense.header.Get("Idempotency-Replayed") != "true" ||
+		!bytes.Equal(createdExpense.body, replayedExpense.body) {
+		t.Fatalf("categorized Expense replay differs: first=%s replay=%s", createdExpense.body, replayedExpense.body)
+	}
+	differentCategory := bytes.Replace(expenseBody, []byte("expense.food"), []byte("expense.transport"), 1)
+	conflict := postFinancialJSON(t, server.Client(), server.URL+"/v1/transactions", differentCategory, "http-expense-category")
+	if conflict.status != http.StatusConflict {
+		t.Fatalf("Category A/B conflict = %d %s", conflict.status, conflict.body)
+	}
+
+	incomeBody := []byte(`{"type":"INCOME","description":"Receita categorizada HTTP","amount":{"minor":725000,"currency":"BRL"},"categoryId":"income.salary","occurredAt":"2026-08-14T16:00:00.123456789Z"}`)
+	createdIncome := postFinancialJSON(t, server.Client(), server.URL+"/v1/transactions", incomeBody, "http-income-category")
+	if createdIncome.status != http.StatusCreated || jsonStringField(t, createdIncome.body, "categoryId") != "income.salary" ||
+		bytes.Contains(createdIncome.body, []byte(`"paymentMethod"`)) {
+		t.Fatalf("categorized Income create = %d %s", createdIncome.status, createdIncome.body)
+	}
+
+	uncategorizedBody := []byte(`{"type":"EXPENSE","description":"Despesa sem categoria HTTP","amount":{"minor":4250,"currency":"BRL"},"paymentMethod":"PIX","occurredAt":"2026-08-14T17:00:00Z"}`)
+	uncategorized := postFinancialJSON(t, server.Client(), server.URL+"/v1/transactions", uncategorizedBody, "http-uncategorized-first")
+	if uncategorized.status != http.StatusCreated || bytes.Contains(uncategorized.body, []byte(`"categoryId"`)) {
+		t.Fatalf("legacy uncategorized create = %d %s", uncategorized.status, uncategorized.body)
+	}
+	uncategorizedToCategorized := bytes.Replace(uncategorizedBody, []byte(`,"occurredAt"`), []byte(`,"categoryId":"expense.food","occurredAt"`), 1)
+	if changed := postFinancialJSON(t, server.Client(), server.URL+"/v1/transactions", uncategorizedToCategorized, "http-uncategorized-first"); changed.status != http.StatusConflict {
+		t.Fatalf("uncategorized/category conflict = %d %s", changed.status, changed.body)
+	}
+
+	categorizedFirstBody := bytes.Replace(uncategorizedBody, []byte("Despesa sem categoria HTTP"), []byte("Despesa categoria removida HTTP"), 1)
+	categorizedFirstBody = bytes.Replace(categorizedFirstBody, []byte(`,"occurredAt"`), []byte(`,"categoryId":"expense.food","occurredAt"`), 1)
+	categorizedFirst := postFinancialJSON(t, server.Client(), server.URL+"/v1/transactions", categorizedFirstBody, "http-categorized-first")
+	if categorizedFirst.status != http.StatusCreated {
+		t.Fatalf("categorized-first create = %d %s", categorizedFirst.status, categorizedFirst.body)
+	}
+	categoryRemoved := bytes.Replace(categorizedFirstBody, []byte(`,"categoryId":"expense.food"`), nil, 1)
+	if changed := postFinancialJSON(t, server.Client(), server.URL+"/v1/transactions", categoryRemoved, "http-categorized-first"); changed.status != http.StatusConflict {
+		t.Fatalf("categorized/uncategorized conflict = %d %s", changed.status, changed.body)
+	}
+
+	assertCategorizedHTTPPostcondition(t, ctx, pool, jsonStringField(t, createdExpense.body, "id"),
+		"EXPENSE", "expense.food", "PIX", "EXPENSE_RECORDED", "CREATE_EXPENSE")
+	assertCategorizedHTTPPostcondition(t, ctx, pool, jsonStringField(t, createdIncome.body, "id"),
+		"INCOME", "income.salary", "", "INCOME_RECORDED", "CREATE_INCOME")
+	assertFinancialRowCounts(t, ctx, pool, 4, 4, 4)
+
+	history := getFinancialJSON(t, server.Client(), server.URL+"/v1/transactions?month=2026-08")
+	if history.status != http.StatusOK || !bytes.Contains(history.body, []byte(`"categoryId":"expense.food"`)) ||
+		!bytes.Contains(history.body, []byte(`"categoryId":"income.salary"`)) {
+		t.Fatalf("categorized mixed history = %d %s", history.status, history.body)
+	}
+}
+
+func assertCategorizedHTTPPostcondition(
+	t *testing.T,
+	ctx context.Context,
+	pool *pgxpool.Pool,
+	transactionID string,
+	wantedType string,
+	wantedCategory string,
+	wantedPaymentMethod string,
+	wantedEvent string,
+	wantedOperation string,
+) {
+	t.Helper()
+	var transactionType, categoryID, eventType, operation, state string
+	var paymentMethod *string
+	if err := pool.QueryRow(ctx, `
+		SELECT t.type, t.category_id, t.payment_method, a.event_type, i.operation, i.state
+		FROM transactions t
+		JOIN audit_events a ON a.user_id = t.user_id AND a.aggregate_id = t.id
+		JOIN idempotency_records i ON i.user_id = t.user_id AND i.transaction_id = t.id
+		WHERE t.id = $1
+	`, transactionID).Scan(&transactionType, &categoryID, &paymentMethod, &eventType, &operation, &state); err != nil {
+		t.Fatalf("categorized HTTP postcondition query: %v", err)
+	}
+	storedPaymentMethod := ""
+	if paymentMethod != nil {
+		storedPaymentMethod = *paymentMethod
+	}
+	if transactionType != wantedType || categoryID != wantedCategory || storedPaymentMethod != wantedPaymentMethod ||
+		eventType != wantedEvent || operation != wantedOperation || state != "COMPLETED" {
+		t.Fatalf("categorized HTTP postcondition = %s/%s/%s/%s/%s/%s", transactionType, categoryID,
+			storedPaymentMethod, eventType, operation, state)
+	}
+}
+
 func TestPreviewExpenseLeavesPostgresUnchanged(t *testing.T) {
 	pool := newMigratedTestDatabase(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -729,25 +858,38 @@ func newFinancialIntegrationServer(
 ) *httptest.Server {
 	t.Helper()
 	repository := newRepository(t, pool)
-	recordExpense, err := application.NewRecordExpense(repository, expenseIDGenerator, clock)
+	previewExpense, err := application.NewPreviewExpenseWithCategoryCatalog(repository)
 	if err != nil {
-		t.Fatalf("NewRecordExpense() error = %v", err)
+		t.Fatalf("NewPreviewExpenseWithCategoryCatalog() error = %v", err)
 	}
-	recordIncome, err := application.NewRecordIncome(repository, incomeIDGenerator, clock)
+	previewIncome, err := application.NewPreviewIncomeWithCategoryCatalog(repository)
 	if err != nil {
-		t.Fatalf("NewRecordIncome() error = %v", err)
+		t.Fatalf("NewPreviewIncomeWithCategoryCatalog() error = %v", err)
+	}
+	recordExpense, err := application.NewRecordExpenseWithCategoryCatalog(repository, expenseIDGenerator, clock, repository)
+	if err != nil {
+		t.Fatalf("NewRecordExpenseWithCategoryCatalog() error = %v", err)
+	}
+	recordIncome, err := application.NewRecordIncomeWithCategoryCatalog(repository, incomeIDGenerator, clock, repository)
+	if err != nil {
+		t.Fatalf("NewRecordIncomeWithCategoryCatalog() error = %v", err)
 	}
 	list, err := application.NewListTransactionsByMonth(repository)
 	if err != nil {
 		t.Fatalf("NewListTransactionsByMonth() error = %v", err)
 	}
+	listCategories, err := application.NewListCategories(repository)
+	if err != nil {
+		t.Fatalf("NewListCategories() error = %v", err)
+	}
 	routes := httpapi.New(
 		syntheticUserID,
-		application.PreviewExpense{},
-		application.PreviewIncome{},
+		previewExpense,
+		previewIncome,
 		recordExpense,
 		recordIncome,
 		list,
+		listCategories,
 	)
 	mux := http.NewServeMux()
 	routes.Register(mux)
@@ -778,6 +920,24 @@ func postFinancialJSON(
 	responseBody, err := io.ReadAll(response.Body)
 	if err != nil {
 		t.Fatal("reading financial HTTP response failed")
+	}
+	return financialHTTPResponse{status: response.StatusCode, header: response.Header, body: responseBody}
+}
+
+func getFinancialJSON(t *testing.T, client *http.Client, url string) financialHTTPResponse {
+	t.Helper()
+	request, err := http.NewRequestWithContext(context.Background(), http.MethodGet, url, nil)
+	if err != nil {
+		t.Fatal("creating financial GET request failed")
+	}
+	response, err := client.Do(request)
+	if err != nil {
+		t.Fatal("financial GET request failed")
+	}
+	defer response.Body.Close()
+	responseBody, err := io.ReadAll(response.Body)
+	if err != nil {
+		t.Fatal("reading financial GET response failed")
 	}
 	return financialHTTPResponse{status: response.StatusCode, header: response.Header, body: responseBody}
 }

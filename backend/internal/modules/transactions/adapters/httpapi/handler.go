@@ -22,6 +22,7 @@ type Handler struct {
 	recordExpense  *application.RecordExpense
 	recordIncome   *application.RecordIncome
 	list           *application.ListTransactionsByMonth
+	listCategories *application.ListCategories
 }
 
 // New composes the thin HTTP adapter with server-derived ownership and the
@@ -33,6 +34,7 @@ func New(
 	recordExpense *application.RecordExpense,
 	recordIncome *application.RecordIncome,
 	list *application.ListTransactionsByMonth,
+	listCategories *application.ListCategories,
 ) *Handler {
 	return &Handler{
 		ownerID:        ownerID,
@@ -41,6 +43,7 @@ func New(
 		recordExpense:  recordExpense,
 		recordIncome:   recordIncome,
 		list:           list,
+		listCategories: listCategories,
 	}
 }
 
@@ -51,6 +54,8 @@ func (handler *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("POST /v1/transactions", handler.recordTransaction)
 	mux.HandleFunc("GET /v1/transactions", handler.listTransactions)
 	mux.HandleFunc("/v1/transactions", handler.methodNotAllowed)
+	mux.HandleFunc("GET /v1/categories", handler.listSystemCategories)
+	mux.HandleFunc("/v1/categories", handler.methodNotAllowed)
 }
 
 type amountRequest struct {
@@ -58,19 +63,45 @@ type amountRequest struct {
 	Currency string `json:"currency"`
 }
 
+type optionalCategoryID struct {
+	value *domain.CategoryID
+}
+
+func (field *optionalCategoryID) UnmarshalJSON(data []byte) error {
+	if bytes.Equal(bytes.TrimSpace(data), []byte("null")) {
+		return domain.ErrInvalidCategoryID
+	}
+	var value string
+	if err := json.Unmarshal(data, &value); err != nil {
+		return err
+	}
+	categoryID, err := domain.NewCategoryID(value)
+	if err != nil {
+		return err
+	}
+	field.value = &categoryID
+	return nil
+}
+
+func (field optionalCategoryID) domainValue() *domain.CategoryID {
+	return field.value
+}
+
 type expenseRequest struct {
-	Type          string        `json:"type"`
-	Description   string        `json:"description"`
-	Amount        amountRequest `json:"amount"`
-	PaymentMethod string        `json:"paymentMethod"`
-	OccurredAt    time.Time     `json:"occurredAt"`
+	Type          string             `json:"type"`
+	Description   string             `json:"description"`
+	Amount        amountRequest      `json:"amount"`
+	PaymentMethod string             `json:"paymentMethod"`
+	CategoryID    optionalCategoryID `json:"categoryId"`
+	OccurredAt    time.Time          `json:"occurredAt"`
 }
 
 type incomeRequest struct {
-	Type        string        `json:"type"`
-	Description string        `json:"description"`
-	Amount      amountRequest `json:"amount"`
-	OccurredAt  time.Time     `json:"occurredAt"`
+	Type        string             `json:"type"`
+	Description string             `json:"description"`
+	Amount      amountRequest      `json:"amount"`
+	CategoryID  optionalCategoryID `json:"categoryId"`
+	OccurredAt  time.Time          `json:"occurredAt"`
 }
 
 type decodedTransaction struct {
@@ -89,6 +120,7 @@ type expensePreviewResponse struct {
 	Description       string         `json:"description"`
 	Amount            amountResponse `json:"amount"`
 	PaymentMethod     string         `json:"paymentMethod"`
+	CategoryID        *string        `json:"categoryId,omitempty"`
 	OccurredAt        time.Time      `json:"occurredAt"`
 	FinancialTimezone string         `json:"financialTimezone"`
 	Origin            string         `json:"origin"`
@@ -98,6 +130,7 @@ type incomePreviewResponse struct {
 	Type              string         `json:"type"`
 	Description       string         `json:"description"`
 	Amount            amountResponse `json:"amount"`
+	CategoryID        *string        `json:"categoryId,omitempty"`
 	OccurredAt        time.Time      `json:"occurredAt"`
 	FinancialTimezone string         `json:"financialTimezone"`
 	Origin            string         `json:"origin"`
@@ -109,6 +142,7 @@ type expenseResponse struct {
 	Description       string         `json:"description"`
 	Amount            amountResponse `json:"amount"`
 	PaymentMethod     string         `json:"paymentMethod"`
+	CategoryID        *string        `json:"categoryId,omitempty"`
 	OccurredAt        time.Time      `json:"occurredAt"`
 	FinancialTimezone string         `json:"financialTimezone"`
 	Origin            string         `json:"origin"`
@@ -123,6 +157,7 @@ type incomeResponse struct {
 	Type              string         `json:"type"`
 	Description       string         `json:"description"`
 	Amount            amountResponse `json:"amount"`
+	CategoryID        *string        `json:"categoryId,omitempty"`
 	OccurredAt        time.Time      `json:"occurredAt"`
 	FinancialTimezone string         `json:"financialTimezone"`
 	Origin            string         `json:"origin"`
@@ -135,6 +170,12 @@ type incomeResponse struct {
 type monthResponse struct {
 	Month string `json:"month"`
 	Items []any  `json:"items"`
+}
+
+type categoryResponse struct {
+	ID          string `json:"id"`
+	Type        string `json:"type"`
+	DisplayName string `json:"displayName"`
 }
 
 type errorEnvelope struct {
@@ -165,6 +206,7 @@ func (handler *Handler) previewTransaction(response http.ResponseWriter, request
 			Description:       details.Description,
 			Amount:            newAmountResponse(details.Amount),
 			PaymentMethod:     string(details.PaymentMethod),
+			CategoryID:        categoryIDResponse(details.CategoryID),
 			OccurredAt:        details.OccurredAt,
 			FinancialTimezone: details.FinancialTimezone,
 			Origin:            string(details.Origin),
@@ -180,6 +222,7 @@ func (handler *Handler) previewTransaction(response http.ResponseWriter, request
 			Type:              string(domain.TransactionTypeIncome),
 			Description:       details.Description,
 			Amount:            newAmountResponse(details.Amount),
+			CategoryID:        categoryIDResponse(details.CategoryID),
 			OccurredAt:        details.OccurredAt,
 			FinancialTimezone: details.FinancialTimezone,
 			Origin:            string(details.Origin),
@@ -253,6 +296,23 @@ func (handler *Handler) listTransactions(response http.ResponseWriter, request *
 	writeJSON(response, http.StatusOK, monthResponse{Month: result.Month, Items: items})
 }
 
+func (handler *Handler) listSystemCategories(response http.ResponseWriter, request *http.Request) {
+	result, err := handler.listCategories.Execute(request.Context())
+	if err != nil {
+		handler.writeApplicationError(response, err)
+		return
+	}
+	items := make([]categoryResponse, 0, len(result.Items))
+	for _, definition := range result.Items {
+		items = append(items, categoryResponse{
+			ID:          definition.ID().String(),
+			Type:        string(definition.TransactionType()),
+			DisplayName: definition.DisplayName(),
+		})
+	}
+	writeJSON(response, http.StatusOK, items)
+}
+
 func (handler *Handler) decodeTransaction(
 	response http.ResponseWriter,
 	request *http.Request,
@@ -298,6 +358,7 @@ func (handler *Handler) decodeTransaction(
 				AmountMinor:       body.Amount.Minor,
 				Currency:          domain.Currency(body.Amount.Currency),
 				PaymentMethod:     domain.PaymentMethod(body.PaymentMethod),
+				CategoryID:        body.CategoryID.domainValue(),
 				OccurredAt:        body.OccurredAt,
 				FinancialTimezone: application.FinancialTimezone,
 				Origin:            domain.OriginIOS,
@@ -316,6 +377,7 @@ func (handler *Handler) decodeTransaction(
 				Description:       body.Description,
 				AmountMinor:       body.Amount.Minor,
 				Currency:          domain.Currency(body.Amount.Currency),
+				CategoryID:        body.CategoryID.domainValue(),
 				OccurredAt:        body.OccurredAt,
 				FinancialTimezone: application.FinancialTimezone,
 				Origin:            domain.OriginIOS,
@@ -374,7 +436,10 @@ func (handler *Handler) writeApplicationError(response http.ResponseWriter, err 
 		errors.Is(err, domain.ErrInvalidIncomeAmount),
 		errors.Is(err, domain.ErrInvalidIncomeOccurredAt),
 		errors.Is(err, domain.ErrInvalidIncomeFinancialTimezone),
-		errors.Is(err, domain.ErrInvalidIncomeOrigin):
+		errors.Is(err, domain.ErrInvalidIncomeOrigin),
+		errors.Is(err, domain.ErrInvalidCategoryID),
+		errors.Is(err, application.ErrCategoryNotFound),
+		errors.Is(err, application.ErrCategoryNotApplicable):
 		writeInvalidRequest(response)
 	default:
 		writeError(response, http.StatusInternalServerError, "INTERNAL_ERROR", "internal error")
@@ -389,6 +454,7 @@ func newExpenseResponse(expense domain.Expense) expenseResponse {
 	return expenseResponse{
 		ID: expense.ID(), Type: string(expense.Type()), Description: expense.Description(),
 		Amount: newAmountResponse(expense.Amount()), PaymentMethod: string(expense.PaymentMethod()),
+		CategoryID: expenseCategoryIDResponse(expense),
 		OccurredAt: expense.OccurredAt(), FinancialTimezone: expense.FinancialTimezone(),
 		Origin: string(expense.Origin()), Status: string(expense.Status()), Version: expense.Version(),
 		CreatedAt: expense.CreatedAt(), UpdatedAt: expense.UpdatedAt(),
@@ -398,7 +464,7 @@ func newExpenseResponse(expense domain.Expense) expenseResponse {
 func newIncomeResponse(income domain.Income) incomeResponse {
 	return incomeResponse{
 		ID: income.ID(), Type: string(income.Type()), Description: income.Description(),
-		Amount: newAmountResponse(income.Amount()), OccurredAt: income.OccurredAt(),
+		Amount: newAmountResponse(income.Amount()), CategoryID: incomeCategoryIDResponse(income), OccurredAt: income.OccurredAt(),
 		FinancialTimezone: income.FinancialTimezone(), Origin: string(income.Origin()),
 		Status: string(income.Status()), Version: income.Version(),
 		CreatedAt: income.CreatedAt(), UpdatedAt: income.UpdatedAt(),
@@ -408,7 +474,7 @@ func newIncomeResponse(income domain.Income) incomeResponse {
 func newMonthlyTransactionResponse(item application.MonthlyTransaction) (any, bool) {
 	commonIncome := incomeResponse{
 		ID: item.ID, Type: string(item.Type), Description: item.Description,
-		Amount: newAmountResponse(item.Amount), OccurredAt: item.OccurredAt,
+		Amount: newAmountResponse(item.Amount), CategoryID: categoryIDResponse(item.CategoryID), OccurredAt: item.OccurredAt,
 		FinancialTimezone: item.FinancialTimezone, Origin: string(item.Origin),
 		Status: item.Status, Version: item.Version, CreatedAt: item.CreatedAt, UpdatedAt: item.UpdatedAt,
 	}
@@ -420,6 +486,7 @@ func newMonthlyTransactionResponse(item application.MonthlyTransaction) (any, bo
 		return expenseResponse{
 			ID: commonIncome.ID, Type: commonIncome.Type, Description: commonIncome.Description,
 			Amount: commonIncome.Amount, PaymentMethod: string(*item.PaymentMethod),
+			CategoryID: commonIncome.CategoryID,
 			OccurredAt: commonIncome.OccurredAt, FinancialTimezone: commonIncome.FinancialTimezone,
 			Origin: commonIncome.Origin, Status: commonIncome.Status, Version: commonIncome.Version,
 			CreatedAt: commonIncome.CreatedAt, UpdatedAt: commonIncome.UpdatedAt,
@@ -436,6 +503,30 @@ func newMonthlyTransactionResponse(item application.MonthlyTransaction) (any, bo
 
 func newAmountResponse(amount domain.Money) amountResponse {
 	return amountResponse{Minor: amount.MinorUnits(), Currency: string(amount.Currency())}
+}
+
+func expenseCategoryIDResponse(expense domain.Expense) *string {
+	categoryID, ok := expense.CategoryID()
+	if !ok {
+		return nil
+	}
+	return categoryIDResponse(&categoryID)
+}
+
+func incomeCategoryIDResponse(income domain.Income) *string {
+	categoryID, ok := income.CategoryID()
+	if !ok {
+		return nil
+	}
+	return categoryIDResponse(&categoryID)
+}
+
+func categoryIDResponse(categoryID *domain.CategoryID) *string {
+	if categoryID == nil {
+		return nil
+	}
+	value := categoryID.String()
+	return &value
 }
 
 func writeInvalidRequest(response http.ResponseWriter) {

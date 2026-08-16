@@ -48,7 +48,8 @@ Essa progressão não transforma o J.A.R.V.I.S. em banco nem em executor de tran
 | Fundação | **Verified** | Base técnica e de qualidade para evolução segura |
 | Incremento 1 — Despesas | **Verified** | Primeiro ciclo financeiro completo |
 | Incremento 2 — Receitas | **Implemented** | Registro e consulta de entradas e saídas; auditoria global pendente |
-| Incremento 3 — Categorias, histórico e recorrências | **Planned** | Interpretação de padrões e previsibilidade |
+| Incremento 3A — Categorias e filtros do histórico | **Implemented** | Organização opcional por categorias do sistema; auditoria final pendente |
+| Incremento 3B — Recorrências e assinaturas | **Planned** | Fundação temporal para compromissos recorrentes, separada de Category |
 | Incremento 4 — Cartões, parcelas e compromissos futuros | **Planned** | Compreensão do dinheiro já comprometido |
 | Incremento 5 — Orçamento e Disponível Seguro | **Planned** | Resposta explicável sobre quanto pode ser gasto |
 | Incremento 6 — Metas e “Posso comprar?” | **Planned** | Apoio estruturado a decisões financeiras |
@@ -107,25 +108,28 @@ O incremento implementa a base para o sistema representar tanto entrada quanto s
 
 O histórico não inclui totais, saldo, orçamento ou Disponível Seguro. Essas entradas criam base para análises futuras sem antecipar cálculos ou aconselhamento. A capacidade permanece **Implemented**, e não **Verified**, até a auditoria global independente.
 
-## Incremento 3 — Categorias, histórico e recorrências
+## Incremento 3A — Categorias e filtros do histórico
+
+**Estado: Implemented; auditoria final independente pendente.**
+
+O objetivo é organizar melhor registros e facilitar sua interpretação sem antecipar análise financeira. A entrega inclui:
+
+- Category opcional para Expense e Income;
+- catálogo read-only de categorias do sistema;
+- “Sem categoria” distinto das categorias reais “Outros”;
+- descoberta do catálogo pela API e `categoryId` opcional nos fluxos financeiros;
+- picker no registro, Category congelada na revisão e labels no histórico;
+- filtros client-side por tipo e Category, preservando a ordem mensal do backend.
+
+Não existem categorias customizadas, CRUD, reclassificação, search, totais, saldo, agrupamento, recorrência ou categorização automática. A capacidade permanece **Implemented**, e não **Verified**, até a auditoria final independente.
+
+## Incremento 3B — Recorrências e assinaturas
 
 **Estado: Planned.**
 
-O objetivo é melhorar a interpretação do comportamento financeiro e a capacidade de antecipar compromissos. A direção inclui:
+Recorrência é uma feature temporal própria, não consequência da categoria `expense.subscriptions`. Sua direção futura pode exigir templates, periodicidade, próxima ocorrência, detecção, confirmação e estados como potencial/confirmado/cancelado. O escopo será desenhado e implementado em branch/PR separados, sem misturá-lo ao Incremento 3A.
 
-- categorização;
-- histórico enriquecido;
-- detecção e confirmação de recorrências;
-- identificação de assinaturas.
-
-Recorrências devem distinguir conceitualmente estados como:
-
-- confirmado;
-- potencial;
-- pontual;
-- cancelado.
-
-Esses sinais poderão contribuir futuramente para o Personal Financial Model, sem representar a implementação completa de IA ou personalização. O resultado estratégico é aumentar a previsibilidade sem transformar hipótese em fato.
+Esses sinais poderão contribuir futuramente para o Personal Financial Model, sem representar a implementação completa de IA ou personalização. O resultado estratégico permanece aumentar a previsibilidade sem transformar hipótese em fato.
 
 ## Incremento 4 — Cartões, parcelas e compromissos futuros
 

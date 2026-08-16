@@ -1,6 +1,7 @@
 package application
 
 import (
+	"context"
 	"time"
 
 	"jarvis/backend/internal/modules/transactions/domain"
@@ -14,12 +15,17 @@ type CreateIncomeInput struct {
 	Description       string
 	AmountMinor       int64
 	Currency          domain.Currency
+	CategoryID        *domain.CategoryID
 	OccurredAt        time.Time
 	FinancialTimezone string
 	Origin            domain.Origin
 }
 
-func normalizeIncomeInput(input CreateIncomeInput) (domain.IncomeDetails, error) {
+func normalizeIncomeInput(
+	ctx context.Context,
+	categoryCatalog CategoryCatalog,
+	input CreateIncomeInput,
+) (domain.IncomeDetails, error) {
 	amount, err := domain.NewMoney(input.AmountMinor, input.Currency)
 	if err != nil {
 		return domain.IncomeDetails{}, err
@@ -29,10 +35,15 @@ func normalizeIncomeInput(input CreateIncomeInput) (domain.IncomeDetails, error)
 		UserID:            input.UserID,
 		Description:       input.Description,
 		Amount:            amount,
+		CategoryID:        input.CategoryID,
 		OccurredAt:        input.OccurredAt,
 		FinancialTimezone: input.FinancialTimezone,
 		Origin:            input.Origin,
 	})
+	if err != nil {
+		return domain.IncomeDetails{}, err
+	}
+	details.CategoryID, err = validateCategoryForType(ctx, categoryCatalog, details.CategoryID, domain.TransactionTypeIncome)
 	if err != nil {
 		return domain.IncomeDetails{}, err
 	}

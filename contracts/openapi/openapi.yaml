@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: J.A.R.V.I.S. API
-  version: 0.3.0
+  version: 0.4.0
   description: >-
     API da fundação e dos incrementos financeiros de despesas e receitas. Criar
     uma transaction registra no organizador J.A.R.V.I.S. uma movimentação que já
@@ -59,6 +59,7 @@ paths:
                     minor: 4250
                     currency: BRL
                   paymentMethod: PIX
+                  categoryId: expense.food
                   occurredAt: "2026-08-14T15:00:00Z"
               income:
                 value:
@@ -67,6 +68,7 @@ paths:
                   amount:
                     minor: 725000
                     currency: BRL
+                  categoryId: income.salary
                   occurredAt: "2026-08-14T15:00:00Z"
       responses:
         "200":
@@ -82,6 +84,32 @@ paths:
                 $ref: "#/components/schemas/TransactionPreview"
         "400":
           $ref: "#/components/responses/BadRequest"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowed"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /v1/categories:
+    get:
+      operationId: listCategories
+      summary: Lista o catálogo de categorias financeiras do sistema
+      description: >-
+        Retorna primeiro as categorias aplicáveis a Expense e depois as
+        categorias aplicáveis a Income, em ordem estável do catálogo. A opção
+        conceitual Sem categoria é representada pela ausência de categoryId em
+        uma transaction e não integra esta lista.
+      tags: [Categories]
+      responses:
+        "200":
+          description: Catálogo completo e ordenado de categorias do sistema
+          headers:
+            Cache-Control:
+              $ref: "#/components/headers/CacheControl"
+            X-Content-Type-Options:
+              $ref: "#/components/headers/ContentTypeOptions"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CategoryCatalogResponse"
         "405":
           $ref: "#/components/responses/MethodNotAllowed"
         "500":
@@ -116,6 +144,7 @@ paths:
                     minor: 4250
                     currency: BRL
                   paymentMethod: PIX
+                  categoryId: expense.food
                   occurredAt: "2026-08-14T15:00:00Z"
               income:
                 value:
@@ -124,6 +153,7 @@ paths:
                   amount:
                     minor: 725000
                     currency: BRL
+                  categoryId: income.salary
                   occurredAt: "2026-08-14T15:00:00Z"
       responses:
         "201":
@@ -165,7 +195,7 @@ paths:
           description: Mês financeiro estrito no formato YYYY-MM.
           schema:
             type: string
-            pattern: '^(?!0000-)[0-9]{4}-(0[1-9]|1[0-2])$'
+            pattern: "^(?!0000-)[0-9]{4}-(0[1-9]|1[0-2])$"
           example: "2026-08"
       responses:
         "200":
@@ -213,7 +243,7 @@ components:
         type: string
         minLength: 1
         maxLength: 128
-        pattern: '^[!-~]+$'
+        pattern: "^[!-~]+$"
       example: synthetic-create-20260814-001
   responses:
     BadRequest:
@@ -287,6 +317,14 @@ components:
         currency:
           type: string
           const: BRL
+    CategoryId:
+      type: string
+      minLength: 1
+      maxLength: 64
+      pattern: "^[a-z][a-z0-9]*([._][a-z0-9]+)*$"
+      description: >-
+        Identidade técnica estável de uma categoria do sistema. O campo é
+        omitido para uma transaction sem categoria e nunca aceita null.
     ExpenseRequest:
       type: object
       additionalProperties: false
@@ -304,6 +342,8 @@ components:
         paymentMethod:
           type: string
           enum: [PIX, DEBIT, CREDIT, CASH]
+        categoryId:
+          $ref: "#/components/schemas/CategoryId"
         occurredAt:
           type: string
           format: date-time
@@ -324,6 +364,8 @@ components:
           maxLength: 200
         amount:
           $ref: "#/components/schemas/Money"
+        categoryId:
+          $ref: "#/components/schemas/CategoryId"
         occurredAt:
           type: string
           format: date-time
@@ -363,6 +405,8 @@ components:
         paymentMethod:
           type: string
           enum: [PIX, DEBIT, CREDIT, CASH]
+        categoryId:
+          $ref: "#/components/schemas/CategoryId"
         occurredAt:
           type: string
           format: date-time
@@ -393,6 +437,8 @@ components:
           maxLength: 200
         amount:
           $ref: "#/components/schemas/Money"
+        categoryId:
+          $ref: "#/components/schemas/CategoryId"
         occurredAt:
           type: string
           format: date-time
@@ -445,6 +491,8 @@ components:
         paymentMethod:
           type: string
           enum: [PIX, DEBIT, CREDIT, CASH]
+        categoryId:
+          $ref: "#/components/schemas/CategoryId"
         occurredAt:
           type: string
           format: date-time
@@ -499,6 +547,8 @@ components:
           maxLength: 200
         amount:
           $ref: "#/components/schemas/Money"
+        categoryId:
+          $ref: "#/components/schemas/CategoryId"
         occurredAt:
           type: string
           format: date-time
@@ -540,11 +590,34 @@ components:
       properties:
         month:
           type: string
-          pattern: '^(?!0000-)[0-9]{4}-(0[1-9]|1[0-2])$'
+          pattern: "^(?!0000-)[0-9]{4}-(0[1-9]|1[0-2])$"
         items:
           type: array
           items:
             $ref: "#/components/schemas/TransactionResponse"
+    CategoryDefinitionResponse:
+      type: object
+      additionalProperties: false
+      required: [id, type, displayName]
+      properties:
+        id:
+          $ref: "#/components/schemas/CategoryId"
+        type:
+          type: string
+          enum: [EXPENSE, INCOME]
+          description: Tipo de transaction ao qual a categoria é aplicável.
+        displayName:
+          type: string
+          minLength: 1
+          maxLength: 80
+          description: Nome de apresentação pt-BR fornecido pelo catálogo.
+    CategoryCatalogResponse:
+      type: array
+      description: >-
+        Catálogo de sistema ordenado por aplicabilidade e ordem interna; não
+        inclui uma entrada para Sem categoria.
+      items:
+        $ref: "#/components/schemas/CategoryDefinitionResponse"
     ErrorEnvelope:
       type: object
       additionalProperties: false
@@ -572,3 +645,5 @@ tags:
     description: Endpoints operacionais, sem regras de negócio.
   - name: Transactions
     description: Registro e consulta de despesas e receitas; nunca execução de movimentação financeira.
+  - name: Categories
+    description: Descoberta read-only do catálogo de classificação financeira do sistema.

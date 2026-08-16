@@ -83,6 +83,12 @@ func (repository *ExpenseRepository) Save(ctx context.Context, expense domain.Ex
 }
 
 func insertExpense(ctx context.Context, transaction pgx.Tx, expense domain.Expense) error {
+	categoryID, hasCategory := expense.CategoryID()
+	var storedCategoryID any
+	if hasCategory {
+		storedCategoryID = categoryID.String()
+	}
+
 	if _, err := transaction.Exec(ctx, `
 		INSERT INTO transactions (
 			id,
@@ -92,6 +98,7 @@ func insertExpense(ctx context.Context, transaction pgx.Tx, expense domain.Expen
 			amount_minor,
 			currency,
 			payment_method,
+			category_id,
 			occurred_at,
 			financial_timezone,
 			origin,
@@ -99,7 +106,7 @@ func insertExpense(ctx context.Context, transaction pgx.Tx, expense domain.Expen
 			version,
 			created_at,
 			updated_at
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
 	`,
 		expense.ID(),
 		expense.UserID(),
@@ -108,6 +115,7 @@ func insertExpense(ctx context.Context, transaction pgx.Tx, expense domain.Expen
 		expense.Amount().MinorUnits(),
 		expense.Amount().Currency(),
 		expense.PaymentMethod(),
+		storedCategoryID,
 		expense.OccurredAt(),
 		expense.FinancialTimezone(),
 		expense.Origin(),

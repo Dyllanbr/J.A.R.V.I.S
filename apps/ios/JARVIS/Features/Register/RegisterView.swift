@@ -17,6 +17,9 @@ struct RegisterView: View {
             content
                 .navigationTitle(navigationTitle)
         }
+        .task {
+            await model.loadCategoriesIfNeeded()
+        }
     }
 
     @ViewBuilder
@@ -103,6 +106,27 @@ struct RegisterView: View {
                     .accessibilityIdentifier("register.paymentMethod")
                 }
 
+                Picker(
+                    "Categoria",
+                    selection: Binding(
+                        get: { model.selectedCategoryID },
+                        set: { model.selectCategory($0) }
+                    )
+                ) {
+                    Text("Sem categoria")
+                        .tag(String?.none)
+                        .accessibilityIdentifier("register.category.option.none")
+                    ForEach(model.availableCategories) { category in
+                        Text(category.displayName)
+                            .tag(Optional(category.id))
+                            .accessibilityIdentifier("register.category.option.\(category.id)")
+                    }
+                }
+                .disabled(!model.categoryCatalogState.isLoaded)
+                .accessibilityValue(model.selectedCategoryDisplayName)
+                .accessibilityHint(categoryAccessibilityHint)
+                .accessibilityIdentifier("register.category")
+
                 DatePicker(
                     "Data e hora",
                     selection: $model.occurredAt,
@@ -110,6 +134,8 @@ struct RegisterView: View {
                 )
                 .accessibilityIdentifier("register.occurredAt")
             }
+
+            categoryCatalogStatus
 
             if let errorMessage = model.errorMessage {
                 Section {
@@ -160,12 +186,22 @@ struct RegisterView: View {
                         value: expense.preview.paymentMethod.displayName,
                         identifier: "review.paymentMethod"
                     )
+                    summaryRow(
+                        "Categoria",
+                        value: expense.categoryDisplayName,
+                        identifier: "review.category"
+                    )
                 case let .income(income):
                     reviewCommonRows(
                         type: .income,
                         description: income.preview.description,
                         amount: income.preview.amount,
                         occurredAt: income.preview.occurredAt
+                    )
+                    summaryRow(
+                        "Categoria",
+                        value: income.categoryDisplayName,
+                        identifier: "review.category"
                     )
                 }
             }
@@ -211,6 +247,44 @@ struct RegisterView: View {
             }
         }
         .accessibilityIdentifier("review.screen")
+    }
+
+    @ViewBuilder
+    private var categoryCatalogStatus: some View {
+        switch model.categoryCatalogState {
+        case .idle, .loading:
+            Section {
+                HStack {
+                    ProgressView()
+                    Text("Carregando categorias")
+                }
+                .accessibilityIdentifier("register.category.loading")
+            }
+        case let .failed(message):
+            Section {
+                Label(message, systemImage: "exclamationmark.triangle.fill")
+                    .foregroundStyle(.secondary)
+                    .accessibilityIdentifier("register.category.error")
+                Button("Tentar carregar categorias novamente") {
+                    Task { await model.retryCategories() }
+                }
+                .frame(minHeight: 44)
+                .accessibilityIdentifier("register.category.retry")
+            }
+        case .loaded:
+            EmptyView()
+        }
+    }
+
+    private var categoryAccessibilityHint: String {
+        switch model.categoryCatalogState {
+        case .loaded:
+            "Seleciona uma categoria opcional para a movimentação"
+        case .idle, .loading:
+            "O catálogo de categorias está sendo carregado"
+        case .failed:
+            "Categorias indisponíveis; o registro sem categoria continua permitido"
+        }
     }
 
     private func success(_ transaction: FinancialTransaction) -> some View {
@@ -273,6 +347,13 @@ struct RegisterView: View {
                 .multilineTextAlignment(.trailing)
                 .accessibilityIdentifier(identifier)
         }
+    }
+}
+
+private extension CategoryCatalogState {
+    var isLoaded: Bool {
+        guard case .loaded = self else { return false }
+        return true
     }
 }
 
