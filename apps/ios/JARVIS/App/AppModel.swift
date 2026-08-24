@@ -112,12 +112,14 @@ final class AppModel {
     let categories: CategoryCatalogModel
     let registration: RegistrationViewModel
     let history: HistoryViewModel
+    let recurrences: RecurrencesViewModel
 
     init(api: any FinancialAPI, now: Date = Date()) {
         let categories = CategoryCatalogModel(api: api)
         self.categories = categories
         let history = HistoryViewModel(api: api, categories: categories, now: now)
         self.history = history
+        recurrences = RecurrencesViewModel(api: api, now: now)
         registration = RegistrationViewModel(
             api: api,
             categories: categories,

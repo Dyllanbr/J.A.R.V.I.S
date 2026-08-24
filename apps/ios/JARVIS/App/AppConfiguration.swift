@@ -2,27 +2,32 @@ import Foundation
 
 enum AppConfiguration {
     private static let baseURLVariable = "JARVIS_IOS_API_BASE_URL"
+    #if DEBUG
     private static let apiModeVariable = "JARVIS_IOS_API_MODE"
+    #endif
 
     @MainActor
     static func financialAPI(environment: [String: String] = ProcessInfo.processInfo.environment) -> any FinancialAPI {
+        #if DEBUG
         let mode = environment[apiModeVariable]
 
-        #if DEBUG
         if mode == "stub" {
             return StubFinancialAPI()
         }
-        #endif
 
         guard mode == nil || mode == "real" else {
             return UnavailableFinancialAPI()
         }
+        let allowsDebugLoopbackFallback = mode == nil
+        #else
+        let allowsDebugLoopbackFallback = false
+        #endif
 
         do {
             return URLSessionFinancialAPIClient(
                 baseURL: try baseURL(
                     environment: environment,
-                    allowsDebugLoopbackFallback: mode == nil
+                    allowsDebugLoopbackFallback: allowsDebugLoopbackFallback
                 )
             )
         } catch {
@@ -85,6 +90,22 @@ private struct UnavailableFinancialAPI: FinancialAPI {
     }
 
     func transactions(month _: String) async throws -> TransactionMonth {
+        throw FinancialAPIError.configuration
+    }
+
+    func previewRecurrence(_: RecurrenceRequest) async throws -> RecurrencePreview {
+        throw FinancialAPIError.configuration
+    }
+
+    func createRecurrence(_: RecurrenceRequest, idempotencyKey _: String) async throws -> RecordedRecurrence {
+        throw FinancialAPIError.configuration
+    }
+
+    func recurrences() async throws -> RecurrenceList {
+        throw FinancialAPIError.configuration
+    }
+
+    func cancelRecurrence(id _: String, idempotencyKey _: String) async throws -> RecordedRecurrence {
         throw FinancialAPIError.configuration
     }
 }

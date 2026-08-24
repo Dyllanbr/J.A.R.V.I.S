@@ -27,6 +27,19 @@ function incomeRequest(description: string, occurredAt: string) {
   };
 }
 
+function recurrenceRequest(description: string, startsOn: string) {
+  return {
+    type: "EXPENSE",
+    description,
+    expectedAmount: {
+      minor: 11900,
+      currency: "BRL",
+    },
+    frequency: "MONTHLY",
+    startsOn,
+  };
+}
+
 test("preview validates and normalizes without persistence", async ({
   request,
 }) => {
@@ -518,4 +531,221 @@ test("categorized Expense and Income replay and remain classified in mixed histo
     categoryId: "expense.food",
     paymentMethod: "PIX",
   });
+});
+
+test("recurrence preview is canonical, strict, and write-free", async ({
+  request,
+}) => {
+  const description = "Preview recorrência Playwright sintética";
+  const payload = recurrenceRequest(`  ${description}  `, "2024-02-29");
+  const preview = await request.post("/v1/recurrences/preview", {
+    data: payload,
+  });
+  expect(preview.status()).toBe(200);
+  expect(preview.headers()["content-type"]).toBe(contentType);
+  expect(preview.headers()["cache-control"]).toBe("no-store");
+  expect(await preview.json()).toEqual({
+    type: "EXPENSE",
+    description,
+    expectedAmount: { minor: 11900, currency: "BRL" },
+    frequency: "MONTHLY",
+    startsOn: "2024-02-29",
+  });
+
+  const list = await request.get("/v1/recurrences");
+  expect(list.status()).toBe(200);
+  const listBody = (await list.json()) as {
+    items: Array<{ description: string }>;
+  };
+  expect(listBody.items.some((item) => item.description === description)).toBe(
+    false,
+  );
+
+  for (const data of [
+    { ...payload, userId: "spoofed-owner" },
+    { ...payload, type: "INCOME" },
+    { ...payload, startsOn: "2026-02-29" },
+    { ...payload, startsOn: "2026-08-31T00:00:00Z" },
+    { ...payload, expectedAmount: null },
+    { ...payload, categoryId: "expense.subscriptions" },
+    { ...payload, paymentMethod: "CREDIT" },
+    { ...payload, recurring: true },
+  ]) {
+    const invalid = await request.post("/v1/recurrences/preview", { data });
+    expect(invalid.status()).toBe(400);
+  }
+});
+
+test("recurrence create replays safely, conflicts, and appears in owner list", async ({
+  request,
+}) => {
+  const description = "Recorrência create Playwright sintética";
+  const payload = recurrenceRequest(description, "2026-08-31");
+  const headers = { "Idempotency-Key": "pw-recurrence-create-replay-001" };
+
+  const missingKey = await request.post("/v1/recurrences", {
+    data: payload,
+  });
+  expect(missingKey.status()).toBe(400);
+  expect(await missingKey.json()).toEqual({
+    error: {
+      code: "IDEMPOTENCY_KEY_REQUIRED",
+      message: "idempotency key is required",
+    },
+  });
+
+  const created = await request.post("/v1/recurrences", {
+    data: payload,
+    headers,
+  });
+  expect(created.status()).toBe(201);
+  expect(created.headers()["idempotency-replayed"]).toBeUndefined();
+  const createdBytes = await created.body();
+  const createdBody = JSON.parse(createdBytes.toString()) as Record<
+    string,
+    unknown
+  >;
+  expect(createdBody).toMatchObject({
+    type: "EXPENSE",
+    description,
+    expectedAmount: payload.expectedAmount,
+    frequency: "MONTHLY",
+    startsOn: "2026-08-31",
+    status: "ACTIVE",
+  });
+  expect("cancelledAt" in createdBody).toBe(false);
+  expect("userId" in createdBody).toBe(false);
+
+  const replay = await request.post("/v1/recurrences", {
+    data: { ...payload, description: `  ${description}  ` },
+    headers,
+  });
+  expect(replay.status()).toBe(201);
+  expect(replay.headers()["idempotency-replayed"]).toBe("true");
+  expect(await replay.body()).toEqual(createdBytes);
+
+  const conflict = await request.post("/v1/recurrences", {
+    data: {
+      ...payload,
+      expectedAmount: { minor: 12900, currency: "BRL" },
+    },
+    headers,
+  });
+  expect(conflict.status()).toBe(409);
+  expect(await conflict.json()).toEqual({
+    error: {
+      code: "IDEMPOTENCY_KEY_REUSED",
+      message: "idempotency key was reused with a different request",
+    },
+  });
+
+  const list = await request.get("/v1/recurrences");
+  const listBody = (await list.json()) as {
+    items: Array<Record<string, unknown>>;
+  };
+  expect(
+    listBody.items.filter((item) => item.description === description),
+  ).toHaveLength(1);
+});
+
+test("recurrence cancel replays its timestamp and create replay remains historical", async ({
+  request,
+}) => {
+  const payload = recurrenceRequest(
+    "Recorrência cancel Playwright sintética",
+    "2026-12-31",
+  );
+  const createHeaders = {
+    "Idempotency-Key": "pw-recurrence-historical-create-001",
+  };
+  const created = await request.post("/v1/recurrences", {
+    data: payload,
+    headers: createHeaders,
+  });
+  expect(created.status()).toBe(201);
+  const createdBytes = await created.body();
+  const createdBody = JSON.parse(createdBytes.toString()) as { id: string };
+
+  const cancelHeaders = {
+    "Idempotency-Key": "pw-recurrence-cancel-replay-001",
+  };
+  const cancelled = await request.post(
+    `/v1/recurrences/${createdBody.id}/cancel`,
+    { headers: cancelHeaders },
+  );
+  expect(cancelled.status()).toBe(200);
+  const cancelledBytes = await cancelled.body();
+  expect(JSON.parse(cancelledBytes.toString())).toMatchObject({
+    id: createdBody.id,
+    status: "CANCELLED",
+    startsOn: "2026-12-31",
+  });
+
+  const cancelReplay = await request.post(
+    `/v1/recurrences/${createdBody.id}/cancel`,
+    { headers: cancelHeaders },
+  );
+  expect(cancelReplay.status()).toBe(200);
+  expect(cancelReplay.headers()["idempotency-replayed"]).toBe("true");
+  expect(await cancelReplay.body()).toEqual(cancelledBytes);
+
+  const createReplay = await request.post("/v1/recurrences", {
+    data: payload,
+    headers: createHeaders,
+  });
+  expect(createReplay.status()).toBe(201);
+  expect(createReplay.headers()["idempotency-replayed"]).toBe("true");
+  expect(await createReplay.body()).toEqual(createdBytes);
+
+  const newCancelKey = await request.post(
+    `/v1/recurrences/${createdBody.id}/cancel`,
+    { headers: { "Idempotency-Key": "pw-recurrence-cancel-new-key-001" } },
+  );
+  expect(newCancelKey.status()).toBe(409);
+  expect(await newCancelKey.json()).toEqual({
+    error: {
+      code: "RECURRENCE_ALREADY_CANCELLED",
+      message: "recurrence is already cancelled",
+    },
+  });
+
+  const unknown = await request.post("/v1/recurrences/rec_unknown/cancel", {
+    headers: { "Idempotency-Key": "pw-recurrence-unknown-001" },
+  });
+  expect(unknown.status()).toBe(404);
+  expect(await unknown.json()).toEqual({
+    error: {
+      code: "RECURRENCE_NOT_FOUND",
+      message: "recurrence was not found",
+    },
+  });
+});
+
+test("expense.subscriptions remains classification and never creates recurrence", async ({
+  request,
+}) => {
+  const description = "Assinatura pontual Playwright sintética";
+  const transaction = await request.post("/v1/transactions", {
+    data: {
+      ...expenseRequest(description, "2026-10-10T15:00:00Z"),
+      categoryId: "expense.subscriptions",
+    },
+    headers: {
+      "Idempotency-Key": "pw-subscription-category-is-not-recurrence-001",
+    },
+  });
+  expect(transaction.status()).toBe(201);
+  expect(await transaction.json()).toMatchObject({
+    type: "EXPENSE",
+    categoryId: "expense.subscriptions",
+  });
+
+  const recurrences = await request.get("/v1/recurrences");
+  expect(recurrences.status()).toBe(200);
+  const body = (await recurrences.json()) as {
+    items: Array<{ description: string }>;
+  };
+  expect(body.items.some((item) => item.description === description)).toBe(
+    false,
+  );
 });

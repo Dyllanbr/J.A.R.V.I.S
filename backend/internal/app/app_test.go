@@ -42,6 +42,13 @@ func TestHealthOnlyCompositionDoesNotRegisterFinancialRoutes(t *testing.T) {
 	if response.Code != http.StatusNotFound {
 		t.Fatalf("financial route status = %d, want 404 in health-only mode", response.Code)
 	}
+
+	request = httptest.NewRequest(http.MethodGet, "/v1/recurrences", nil)
+	response = httptest.NewRecorder()
+	application.server.Handler.ServeHTTP(response, request)
+	if response.Code != http.StatusNotFound {
+		t.Fatalf("recurrence route status = %d, want 404 in health-only mode", response.Code)
+	}
 }
 
 func TestRunHonorsPreCanceledContext(t *testing.T) {

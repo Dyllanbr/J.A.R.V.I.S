@@ -72,9 +72,9 @@ trap 'exit 130' INT
 trap 'exit 143' TERM
 
 case "$mode" in
-  --all | --unit | --ui | --tab-regression | --real-api) ;;
+  --all | --unit | --ui | --recurrence-ui | --tab-regression | --real-api) ;;
   *)
-    echo "Usage: scripts/test-ios.sh [--all|--unit|--ui|--tab-regression|--real-api]" >&2
+    echo "Usage: scripts/test-ios.sh [--all|--unit|--ui|--recurrence-ui|--tab-regression|--real-api]" >&2
     exit 2
     ;;
 esac
@@ -146,6 +146,11 @@ case "$mode" in
   --ui)
     test_filters+=("-only-testing:JARVISUITests")
     ;;
+  --recurrence-ui)
+    test_filters+=(
+      "-only-testing:JARVISUITests/JARVISUITests/testRecurrencePreviewConfirmListAndCancel"
+    )
+    ;;
   --tab-regression)
     test_filters+=(
       "-only-testing:JARVISUITests/JARVISUITests/testTabIdentifiersSurviveSuccessAndRepeatedNavigation"
@@ -168,6 +173,7 @@ case "$mode" in
     test_filters+=(
       "-only-testing:JARVISUITests/JARVISUITests/testRegisterPreviewConfirmAndHistory"
       "-only-testing:JARVISUITests/JARVISUITests/testRegisterIncomePreviewConfirmAndHistory"
+      "-only-testing:JARVISUITests/JARVISUITests/testRecurrencePreviewConfirmListAndCancel"
     )
     ;;
 esac

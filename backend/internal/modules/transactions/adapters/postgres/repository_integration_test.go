@@ -34,11 +34,14 @@ func TestMigrationsUpDownAndReapply(t *testing.T) {
 		if err := migrations.Up(ctx, connection); err != nil {
 			t.Fatal("migration UP failed")
 		}
-		assertMigrationVersion(t, ctx, connection, 4)
+		assertMigrationVersion(t, ctx, connection, 5)
 	})
 	assertTablesExist(t, ctx, pool, true)
 	assertTableExists(t, ctx, pool, "idempotency_records", true)
 	assertTableExists(t, ctx, pool, "categories", true)
+	assertTableExists(t, ctx, pool, "recurrences", true)
+	assertTableExists(t, ctx, pool, "recurrence_audit_events", true)
+	assertTableExists(t, ctx, pool, "recurrence_idempotency_records", true)
 	assertSchemaTypes(t, ctx, pool)
 	assertAuditSchemaIsMinimal(t, ctx, pool)
 	assertIdempotencySchemaIsMinimal(t, ctx, pool)
@@ -48,6 +51,10 @@ func TestMigrationsUpDownAndReapply(t *testing.T) {
 	withConnection(t, ctx, pool, func(connection *pgx.Conn) {
 		if err := migrations.Up(ctx, connection); err != nil {
 			t.Fatal("reapplying migration UP failed")
+		}
+		assertMigrationVersion(t, ctx, connection, 5)
+		if err := migrations.Down(ctx, connection); err != nil {
+			t.Fatal("migration 005 DOWN failed")
 		}
 		assertMigrationVersion(t, ctx, connection, 4)
 		if err := migrations.Down(ctx, connection); err != nil {
@@ -77,11 +84,14 @@ func TestMigrationsUpDownAndReapply(t *testing.T) {
 		if err := migrations.Up(ctx, connection); err != nil {
 			t.Fatal("migration UP after DOWN failed")
 		}
-		assertMigrationVersion(t, ctx, connection, 4)
+		assertMigrationVersion(t, ctx, connection, 5)
 	})
 	assertTablesExist(t, ctx, pool, true)
 	assertTableExists(t, ctx, pool, "idempotency_records", true)
 	assertTableExists(t, ctx, pool, "categories", true)
+	assertTableExists(t, ctx, pool, "recurrences", true)
+	assertTableExists(t, ctx, pool, "recurrence_audit_events", true)
+	assertTableExists(t, ctx, pool, "recurrence_idempotency_records", true)
 	assertSchemaTypes(t, ctx, pool)
 	assertAuditSchemaIsMinimal(t, ctx, pool)
 	assertIdempotencySchemaIsMinimal(t, ctx, pool)

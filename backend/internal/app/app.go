@@ -103,7 +103,39 @@ func New(
 		listTransactions,
 		listCategories,
 	)
-	applicationInstance.server = httpserver.New(cfg.HTTPAddress, logger, financialRoutes)
+	recurrenceRepository, err := transactionspostgres.NewRecurrenceRepository(pool, postgresConfig.OperationTimeout)
+	if err != nil {
+		pool.Close()
+		return nil, err
+	}
+	recordRecurrence, err := application.NewRecordRecurrence(
+		recurrenceRepository,
+		recurrenceRepository,
+		randomid.Generator{},
+		systemClock{},
+	)
+	if err != nil {
+		pool.Close()
+		return nil, err
+	}
+	listRecurrences, err := application.NewListRecurrences(recurrenceRepository)
+	if err != nil {
+		pool.Close()
+		return nil, err
+	}
+	cancelRecurrence, err := application.NewCancelRecurrence(recurrenceRepository, recurrenceRepository, systemClock{})
+	if err != nil {
+		pool.Close()
+		return nil, err
+	}
+	recurrenceRoutes := httpapi.NewRecurrence(
+		cfg.OwnerID,
+		application.PreviewRecurrence{},
+		recordRecurrence,
+		listRecurrences,
+		cancelRecurrence,
+	)
+	applicationInstance.server = httpserver.New(cfg.HTTPAddress, logger, financialRoutes, recurrenceRoutes)
 	return applicationInstance, nil
 }
 

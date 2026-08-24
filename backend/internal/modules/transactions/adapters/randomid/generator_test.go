@@ -70,3 +70,21 @@ func TestGeneratorCreatesDomainCompatibleDistinctIncomeIDs(t *testing.T) {
 		t.Fatalf("generated Income ID is not domain compatible: %v", err)
 	}
 }
+
+func TestGeneratorCreatesDomainCompatibleDistinctRecurrenceIDs(t *testing.T) {
+	generator := randomid.Generator{}
+	first, err := generator.NewRecurrenceID()
+	if err != nil {
+		t.Fatalf("first NewRecurrenceID() error = %v", err)
+	}
+	second, err := generator.NewRecurrenceID()
+	if err != nil {
+		t.Fatalf("second NewRecurrenceID() error = %v", err)
+	}
+	if first == second || len(first) != len("rec_")+32 {
+		t.Fatal("generator did not create distinct 128-bit opaque Recurrence IDs")
+	}
+	if err := domain.ValidateRecurrenceID(first); err != nil {
+		t.Fatalf("generated Recurrence ID is not domain compatible: %v", err)
+	}
+}

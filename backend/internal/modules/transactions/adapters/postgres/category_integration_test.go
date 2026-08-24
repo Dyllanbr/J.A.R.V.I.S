@@ -201,6 +201,9 @@ func TestMigration004PreservesVersion3LegacyDataReplayAndDown(t *testing.T) {
 			t.Fatal("migration UP failed")
 		}
 		if err := migrations.Down(ctx, connection); err != nil {
+			t.Fatal("migration 005 DOWN failed")
+		}
+		if err := migrations.Down(ctx, connection); err != nil {
 			t.Fatal("migration 004 DOWN failed")
 		}
 		assertMigrationVersion(t, ctx, connection, 3)
@@ -235,7 +238,7 @@ func TestMigration004PreservesVersion3LegacyDataReplayAndDown(t *testing.T) {
 		if err := migrations.Up(ctx, connection); err != nil {
 			t.Fatal("migration 003 to 004 failed")
 		}
-		assertMigrationVersion(t, ctx, connection, 4)
+		assertMigrationVersion(t, ctx, connection, 5)
 	})
 	assertAllTransactionsUncategorized(t, ctx, pool, 2)
 	if !bytes.Equal(beforeExpenseFingerprint, storedFingerprint(t, ctx, pool, "CREATE_EXPENSE", expenseInput.IdempotencyKey)) ||
@@ -258,6 +261,9 @@ func TestMigration004PreservesVersion3LegacyDataReplayAndDown(t *testing.T) {
 
 	withConnection(t, ctx, pool, func(connection *pgx.Conn) {
 		if err := migrations.Down(ctx, connection); err != nil {
+			t.Fatal("migration 005 DOWN with no recurrence data failed")
+		}
+		if err := migrations.Down(ctx, connection); err != nil {
 			t.Fatal("migration 004 DOWN with uncategorized legacy data failed")
 		}
 		assertMigrationVersion(t, ctx, connection, 3)
@@ -270,7 +276,7 @@ func TestMigration004PreservesVersion3LegacyDataReplayAndDown(t *testing.T) {
 		if err := migrations.Up(ctx, connection); err != nil {
 			t.Fatal("migration 004 reapply after safe DOWN failed")
 		}
-		assertMigrationVersion(t, ctx, connection, 4)
+		assertMigrationVersion(t, ctx, connection, 5)
 	})
 	assertAllTransactionsUncategorized(t, ctx, pool, 2)
 }
@@ -279,6 +285,7 @@ func TestMigration004DownRefusesCategorizedFullStateAtomically(t *testing.T) {
 	pool := newMigratedTestDatabase(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
+	moveToMigration004(t, ctx, pool)
 	insertSyntheticUser(t, ctx, pool, syntheticUserID)
 	repository := newRepository(t, pool)
 	useCase := newCategorizedIncomeUseCase(t, repository, fixedIncomeIntegrationIDGenerator{id: "inc_category_down_guard"})
@@ -306,6 +313,7 @@ func TestMigration004DownWaitsForCategorizedWriteAlreadyInProgress(t *testing.T)
 	pool := newMigratedTestDatabase(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
+	moveToMigration004(t, ctx, pool)
 	insertSyntheticUser(t, ctx, pool, syntheticUserID)
 
 	writerConnection, err := pool.Acquire(ctx)
@@ -365,6 +373,7 @@ func TestMigration004DownBlocksCategorizedWriteAfterLock(t *testing.T) {
 	pool := newMigratedTestDatabase(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
+	moveToMigration004(t, ctx, pool)
 	insertSyntheticUser(t, ctx, pool, syntheticUserID)
 
 	categoryBlocker, err := pool.Acquire(ctx)
