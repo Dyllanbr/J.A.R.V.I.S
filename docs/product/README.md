@@ -64,7 +64,7 @@ Uma declaração de visão não comprova planejamento detalhado. Um item planeja
 - [Princípios de design](design-principles.md) — direção visual, experiência, acessibilidade e critérios para um futuro design system; **Proposed**, capacidade **Planned**.
 - [Roadmap estratégico](roadmap.md) — sequência de evolução, resultados, dependências e gates sem duplicar o backlog; **Proposed**, capacidades em estado **misto**.
 
-O Incremento 1 está concluído, auditado, aprovado e mergeado. O Incremento 2 está **Implemented** e pronto para auditoria global independente; ainda não está **Verified**. O Incremento 3A — Categorias e filtros do histórico está **Implemented** e aguarda auditoria final independente; o Incremento 3B — Recorrências e assinaturas permanece **Planned**. O Product Book separa essas capacidades da visão futura.
+Os Incrementos 1 — Despesas, 2 — Receitas, 3A — Categorias e filtros do histórico e 3B — Recorrências confirmadas e assinaturas estão **Verified**, com implementação mergeada e evidências compatíveis com os quality gates aplicáveis. O Incremento 3C — Detecção e sugestão de recorrências permanece **Planned** e é acompanhado pela Issue #70. O Product Book separa essas capacidades verificadas da visão futura.
 
 ## Regra de manutenção
 

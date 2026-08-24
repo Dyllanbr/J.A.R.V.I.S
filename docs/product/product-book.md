@@ -1,7 +1,7 @@
 # Product Book do J.A.R.V.I.S.
 
 - Maturidade documental: **Proposed**
-- Estado das capacidades: **misto** — Incremento 1 **Verified**; Incrementos 2 e 3A **Implemented**; visão futura, incluindo Incremento 3B, **Planned**
+- Estado das capacidades: **misto** — Incrementos 1, 2, 3A e 3B **Verified**; Incremento 3C e demais capacidades futuras **Planned**
 
 ## Propósito do documento
 
@@ -73,7 +73,7 @@ A IA não é a fonte de verdade dos cálculos financeiros. Ela não deve possuir
 
 Na visão futura, o Financial Engine realiza cálculos financeiros determinísticos. Verdades financeiras, limites, projeções e composições não podem depender da criatividade ou da probabilidade de uma resposta de IA.
 
-O núcleo determinístico de despesas do Incremento 1 é uma capacidade atual verificada. O registro determinístico de receitas do Incremento 2 está implementado e aguarda auditoria global; nenhuma dessas entregas significa que todo o Financial Engine futuro já exista.
+O núcleo determinístico de despesas do Incremento 1 e o registro determinístico de receitas do Incremento 2 são capacidades atuais **Verified**. Categorias do Incremento 3A e recorrências confirmadas do Incremento 3B também possuem implementação e evidência verificadas dentro de seus respectivos escopos. Nenhuma dessas entregas significa que todo o Financial Engine futuro já exista.
 
 ### Policy / Security Engine
 
@@ -110,7 +110,7 @@ O escopo verificado do Incremento 1 registra uma despesa já ocorrida. Ele não 
 
 ## Estado atual — Incremento 2
 
-O Incremento 2 está **Implemented** e pronto para auditoria global independente; ainda não está **Verified**. Dentro desse limite, o sistema agora também:
+O Incremento 2 está **Verified**, após implementação, auditoria global independente e quality gates aplicáveis. Dentro desse limite, o sistema também:
 
 - representa `Income` como agregado de escrita separado de `Expense`;
 - usa magnitude positiva e determina a direção financeira por `type`;
@@ -125,7 +125,7 @@ Income significa registrar que dinheiro entrou. Não significa receber dinheiro,
 
 ## Estado atual — Incremento 3A
 
-O Incremento 3A — Categorias e filtros do histórico está **Implemented** e aguarda auditoria final independente; ainda não está **Verified**. Dentro desse limite, o sistema agora também:
+O Incremento 3A — Categorias e filtros do histórico está **Verified**, após auditoria final independente e quality gates aplicáveis. Dentro desse limite, o sistema também:
 
 - classifica opcionalmente Expense e Income por uma `CategoryID` técnica;
 - distingue ausência (“Sem categoria”) das categorias reais “Outros”;
@@ -134,7 +134,43 @@ O Incremento 3A — Categorias e filtros do histórico está **Implemented** e a
 - expõe `GET /v1/categories` e retorna `categoryId` opcional no histórico;
 - oferece no iOS picker de Category, revisão congelada, labels no histórico e filtros locais por tipo/Category.
 
-Category apenas organiza um registro financeiro já ocorrido; classificá-lo não movimenta dinheiro. O catálogo não possui categorias customizadas, CRUD ou reclassificação. O histórico não possui search, totais, saldo, agrupamento ou análise. A categoria `expense.subscriptions` é somente classificação; não detecta nem agenda recorrências. Recorrências e assinaturas formam o Incremento 3B, que permanece **Planned** e será tratado separadamente.
+Category apenas organiza um registro financeiro já ocorrido; classificá-lo não movimenta dinheiro. O catálogo não possui categorias customizadas, CRUD ou reclassificação. O histórico não possui search, totais, saldo, agrupamento ou análise. A categoria `expense.subscriptions` permanece somente classificação e não representa nem agenda uma `Recurrence`.
+
+A auditoria final do Incremento 3A foi concluída sem findings novos P0, P1 ou P2. Os findings específicos do incremento, incluindo a proteção concorrente do DOWN da migration 004 e a corrida de cancelamento do catálogo compartilhado no iOS, foram resolvidos antes do merge. Débitos técnicos históricos carregados permanecem documentados nas fontes especializadas e não alteram o estado **Verified** da capacidade.
+
+## Estado atual — Incremento 3B
+
+O Incremento 3B — Recorrências confirmadas e assinaturas está **Verified**. O sistema agora também:
+
+- representa `Recurrence` como agregado próprio, separado de `Expense` e `Income`;
+- representa compromisso esperado, e não movimentação financeira já ocorrida;
+- permite criação manual de recorrências de despesa pelo fluxo Preview → Review → Confirm;
+- suporta periodicidade mensal, valor esperado em BRL minor units e data civil de início;
+- preserva o anchor day para datas 29, 30 e 31 usando o último dia válido quando necessário;
+- aplica lifecycle `ACTIVE → CANCELLED`, terminal nesta versão;
+- oferece cancelamento explícito;
+- usa idempotência e eventos de auditoria próprios para criação e cancelamento;
+- preserva replay histórico mesmo após mudança posterior do estado atual;
+- possui persistência PostgreSQL dedicada pela migration 005;
+- expõe API REST/OpenAPI própria para preview, criação, listagem e cancelamento;
+- oferece terceira área nativa no iOS para Recorrências;
+- possui testes unitários, integração PostgreSQL, Playwright, XCTest, XCUITest e E2E real Simulator → API → PostgreSQL.
+
+Uma `Recurrence` nunca cria `Expense` ou `Income` automaticamente, não executa pagamentos e não movimenta dinheiro. Alteração de preço utiliza, nesta versão, cancelamento da recorrência anterior e criação de uma nova.
+
+Detecção automática, confiança e sugestão de possíveis recorrências não fazem parte do Incremento 3B.
+
+## Próxima capacidade — Incremento 3C
+
+O Incremento 3C — Detecção e sugestão de recorrências permanece **Planned** e é acompanhado operacionalmente pela Issue #70.
+
+Seu fluxo conceitual é:
+
+**Observar → Inferir → Sugerir → Confirmar**
+
+Uma possível recorrência detectada não é estado do aggregate `Recurrence`. Nenhum padrão observado deve se transformar automaticamente em obrigação futura; somente a confirmação explícita do usuário poderá iniciar a criação de uma recorrência confirmada.
+
+Projeções, orçamento, Disponível Seguro, alertas, Personal Financial Model e nudges contextuais que utilizem esses sinais continuam capacidades futuras **Planned**.
 
 Detalhes e evidências permanecem nas fontes especializadas de [arquitetura](../architecture/overview.md), [ADRs](../adr/README.md), [segurança](../security/baseline.md), [privacidade](../privacy/README.md), [acessibilidade](../accessibility/baseline.md), [QA](../qa/testing-strategy.md) e [performance](../performance/baseline.md).
 
@@ -143,7 +179,7 @@ Detalhes e evidências permanecem nas fontes especializadas de [arquitetura](../
 As capacidades a seguir estão **Planned**. A presença nesta visão não define ordem, prazo, escopo técnico nem compromisso de entrega:
 
 - categorias customizadas e reclassificação;
-- recorrências e assinaturas;
+- detecção e sugestão de possíveis recorrências;
 - cartões e parcelas;
 - compromissos futuros;
 - orçamento;
