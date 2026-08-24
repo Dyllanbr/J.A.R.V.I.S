@@ -47,9 +47,10 @@ Essa progressão não transforma o J.A.R.V.I.S. em banco nem em executor de tran
 | --- | --- | --- |
 | Fundação | **Verified** | Base técnica e de qualidade para evolução segura |
 | Incremento 1 — Despesas | **Verified** | Primeiro ciclo financeiro completo |
-| Incremento 2 — Receitas | **Implemented** | Registro e consulta de entradas e saídas; auditoria global pendente |
-| Incremento 3A — Categorias e filtros do histórico | **Implemented** | Organização opcional por categorias do sistema; auditoria final pendente |
-| Incremento 3B — Recorrências e assinaturas | **Planned** | Fundação temporal para compromissos recorrentes, separada de Category |
+| Incremento 2 — Receitas | **Verified** | Registro e consulta de entradas e saídas com evidência final de qualidade |
+| Incremento 3A — Categorias e filtros do histórico | **Verified** | Organização opcional por categorias do sistema, auditada e verificada |
+| Incremento 3B — Recorrências confirmadas e assinaturas | **Verified** | Compromissos recorrentes manuais, separados de Expense, Income e Category |
+| Incremento 3C — Detecção e sugestão de recorrências | **Planned** | Observar padrões, sugerir recorrências e exigir confirmação antes de promovê-las |
 | Incremento 4 — Cartões, parcelas e compromissos futuros | **Planned** | Compreensão do dinheiro já comprometido |
 | Incremento 5 — Orçamento e Disponível Seguro | **Planned** | Resposta explicável sobre quanto pode ser gasto |
 | Incremento 6 — Metas e “Posso comprar?” | **Planned** | Apoio estruturado a decisões financeiras |
@@ -96,7 +97,7 @@ Esse incremento é a base validada sobre a qual as próximas capacidades finance
 
 ## Incremento 2 — Receitas
 
-**Estado: Implemented; auditoria global independente pendente.**
+**Estado: Verified.**
 
 O incremento implementa a base para o sistema representar tanto entrada quanto saída de dinheiro:
 
@@ -106,11 +107,11 @@ O incremento implementa a base para o sistema representar tanto entrada quanto s
 - API discriminada e histórico mensal misto de Expense/Income;
 - fluxo iOS completo e integração real Simulator → app → API → PostgreSQL.
 
-O histórico não inclui totais, saldo, orçamento ou Disponível Seguro. Essas entradas criam base para análises futuras sem antecipar cálculos ou aconselhamento. A capacidade permanece **Implemented**, e não **Verified**, até a auditoria global independente.
+O histórico não inclui totais, saldo, orçamento ou Disponível Seguro. Essas entradas criam base para análises futuras sem antecipar cálculos ou aconselhamento. O incremento passou pela auditoria global independente e pelos quality gates aplicáveis, portanto a capacidade está **Verified**.
 
 ## Incremento 3A — Categorias e filtros do histórico
 
-**Estado: Implemented; auditoria final independente pendente.**
+**Estado: Verified.**
 
 O objetivo é organizar melhor registros e facilitar sua interpretação sem antecipar análise financeira. A entrega inclui:
 
@@ -121,15 +122,47 @@ O objetivo é organizar melhor registros e facilitar sua interpretação sem ant
 - picker no registro, Category congelada na revisão e labels no histórico;
 - filtros client-side por tipo e Category, preservando a ordem mensal do backend.
 
-Não existem categorias customizadas, CRUD, reclassificação, search, totais, saldo, agrupamento, recorrência ou categorização automática. A capacidade permanece **Implemented**, e não **Verified**, até a auditoria final independente.
+Não existem categorias customizadas, CRUD, reclassificação, search, totais, saldo, agrupamento, recorrência ou categorização automática. A auditoria final independente foi concluída sem findings novos P0, P1 ou P2; a capacidade está **Verified**. A categoria `expense.subscriptions` permanece somente classificação e não representa uma recorrência.
 
-## Incremento 3B — Recorrências e assinaturas
+## Incremento 3B — Recorrências confirmadas e assinaturas
+
+**Estado: Verified.**
+
+O Incremento 3B implementa `Recurrence` como agregado próprio para representar compromissos financeiros esperados, separado de `Expense`, `Income` e da categoria `expense.subscriptions`.
+
+A entrega verificada inclui:
+
+- criação manual de recorrências de despesa;
+- fluxo Preview → Review → Confirm;
+- periodicidade mensal;
+- valor esperado positivo em BRL minor units;
+- data civil de início com preservação do anchor day;
+- lifecycle `ACTIVE → CANCELLED`, sem reativação nesta versão;
+- cancelamento explícito;
+- idempotência própria para criação e cancelamento;
+- replay histórico preservado;
+- persistência e auditoria PostgreSQL dedicadas pela migration 005;
+- API REST/OpenAPI própria;
+- terceira área nativa no iOS para Recorrências;
+- testes unitários, integração PostgreSQL, Playwright, XCTest, XCUITest e E2E real Simulator → API → PostgreSQL.
+
+Uma `Recurrence` representa uma expectativa, não um fato financeiro ocorrido. Ela nunca cria `Expense` ou `Income` automaticamente, não executa pagamentos e não movimenta dinheiro.
+
+Detecção automática, confiança e sugestão de possíveis recorrências não fazem parte deste incremento. Essas capacidades foram separadas para o Incremento 3C.
+
+## Incremento 3C — Detecção e sugestão de recorrências
 
 **Estado: Planned.**
 
-Recorrência é uma feature temporal própria, não consequência da categoria `expense.subscriptions`. Sua direção futura pode exigir templates, periodicidade, próxima ocorrência, detecção, confirmação e estados como potencial/confirmado/cancelado. O escopo será desenhado e implementado em branch/PR separados, sem misturá-lo ao Incremento 3A.
+O objetivo é detectar padrões que possam representar compromissos recorrentes sem transformar uma hipótese em obrigação futura automaticamente.
 
-Esses sinais poderão contribuir futuramente para o Personal Financial Model, sem representar a implementação completa de IA ou personalização. O resultado estratégico permanece aumentar a previsibilidade sem transformar hipótese em fato.
+O fluxo conceitual permanece:
+
+**Observar → Inferir → Sugerir → Confirmar**
+
+Uma possível recorrência detectada não é estado do aggregate `Recurrence`. A detecção deve permanecer separada do lifecycle `ACTIVE → CANCELLED`, e somente a confirmação explícita do usuário poderá iniciar a criação de uma recorrência confirmada.
+
+A evolução é acompanhada operacionalmente pela Issue #70 e poderá futuramente alimentar projeções, orçamento, Disponível Seguro, alertas, Personal Financial Model e nudges contextuais. Essas capacidades futuras permanecem **Planned**.
 
 ## Incremento 4 — Cartões, parcelas e compromissos futuros
 
