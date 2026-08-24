@@ -25,11 +25,13 @@ private struct NativeTabContainer: UIViewControllerRepresentable {
         private var currentModel: AppModel
         private let registerController: UIHostingController<AnyView>
         private let historyController: UIHostingController<AnyView>
+        private let recurrencesController: UIHostingController<AnyView>
 
         init(model: AppModel) {
             currentModel = model
             registerController = UIHostingController(rootView: Self.registerView(model: model))
             historyController = UIHostingController(rootView: Self.historyView(model: model))
+            recurrencesController = UIHostingController(rootView: Self.recurrencesView(model: model))
             super.init(nibName: nil, bundle: nil)
 
             registerController.tabBarItem = Self.tabBarItem(
@@ -44,7 +46,13 @@ private struct NativeTabContainer: UIViewControllerRepresentable {
                 selectedImage: "clock.fill",
                 identifier: "tab.history"
             )
-            setViewControllers([registerController, historyController], animated: false)
+            recurrencesController.tabBarItem = Self.tabBarItem(
+                title: "Recorrências",
+                image: "arrow.triangle.2.circlepath",
+                selectedImage: "arrow.triangle.2.circlepath.circle.fill",
+                identifier: "tab.recurrences"
+            )
+            setViewControllers([registerController, historyController, recurrencesController], animated: false)
         }
 
         @available(*, unavailable)
@@ -59,6 +67,7 @@ private struct NativeTabContainer: UIViewControllerRepresentable {
             currentModel = model
             registerController.rootView = Self.registerView(model: model)
             historyController.rootView = Self.historyView(model: model)
+            recurrencesController.rootView = Self.recurrencesView(model: model)
         }
 
         private static func registerView(model: AppModel) -> AnyView {
@@ -71,6 +80,13 @@ private struct NativeTabContainer: UIViewControllerRepresentable {
         private static func historyView(model: AppModel) -> AnyView {
             AnyView(
                 HistoryView(model: model.history)
+                    .environment(\.locale, Locale(identifier: "pt_BR"))
+            )
+        }
+
+        private static func recurrencesView(model: AppModel) -> AnyView {
+            AnyView(
+                RecurrencesView(model: model.recurrences)
                     .environment(\.locale, Locale(identifier: "pt_BR"))
             )
         }

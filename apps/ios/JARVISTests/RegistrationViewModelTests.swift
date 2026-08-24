@@ -758,6 +758,22 @@ private final class SuspendedPreviewAPI: FinancialAPI {
         TransactionMonth(month: month, items: [])
     }
 
+    func previewRecurrence(_: RecurrenceRequest) async throws -> RecurrencePreview {
+        throw FinancialAPIError.invalidResponse
+    }
+
+    func createRecurrence(_: RecurrenceRequest, idempotencyKey _: String) async throws -> RecordedRecurrence {
+        throw FinancialAPIError.invalidResponse
+    }
+
+    func recurrences() async throws -> RecurrenceList {
+        throw FinancialAPIError.invalidResponse
+    }
+
+    func cancelRecurrence(id _: String, idempotencyKey _: String) async throws -> RecordedRecurrence {
+        throw FinancialAPIError.invalidResponse
+    }
+
     func waitForExpensePreviewCall() async {
         guard expensePreviewContinuation == nil else { return }
         await withCheckedContinuation { expensePreviewCallWaiter = $0 }
@@ -834,6 +850,22 @@ private final class SuspendedCategoryAPI: FinancialAPI {
     }
 
     func transactions(month _: String) async throws -> TransactionMonth {
+        throw FinancialAPIError.invalidResponse
+    }
+
+    func previewRecurrence(_: RecurrenceRequest) async throws -> RecurrencePreview {
+        throw FinancialAPIError.invalidResponse
+    }
+
+    func createRecurrence(_: RecurrenceRequest, idempotencyKey _: String) async throws -> RecordedRecurrence {
+        throw FinancialAPIError.invalidResponse
+    }
+
+    func recurrences() async throws -> RecurrenceList {
+        throw FinancialAPIError.invalidResponse
+    }
+
+    func cancelRecurrence(id _: String, idempotencyKey _: String) async throws -> RecordedRecurrence {
         throw FinancialAPIError.invalidResponse
     }
 

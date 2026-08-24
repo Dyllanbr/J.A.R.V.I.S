@@ -374,7 +374,7 @@ final class RegistrationViewModel {
         return switch error {
         case .connectionUnavailable, .serviceUnavailable, .invalidResponse:
             true
-        case .invalidData, .conflict, .configuration:
+        case .invalidData, .conflict, .notFound, .alreadyCancelled, .configuration:
             false
         }
     }

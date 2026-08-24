@@ -3,10 +3,45 @@ import Foundation
 
 @MainActor
 final class StubFinancialAPI: FinancialAPI {
+    private struct StoredRecurrenceCreate {
+        let request: RecurrenceRequest
+        let recurrence: Recurrence
+    }
+
+    private struct StoredRecurrenceCancel {
+        let recurrenceID: String
+        let recurrence: Recurrence
+    }
+
     private var transactionsByID: [String: FinancialTransaction] = [:]
     private var idempotency: [String: String] = [:]
+    private var recurrencesByID: [String: Recurrence] = [:]
+    private var recurrenceCreates: [String: StoredRecurrenceCreate] = [:]
+    private var recurrenceCancels: [String: StoredRecurrenceCancel] = [:]
     private var nextSequence = 1
     private let timestampCodec = RFC3339DateCodec()
+
+    init() {
+        let active = Recurrence(
+            id: "rec_ui_synthetic_active",
+            description: "Academia sintética",
+            expectedAmount: FinancialMoney(minor: 11_900, currency: .brl),
+            startsOn: try! RecurrenceCivilDate("2026-09-10"),
+            status: .active,
+            createdAt: "2026-08-16T12:00:00Z"
+        )
+        let cancelled = Recurrence(
+            id: "rec_ui_synthetic_cancelled",
+            description: "Streaming sintético",
+            expectedAmount: FinancialMoney(minor: 2_990, currency: .brl),
+            startsOn: try! RecurrenceCivilDate("2026-08-31"),
+            status: .cancelled,
+            createdAt: "2026-07-01T12:00:00Z",
+            cancelledAt: "2026-08-01T12:00:00Z"
+        )
+        recurrencesByID[active.id] = active
+        recurrencesByID[cancelled.id] = cancelled
+    }
 
     func categories() async throws -> [CategoryDefinition] {
         try await Task.sleep(for: .milliseconds(80))
@@ -123,6 +158,84 @@ final class StubFinancialAPI: FinancialAPI {
                 return $0.occurredAt > $1.occurredAt
             }
         return TransactionMonth(month: month, items: items)
+    }
+
+    func previewRecurrence(_ request: RecurrenceRequest) async throws -> RecurrencePreview {
+        try await Task.sleep(for: .milliseconds(80))
+        let description = request.description.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !description.isEmpty,
+              request.type == .expense,
+              request.expectedAmount.minor > 0,
+              request.expectedAmount.currency == .brl,
+              request.frequency == .monthly
+        else {
+            throw FinancialAPIError.invalidData
+        }
+        return RecurrencePreview(
+            description: description,
+            expectedAmount: request.expectedAmount,
+            startsOn: request.startsOn
+        )
+    }
+
+    func createRecurrence(
+        _ request: RecurrenceRequest,
+        idempotencyKey: String
+    ) async throws -> RecordedRecurrence {
+        try await Task.sleep(for: .milliseconds(80))
+        if let stored = recurrenceCreates[idempotencyKey] {
+            guard stored.request == request else { throw FinancialAPIError.conflict }
+            return RecordedRecurrence(recurrence: stored.recurrence, replayed: true)
+        }
+        let preview = try await previewRecurrence(request)
+        let id = nextID(prefix: "rec")
+        let recurrence = Recurrence(
+            id: id,
+            description: preview.description,
+            expectedAmount: preview.expectedAmount,
+            startsOn: preview.startsOn,
+            status: .active,
+            createdAt: timestampCodec.encode(Date())
+        )
+        recurrencesByID[id] = recurrence
+        recurrenceCreates[idempotencyKey] = StoredRecurrenceCreate(request: request, recurrence: recurrence)
+        return RecordedRecurrence(recurrence: recurrence, replayed: false)
+    }
+
+    func recurrences() async throws -> RecurrenceList {
+        try await Task.sleep(for: .milliseconds(80))
+        let items = recurrencesByID.values.sorted { lhs, rhs in
+            if lhs.status != rhs.status { return lhs.status == .active }
+            if lhs.startsOn != rhs.startsOn { return lhs.startsOn.canonicalValue > rhs.startsOn.canonicalValue }
+            if lhs.createdAt != rhs.createdAt { return lhs.createdAt > rhs.createdAt }
+            return lhs.id > rhs.id
+        }
+        return RecurrenceList(items: items)
+    }
+
+    func cancelRecurrence(id: String, idempotencyKey: String) async throws -> RecordedRecurrence {
+        try await Task.sleep(for: .milliseconds(80))
+        if let stored = recurrenceCancels[idempotencyKey] {
+            guard stored.recurrenceID == id else { throw FinancialAPIError.conflict }
+            return RecordedRecurrence(recurrence: stored.recurrence, replayed: true)
+        }
+        guard let recurrence = recurrencesByID[id] else { throw FinancialAPIError.notFound }
+        guard recurrence.status == .active else { throw FinancialAPIError.alreadyCancelled }
+        let cancelled = Recurrence(
+            id: recurrence.id,
+            description: recurrence.description,
+            expectedAmount: recurrence.expectedAmount,
+            startsOn: recurrence.startsOn,
+            status: .cancelled,
+            createdAt: recurrence.createdAt,
+            cancelledAt: timestampCodec.encode(Date())
+        )
+        recurrencesByID[id] = cancelled
+        recurrenceCancels[idempotencyKey] = StoredRecurrenceCancel(
+            recurrenceID: id,
+            recurrence: cancelled
+        )
+        return RecordedRecurrence(recurrence: cancelled, replayed: false)
     }
 
     private func canonicalTimestamp(_ value: String) throws -> String {

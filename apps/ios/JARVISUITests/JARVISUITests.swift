@@ -96,6 +96,76 @@ final class JARVISUITests: XCTestCase {
     }
 
     @MainActor
+    func testRecurrencePreviewConfirmListAndCancel() throws {
+        continueAfterFailure = false
+        let launched = try launchApp()
+        let app = launched.app
+        defer { app.terminate() }
+        let description = recurrenceDescription(from: launched.description)
+
+        XCTAssertTrue(element("tab.recurrences", in: app).waitForExistence(timeout: 8))
+        element("tab.recurrences", in: app).tap()
+        XCTAssertTrue(element("recurrence.create", in: app).waitForExistence(timeout: 8))
+        XCTAssertTrue(
+            element("recurrence.list", in: app).waitForExistence(timeout: 8)
+                || element("recurrence.empty", in: app).waitForExistence(timeout: 2)
+        )
+
+        element("recurrence.create", in: app).tap()
+        XCTAssertTrue(element("recurrence.create.screen", in: app).waitForExistence(timeout: 5))
+        fillRecurrenceForm(in: app, description: description)
+        element("recurrence.review", in: app).tap()
+
+        XCTAssertTrue(element("recurrence.review.screen", in: app).waitForExistence(timeout: 8))
+        XCTAssertTrue(element("recurrence.review.description", in: app).label.contains(description))
+        XCTAssertTrue(element("recurrence.review.amount", in: app).label.contains("R$ 42,50"))
+        XCTAssertTrue(element("recurrence.review.frequency", in: app).label.contains("Mensal"))
+        XCTAssertTrue(element("recurrence.review.startsOn", in: app).exists)
+
+        element("recurrence.confirm", in: app).tap()
+        XCTAssertTrue(element("recurrence.success", in: app).waitForExistence(timeout: 10))
+        element("recurrence.success.return", in: app).tap()
+        XCTAssertTrue(element("recurrence.list", in: app).waitForExistence(timeout: 10))
+
+        let recurrence = app.descendants(matching: .any)
+            .matching(
+                NSPredicate(
+                    format: "identifier BEGINSWITH %@ AND label CONTAINS %@",
+                    "recurrence.item.",
+                    description
+                )
+            )
+            .firstMatch
+        XCTAssertTrue(recurrence.waitForExistence(timeout: 10), app.debugDescription)
+        XCTAssertTrue(recurrence.label.contains("R$ 42,50"))
+        XCTAssertTrue(recurrence.label.localizedCaseInsensitiveContains("mensal"))
+        XCTAssertTrue(recurrence.label.contains("Ativa"))
+
+        let recurrenceID = String(recurrence.identifier.dropFirst("recurrence.item.".count))
+        let cancel = element("recurrence.cancel.\(recurrenceID)", in: app)
+        XCTAssertTrue(cancel.waitForExistence(timeout: 5))
+        cancel.tap()
+        let confirmationButtons = app.buttons.matching(identifier: "recurrence.cancel.confirm")
+        let confirmation = confirmationButtons.firstMatch
+        XCTAssertTrue(confirmation.waitForExistence(timeout: 5), app.debugDescription)
+        let destructiveAction = confirmationButtons.element(boundBy: max(confirmationButtons.count - 1, 0))
+        XCTAssertTrue(destructiveAction.waitForExistence(timeout: 5), app.debugDescription)
+        destructiveAction.tap()
+
+        let cancelled = NSPredicate(format: "label CONTAINS %@", "Cancelada")
+        XCTAssertEqual(
+            XCTWaiter().wait(
+                for: [XCTNSPredicateExpectation(predicate: cancelled, object: recurrence)],
+                timeout: 10
+            ),
+            .completed,
+            app.debugDescription
+        )
+        XCTAssertTrue(recurrence.exists, "Cancelled recurrence must remain in the list")
+        XCTAssertFalse(cancel.exists, "A known CANCELLED recurrence must not expose cancel again")
+    }
+
+    @MainActor
     func testCriticalAccessibilityIdentifiersAreExposedAtRuntime() throws {
         continueAfterFailure = false
         let launched = try launchApp()
@@ -105,6 +175,7 @@ final class JARVISUITests: XCTestCase {
         for identifier in [
             "tab.register",
             "tab.history",
+            "tab.recurrences",
             "register.type",
             "register.type.expense",
             "register.type.income",
@@ -148,6 +219,21 @@ final class JARVISUITests: XCTestCase {
         XCTAssertTrue(element("history.list", in: app).waitForExistence(timeout: 10))
         XCTAssertTrue(element("history.filter.type", in: app).exists)
         XCTAssertTrue(element("history.filter.category", in: app).exists)
+
+        element("tab.recurrences", in: app).tap()
+        XCTAssertTrue(element("recurrence.create", in: app).waitForExistence(timeout: 8))
+        element("recurrence.create", in: app).tap()
+        for identifier in [
+            "recurrence.description",
+            "recurrence.amount",
+            "recurrence.startsOn",
+            "recurrence.review"
+        ] {
+            XCTAssertTrue(
+                element(identifier, in: app).waitForExistence(timeout: 5),
+                "Missing Recurrence identifier: \(identifier)\n\(app.debugDescription)"
+            )
+        }
     }
 
     @MainActor
@@ -159,6 +245,7 @@ final class JARVISUITests: XCTestCase {
 
         XCTAssertTrue(element("tab.register", in: app).waitForExistence(timeout: 8))
         XCTAssertTrue(element("tab.history", in: app).waitForExistence(timeout: 8))
+        XCTAssertTrue(element("tab.recurrences", in: app).waitForExistence(timeout: 8))
         fillForm(in: app, description: "Tabs_sinteticas_UI")
         element("register.review", in: app).tap()
         XCTAssertTrue(element("review.confirm", in: app).waitForExistence(timeout: 8))
@@ -173,6 +260,14 @@ final class JARVISUITests: XCTestCase {
             )
             historyTab.tap()
             XCTAssertTrue(element("history.list", in: app).waitForExistence(timeout: 10))
+
+            let recurrencesTab = element("tab.recurrences", in: app)
+            XCTAssertTrue(
+                recurrencesTab.waitForExistence(timeout: 5),
+                "tab.recurrences disappeared in cycle \(cycle)\n\(app.debugDescription)"
+            )
+            recurrencesTab.tap()
+            XCTAssertTrue(element("recurrence.create", in: app).waitForExistence(timeout: 8))
 
             let registerTab = element("tab.register", in: app)
             XCTAssertTrue(
@@ -207,6 +302,21 @@ final class JARVISUITests: XCTestCase {
                 "Missing failed History identifier: \(identifier)\n\(app.debugDescription)"
             )
         }
+    }
+
+    @MainActor
+    func testRecurrenceFailureExposesSafeRetry() {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchEnvironment["JARVIS_IOS_API_MODE"] = "real"
+        app.launchEnvironment["JARVIS_IOS_API_BASE_URL"] = "http://127.0.0.1:9"
+        app.launch()
+        defer { app.terminate() }
+
+        XCTAssertTrue(element("tab.recurrences", in: app).waitForExistence(timeout: 8))
+        element("tab.recurrences", in: app).tap()
+        XCTAssertTrue(element("recurrence.retry", in: app).waitForExistence(timeout: 10))
+        XCTAssertFalse(app.staticTexts.matching(NSPredicate(format: "label CONTAINS[c] 'sql' OR label CONTAINS[c] 'pgx'")).firstMatch.exists)
     }
 
     @MainActor
@@ -356,6 +466,17 @@ final class JARVISUITests: XCTestCase {
                 .firstMatch
                 .waitForExistence(timeout: 8)
         )
+
+        XCTAssertTrue(reveal("tab.recurrences", in: app))
+        element("tab.recurrences", in: app).tap()
+        XCTAssertTrue(reveal("recurrence.create", in: app))
+        element("recurrence.create", in: app).tap()
+        XCTAssertTrue(reveal("recurrence.description", in: app))
+        fillRecurrenceForm(in: app, description: "Dynamic_Type_recorrencia_sintetica")
+        XCTAssertTrue(reveal("recurrence.review", in: app))
+        element("recurrence.review", in: app).tap()
+        XCTAssertTrue(reveal("recurrence.confirm", in: app))
+        XCTAssertTrue(element("recurrence.review.description", in: app).label.contains("Dynamic_Type_recorrencia_sintetica"))
     }
 
     @MainActor
@@ -426,6 +547,22 @@ final class JARVISUITests: XCTestCase {
     }
 
     @MainActor
+    private func fillRecurrenceForm(in app: XCUIApplication, description: String) {
+        let descriptionField = app.textFields["recurrence.description"]
+        XCTAssertTrue(descriptionField.waitForExistence(timeout: 8))
+        descriptionField.tap()
+        descriptionField.typeText(description)
+
+        let amountField = app.textFields["recurrence.amount"]
+        XCTAssertTrue(amountField.exists)
+        amountField.tap()
+        amountField.typeText("42,50")
+        if app.keyboards.firstMatch.exists {
+            app.collectionViews["recurrence.create.screen"].swipeUp()
+        }
+    }
+
+    @MainActor
     private func selectIncome(in app: XCUIApplication) {
         let selector = element("register.type.income", in: app)
         XCTAssertTrue(selector.waitForExistence(timeout: 8))
@@ -478,6 +615,10 @@ final class JARVISUITests: XCTestCase {
 
     private func incomeDescription(from base: String) -> String {
         "\(base)_income"
+    }
+
+    private func recurrenceDescription(from base: String) -> String {
+        "\(base)_recurrence"
     }
 
     @MainActor

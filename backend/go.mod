@@ -5,6 +5,7 @@ go 1.26.6
 require (
 	github.com/jackc/pgx/v5 v5.10.0
 	github.com/jackc/tern/v2 v2.4.1
+	gopkg.in/yaml.v3 v3.0.1
 )
 
 require (

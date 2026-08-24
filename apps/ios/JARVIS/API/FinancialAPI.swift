@@ -8,6 +8,10 @@ protocol FinancialAPI {
     func create(_ request: ExpenseRequest, idempotencyKey: String) async throws -> RecordedExpense
     func create(_ request: IncomeRequest, idempotencyKey: String) async throws -> RecordedIncome
     func transactions(month: String) async throws -> TransactionMonth
+    func previewRecurrence(_ request: RecurrenceRequest) async throws -> RecurrencePreview
+    func createRecurrence(_ request: RecurrenceRequest, idempotencyKey: String) async throws -> RecordedRecurrence
+    func recurrences() async throws -> RecurrenceList
+    func cancelRecurrence(id: String, idempotencyKey: String) async throws -> RecordedRecurrence
 }
 
 enum FinancialAPIError: Error, Equatable {
@@ -15,6 +19,8 @@ enum FinancialAPIError: Error, Equatable {
     case connectionUnavailable
     case serviceUnavailable
     case conflict
+    case notFound
+    case alreadyCancelled
     case invalidResponse
     case configuration
 
@@ -28,6 +34,10 @@ enum FinancialAPIError: Error, Equatable {
             "O serviço está indisponível no momento. Tente novamente."
         case .conflict:
             "Não foi possível repetir esta confirmação. Revise os dados e tente novamente."
+        case .notFound:
+            "A recorrência não foi encontrada. Atualize a lista e tente novamente."
+        case .alreadyCancelled:
+            "Esta recorrência já está cancelada. Atualize a lista para ver o estado atual."
         case .invalidResponse, .configuration:
             "Não foi possível concluir a operação. Tente novamente."
         }
@@ -135,6 +145,66 @@ final class URLSessionFinancialAPIClient: FinancialAPI {
         return monthResponse
     }
 
+    func previewRecurrence(_ requestBody: RecurrenceRequest) async throws -> RecurrencePreview {
+        let request = try makeRequest(path: "v1/recurrences/preview", method: "POST", body: requestBody)
+        let (data, response) = try await perform(request)
+        try requireStatus(response, expected: 200, data: data)
+        return try decode(data)
+    }
+
+    func createRecurrence(
+        _ requestBody: RecurrenceRequest,
+        idempotencyKey: String
+    ) async throws -> RecordedRecurrence {
+        var request = try makeRequest(path: "v1/recurrences", method: "POST", body: requestBody)
+        request.setValue(idempotencyKey, forHTTPHeaderField: "Idempotency-Key")
+        let (data, response) = try await perform(request)
+        try requireStatus(response, expected: 201, data: data)
+        let recurrence: Recurrence = try decode(data)
+        guard recurrenceTimestampsAreValid(recurrence) else {
+            throw FinancialAPIError.invalidResponse
+        }
+        return RecordedRecurrence(
+            recurrence: recurrence,
+            replayed: response.value(forHTTPHeaderField: "Idempotency-Replayed") == "true"
+        )
+    }
+
+    func recurrences() async throws -> RecurrenceList {
+        var request = baseRequest(
+            url: baseURL.appendingPathComponent("v1/recurrences"),
+            method: "GET"
+        )
+        request.cachePolicy = .reloadIgnoringLocalCacheData
+        let (data, response) = try await perform(request)
+        try requireStatus(response, expected: 200, data: data)
+        let result: RecurrenceList = try decode(data)
+        guard result.items.allSatisfy(recurrenceTimestampsAreValid) else {
+            throw FinancialAPIError.invalidResponse
+        }
+        return result
+    }
+
+    func cancelRecurrence(id: String, idempotencyKey: String) async throws -> RecordedRecurrence {
+        let url = baseURL
+            .appendingPathComponent("v1")
+            .appendingPathComponent("recurrences")
+            .appendingPathComponent(id)
+            .appendingPathComponent("cancel")
+        var request = baseRequest(url: url, method: "POST")
+        request.setValue(idempotencyKey, forHTTPHeaderField: "Idempotency-Key")
+        let (data, response) = try await perform(request)
+        try requireStatus(response, expected: 200, data: data)
+        let recurrence: Recurrence = try decode(data)
+        guard recurrenceTimestampsAreValid(recurrence) else {
+            throw FinancialAPIError.invalidResponse
+        }
+        return RecordedRecurrence(
+            recurrence: recurrence,
+            replayed: response.value(forHTTPHeaderField: "Idempotency-Replayed") == "true"
+        )
+    }
+
     private func makeRequest<Body: Encodable>(path: String, method: String, body: Body) throws -> URLRequest {
         var request = baseRequest(url: baseURL.appendingPathComponent(path), method: method)
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -175,11 +245,16 @@ final class URLSessionFinancialAPIClient: FinancialAPI {
 
     private func requireStatus(_ response: HTTPURLResponse, expected: Int, data: Data) throws {
         guard response.statusCode == expected else {
-            _ = try? JSONDecoder().decode(APIErrorEnvelope.self, from: data)
+            let code = try? JSONDecoder().decode(APIErrorEnvelope.self, from: data).error.code
             switch response.statusCode {
             case 400:
                 throw FinancialAPIError.invalidData
+            case 404:
+                throw FinancialAPIError.notFound
             case 409:
+                if code == "RECURRENCE_ALREADY_CANCELLED" {
+                    throw FinancialAPIError.alreadyCancelled
+                }
                 throw FinancialAPIError.conflict
             case 500...599:
                 throw FinancialAPIError.serviceUnavailable
@@ -215,6 +290,17 @@ final class URLSessionFinancialAPIClient: FinancialAPI {
             timestampsAreValid(expense)
         case let .income(income):
             timestampsAreValid(income)
+        }
+    }
+
+    private func recurrenceTimestampsAreValid(_ recurrence: Recurrence) -> Bool {
+        guard (try? timestampCodec.decode(recurrence.createdAt)) != nil else { return false }
+        switch recurrence.status {
+        case .active:
+            return recurrence.cancelledAt == nil
+        case .cancelled:
+            guard let cancelledAt = recurrence.cancelledAt else { return false }
+            return (try? timestampCodec.decode(cancelledAt)) != nil
         }
     }
 

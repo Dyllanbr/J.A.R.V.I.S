@@ -16,6 +16,7 @@ for variable_name in \
 done
 
 income_description="${JARVIS_IOS_E2E_DESCRIPTION}_income"
+recurrence_description="${JARVIS_IOS_E2E_DESCRIPTION}_recurrence"
 
 counts="$(
   docker compose \
@@ -26,6 +27,7 @@ counts="$(
     --set=owner_id="$JARVIS_INTEGRATION_OWNER_ID" \
     --set=description="$JARVIS_IOS_E2E_DESCRIPTION" \
     --set=income_description="$income_description" \
+    --set=recurrence_description="$recurrence_description" \
     --username "$JARVIS_POSTGRES_USER" \
     --dbname "$JARVIS_POSTGRES_DB" <<'SQL'
 WITH expense_target AS (
@@ -53,6 +55,18 @@ income_target AS (
       AND category_id = 'income.salary'
       AND origin = 'IOS'
       AND status = 'RECORDED'
+),
+recurrence_target AS (
+    SELECT id
+    FROM recurrences
+    WHERE user_id = :'owner_id'
+      AND description = :'recurrence_description'
+      AND transaction_type = 'EXPENSE'
+      AND expected_amount_minor = 4250
+      AND currency = 'BRL'
+      AND frequency = 'MONTHLY'
+      AND status = 'CANCELLED'
+      AND cancelled_at IS NOT NULL
 ),
 expense_transaction_count AS (
     SELECT count(*) AS value FROM expense_target
@@ -91,6 +105,57 @@ income_idempotency_count AS (
       AND transaction_id IN (SELECT id FROM income_target)
       AND operation = 'CREATE_INCOME'
       AND state = 'COMPLETED'
+),
+recurrence_count AS (
+    SELECT count(*) AS value FROM recurrence_target
+),
+recurrence_created_audit_count AS (
+    SELECT count(*) AS value
+    FROM recurrence_audit_events
+    WHERE user_id = :'owner_id'
+      AND recurrence_id IN (SELECT id FROM recurrence_target)
+      AND event_type = 'RECURRENCE_CREATED'
+),
+recurrence_cancelled_audit_count AS (
+    SELECT count(*) AS value
+    FROM recurrence_audit_events
+    WHERE user_id = :'owner_id'
+      AND recurrence_id IN (SELECT id FROM recurrence_target)
+      AND event_type = 'RECURRENCE_CANCELLED'
+),
+recurrence_create_idempotency_count AS (
+    SELECT count(*) AS value
+    FROM recurrence_idempotency_records
+    WHERE user_id = :'owner_id'
+      AND recurrence_id IN (SELECT id FROM recurrence_target)
+      AND operation = 'CREATE_RECURRENCE'
+      AND state = 'COMPLETED'
+),
+recurrence_cancel_idempotency_count AS (
+    SELECT count(*) AS value
+    FROM recurrence_idempotency_records
+    WHERE user_id = :'owner_id'
+      AND recurrence_id IN (SELECT id FROM recurrence_target)
+      AND operation = 'CANCEL_RECURRENCE'
+      AND state = 'COMPLETED'
+),
+recurrence_transaction_side_effect_count AS (
+    SELECT count(*) AS value
+    FROM transactions
+    WHERE user_id = :'owner_id'
+      AND description = :'recurrence_description'
+),
+recurrence_transaction_audit_side_effect_count AS (
+    SELECT count(*) AS value
+    FROM audit_events
+    WHERE user_id = :'owner_id'
+      AND aggregate_id IN (SELECT id FROM recurrence_target)
+),
+recurrence_transaction_idempotency_side_effect_count AS (
+    SELECT count(*) AS value
+    FROM idempotency_records
+    WHERE user_id = :'owner_id'
+      AND transaction_id IN (SELECT id FROM recurrence_target)
 )
 SELECT expense_transaction_count.value
     || '|' || expense_audit_count.value
@@ -98,18 +163,34 @@ SELECT expense_transaction_count.value
     || '|' || income_transaction_count.value
     || '|' || income_audit_count.value
     || '|' || income_idempotency_count.value
+    || '|' || recurrence_count.value
+    || '|' || recurrence_created_audit_count.value
+    || '|' || recurrence_cancelled_audit_count.value
+    || '|' || recurrence_create_idempotency_count.value
+    || '|' || recurrence_cancel_idempotency_count.value
+    || '|' || recurrence_transaction_side_effect_count.value
+    || '|' || recurrence_transaction_audit_side_effect_count.value
+    || '|' || recurrence_transaction_idempotency_side_effect_count.value
 FROM expense_transaction_count,
      expense_audit_count,
      expense_idempotency_count,
      income_transaction_count,
      income_audit_count,
-     income_idempotency_count;
+     income_idempotency_count,
+     recurrence_count,
+     recurrence_created_audit_count,
+     recurrence_cancelled_audit_count,
+     recurrence_create_idempotency_count,
+     recurrence_cancel_idempotency_count,
+     recurrence_transaction_side_effect_count,
+     recurrence_transaction_audit_side_effect_count,
+     recurrence_transaction_idempotency_side_effect_count;
 SQL
 )"
 
-if [[ "$counts" != "1|1|1|1|1|1" ]]; then
-  echo "iOS real integration postcondition failed (Expense transaction|audit|idempotency|Income transaction|audit|idempotency=$counts)." >&2
+if [[ "$counts" != "1|1|1|1|1|1|1|1|1|1|1|0|0|0" ]]; then
+  echo "iOS real integration postcondition failed (Expense transaction|audit|idempotency|Income transaction|audit|idempotency|Recurrence row|created audit|cancelled audit|create idempotency|cancel idempotency|transaction row side effect|transaction audit side effect|transaction idempotency side effect=$counts)." >&2
   exit 1
 fi
 
-echo "iOS real integration PostgreSQL postcondition passed for categorized Expense and Income (1 transaction, 1 audit event, 1 idempotency record each)."
+echo "iOS real integration PostgreSQL postcondition passed for categorized Expense/Income and isolated Recurrence create/cancel (no transaction-side writes)."

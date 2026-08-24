@@ -1,14 +1,16 @@
 openapi: 3.1.0
 info:
   title: J.A.R.V.I.S. API
-  version: 0.4.0
+  version: 0.5.0
   description: >-
-    API da fundação e dos incrementos financeiros de despesas e receitas. Criar
-    uma transaction registra no organizador J.A.R.V.I.S. uma movimentação que já
-    ocorreu no mundo real; não executa pagamento, Pix, transferência bancária,
-    compra, recebimento ou qualquer movimentação de fundos. Os endpoints
-    financeiros só existem quando o modo single-owner temporário está
-    explicitamente habilitado.
+    API da fundação e dos incrementos financeiros de despesas, receitas,
+    categorias e recorrências manuais. Criar uma transaction registra no
+    organizador J.A.R.V.I.S. uma movimentação que já ocorreu no mundo real. Uma
+    recurrence representa somente um compromisso ou expectativa futura e nunca
+    cria uma Expense ou Income automaticamente. Nenhuma operação executa
+    pagamento, Pix, transferência bancária, compra, recebimento ou movimentação
+    de fundos. Os endpoints financeiros só existem quando o modo single-owner
+    temporário está explicitamente habilitado.
 jsonSchemaDialect: https://json-schema.org/draft/2020-12/schema
 servers:
   - url: http://127.0.0.1:8080
@@ -83,7 +85,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/TransactionPreview"
         "400":
-          $ref: "#/components/responses/BadRequest"
+          $ref: "#/components/responses/TransactionPreviewBadRequest"
         "405":
           $ref: "#/components/responses/MethodNotAllowed"
         "500":
@@ -110,6 +112,162 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/CategoryCatalogResponse"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowed"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /v1/recurrences/preview:
+    post:
+      operationId: previewRecurrence
+      summary: Valida uma recorrência mensal de despesa antes da confirmação
+      description: >-
+        Normaliza uma recorrência manual sem gerar ID, consultar Clock, persistir
+        dados, criar audit ou reservar idempotência. Recurrence é uma expectativa
+        futura separada de Expense e Income e este endpoint não cria transaction.
+      tags: [Recurrences]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RecurrenceRequest"
+            example:
+              type: EXPENSE
+              description: Academia sintética
+              expectedAmount:
+                minor: 11900
+                currency: BRL
+              frequency: MONTHLY
+              startsOn: "2026-09-10"
+      responses:
+        "200":
+          description: Representação canônica pronta para revisão
+          headers:
+            Cache-Control:
+              $ref: "#/components/headers/CacheControl"
+            X-Content-Type-Options:
+              $ref: "#/components/headers/ContentTypeOptions"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RecurrencePreview"
+        "400":
+          $ref: "#/components/responses/RecurrencePreviewBadRequest"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowed"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /v1/recurrences:
+    post:
+      operationId: recordRecurrence
+      summary: Registra uma recorrência mensal de despesa confirmada pelo usuário
+      description: >-
+        Cria um compromisso futuro ACTIVE, sem criar Expense, Income ou qualquer
+        transaction. Retry com a mesma chave e semântica retorna o snapshot
+        original da criação, mesmo que a recorrência tenha sido cancelada depois.
+      tags: [Recurrences]
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RecurrenceRequest"
+            example:
+              type: EXPENSE
+              description: Academia sintética
+              expectedAmount:
+                minor: 11900
+                currency: BRL
+              frequency: MONTHLY
+              startsOn: "2026-09-10"
+      responses:
+        "201":
+          description: Recorrência criada ou replay histórico do resultado original
+          headers:
+            Cache-Control:
+              $ref: "#/components/headers/CacheControl"
+            X-Content-Type-Options:
+              $ref: "#/components/headers/ContentTypeOptions"
+            Idempotency-Replayed:
+              $ref: "#/components/headers/IdempotencyReplayed"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Recurrence"
+        "400":
+          $ref: "#/components/responses/RecurrenceCreateBadRequest"
+        "409":
+          $ref: "#/components/responses/IdempotencyConflict"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowed"
+        "500":
+          $ref: "#/components/responses/InternalError"
+    get:
+      operationId: listRecurrences
+      summary: Lista as recorrências do owner
+      description: >-
+        Retorna recorrências ACTIVE antes de CANCELLED, em ordem determinística.
+        Não aceita filtros, não calcula próxima ocorrência, total, orçamento ou
+        projeção e nunca consulta ou cria transactions.
+      tags: [Recurrences]
+      responses:
+        "200":
+          description: Lista owner-scoped, com array vazio quando não há recorrências
+          headers:
+            Cache-Control:
+              $ref: "#/components/headers/CacheControl"
+            X-Content-Type-Options:
+              $ref: "#/components/headers/ContentTypeOptions"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RecurrenceList"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowed"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /v1/recurrences/{recurrenceId}/cancel:
+    post:
+      operationId: cancelRecurrence
+      summary: Cancela terminalmente uma recorrência do owner
+      description: >-
+        Executa somente ACTIVE para CANCELLED e atribui cancelledAt no servidor.
+        O comando não aceita body, não apaga a recorrência e não cria ou altera
+        Expense, Income ou transaction. Recurso inexistente e recurso de outro
+        owner produzem a mesma resposta.
+      tags: [Recurrences]
+      parameters:
+        - name: recurrenceId
+          in: path
+          required: true
+          description: Identificador opaco da recorrência.
+          schema:
+            $ref: "#/components/schemas/RecurrenceId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      responses:
+        "200":
+          description: Recorrência cancelada ou replay do cancelamento original
+          headers:
+            Cache-Control:
+              $ref: "#/components/headers/CacheControl"
+            X-Content-Type-Options:
+              $ref: "#/components/headers/ContentTypeOptions"
+            Idempotency-Replayed:
+              $ref: "#/components/headers/IdempotencyReplayed"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Recurrence"
+        "400":
+          $ref: "#/components/responses/RecurrenceCancelBadRequest"
+        "404":
+          $ref: "#/components/responses/RecurrenceNotFound"
+        "409":
+          $ref: "#/components/responses/RecurrenceCancelConflict"
         "405":
           $ref: "#/components/responses/MethodNotAllowed"
         "500":
@@ -173,9 +331,9 @@ paths:
               schema:
                 $ref: "#/components/schemas/TransactionResponse"
         "400":
-          $ref: "#/components/responses/BadRequest"
+          $ref: "#/components/responses/TransactionCreateBadRequest"
         "409":
-          $ref: "#/components/responses/Conflict"
+          $ref: "#/components/responses/IdempotencyConflict"
         "405":
           $ref: "#/components/responses/MethodNotAllowed"
         "500":
@@ -210,7 +368,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/TransactionMonth"
         "400":
-          $ref: "#/components/responses/BadRequest"
+          $ref: "#/components/responses/InvalidRequest"
         "405":
           $ref: "#/components/responses/MethodNotAllowed"
         "500":
@@ -229,6 +387,11 @@ components:
       schema:
         type: string
         const: nosniff
+    IdempotencyReplayed:
+      description: Presente com valor true somente quando a resposta é replay.
+      schema:
+        type: string
+        const: "true"
   parameters:
     IdempotencyKey:
       name: Idempotency-Key
@@ -236,9 +399,10 @@ components:
       required: true
       description: >-
         Chave opaca de 1 a 128 bytes ASCII visíveis, escopada por owner e pela
-        operação CREATE_EXPENSE ou CREATE_INCOME derivada de type. A mesma string
-        pode ser usada nas duas operações sem colisão. O valor nunca é devolvido
-        em erros ou responses.
+        operação lógica. CREATE_EXPENSE, CREATE_INCOME, CREATE_RECURRENCE e
+        CANCEL_RECURRENCE possuem namespaces independentes. A mesma string pode
+        ser usada em operações ou owners diferentes sem colisão. O valor nunca é
+        devolvido em erros ou responses.
       schema:
         type: string
         minLength: 1
@@ -246,8 +410,8 @@ components:
         pattern: "^[!-~]+$"
       example: synthetic-create-20260814-001
   responses:
-    BadRequest:
-      description: Request, domínio ou chave de idempotência inválidos
+    InvalidRequest:
+      description: Request inválido
       headers:
         Cache-Control:
           $ref: "#/components/headers/CacheControl"
@@ -256,8 +420,63 @@ components:
       content:
         application/json:
           schema:
-            $ref: "#/components/schemas/ErrorEnvelope"
-    Conflict:
+            $ref: "#/components/schemas/InvalidRequestError"
+    TransactionPreviewBadRequest:
+      description: Request ou tipo de transaction inválidos
+      headers:
+        Cache-Control:
+          $ref: "#/components/headers/CacheControl"
+        X-Content-Type-Options:
+          $ref: "#/components/headers/ContentTypeOptions"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/TransactionPreviewBadRequestError"
+    TransactionCreateBadRequest:
+      description: Request, tipo de transaction ou chave de idempotência inválidos
+      headers:
+        Cache-Control:
+          $ref: "#/components/headers/CacheControl"
+        X-Content-Type-Options:
+          $ref: "#/components/headers/ContentTypeOptions"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/TransactionCreateBadRequestError"
+    RecurrencePreviewBadRequest:
+      description: Request ou tipo de recorrência inválidos
+      headers:
+        Cache-Control:
+          $ref: "#/components/headers/CacheControl"
+        X-Content-Type-Options:
+          $ref: "#/components/headers/ContentTypeOptions"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/RecurrencePreviewBadRequestError"
+    RecurrenceCreateBadRequest:
+      description: Request, tipo de recorrência ou chave de idempotência inválidos
+      headers:
+        Cache-Control:
+          $ref: "#/components/headers/CacheControl"
+        X-Content-Type-Options:
+          $ref: "#/components/headers/ContentTypeOptions"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/RecurrenceCreateBadRequestError"
+    RecurrenceCancelBadRequest:
+      description: Request, identificador ou chave de idempotência inválidos
+      headers:
+        Cache-Control:
+          $ref: "#/components/headers/CacheControl"
+        X-Content-Type-Options:
+          $ref: "#/components/headers/ContentTypeOptions"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/RecurrenceCancelBadRequestError"
+    IdempotencyConflict:
       description: Chave reutilizada com semântica diferente
       headers:
         Cache-Control:
@@ -267,11 +486,37 @@ components:
       content:
         application/json:
           schema:
-            $ref: "#/components/schemas/ErrorEnvelope"
+            $ref: "#/components/schemas/IdempotencyConflictError"
           example:
             error:
               code: IDEMPOTENCY_KEY_REUSED
               message: idempotency key was reused with a different request
+    RecurrenceCancelConflict:
+      description: Chave reutilizada com semântica diferente ou recorrência já cancelada
+      headers:
+        Cache-Control:
+          $ref: "#/components/headers/CacheControl"
+        X-Content-Type-Options:
+          $ref: "#/components/headers/ContentTypeOptions"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/RecurrenceCancelConflictError"
+    RecurrenceNotFound:
+      description: Recorrência inexistente ou fora do escopo do owner
+      headers:
+        Cache-Control:
+          $ref: "#/components/headers/CacheControl"
+        X-Content-Type-Options:
+          $ref: "#/components/headers/ContentTypeOptions"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/RecurrenceNotFoundError"
+          example:
+            error:
+              code: RECURRENCE_NOT_FOUND
+              message: recurrence was not found
     MethodNotAllowed:
       description: Método não permitido para a rota financeira
       headers:
@@ -282,7 +527,7 @@ components:
       content:
         application/json:
           schema:
-            $ref: "#/components/schemas/ErrorEnvelope"
+            $ref: "#/components/schemas/MethodNotAllowedError"
     InternalError:
       description: Falha interna sem exposição de detalhes técnicos
       headers:
@@ -293,7 +538,7 @@ components:
       content:
         application/json:
           schema:
-            $ref: "#/components/schemas/ErrorEnvelope"
+            $ref: "#/components/schemas/InternalError"
   schemas:
     Health:
       type: object
@@ -317,6 +562,99 @@ components:
         currency:
           type: string
           const: BRL
+    CivilDate:
+      type: string
+      format: date
+      pattern: "^(?!0000-)[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$"
+      description: Data civil gregoriana em YYYY-MM-DD, sem horário, timezone ou offset.
+      examples: ["2024-02-29", "2026-04-30", "2026-08-31"]
+    RecurrenceId:
+      type: string
+      minLength: 1
+      maxLength: 128
+      pattern: "^[!-~]+$"
+      description: Identificador opaco gerado pelo servidor; nunca fornecido no body de criação.
+    RecurrenceRequest:
+      type: object
+      additionalProperties: false
+      required: [type, description, expectedAmount, frequency, startsOn]
+      properties:
+        type:
+          type: string
+          const: EXPENSE
+        description:
+          type: string
+          minLength: 1
+          maxLength: 200
+        expectedAmount:
+          $ref: "#/components/schemas/Money"
+        frequency:
+          type: string
+          const: MONTHLY
+        startsOn:
+          $ref: "#/components/schemas/CivilDate"
+    RecurrencePreview:
+      type: object
+      additionalProperties: false
+      required: [type, description, expectedAmount, frequency, startsOn]
+      properties:
+        type:
+          type: string
+          const: EXPENSE
+        description:
+          type: string
+          minLength: 1
+          maxLength: 200
+        expectedAmount:
+          $ref: "#/components/schemas/Money"
+        frequency:
+          type: string
+          const: MONTHLY
+        startsOn:
+          $ref: "#/components/schemas/CivilDate"
+    Recurrence:
+      type: object
+      additionalProperties: false
+      required: [id, type, description, expectedAmount, frequency, startsOn, status, createdAt]
+      properties:
+        id:
+          $ref: "#/components/schemas/RecurrenceId"
+        type:
+          type: string
+          const: EXPENSE
+        description:
+          type: string
+          minLength: 1
+          maxLength: 200
+        expectedAmount:
+          $ref: "#/components/schemas/Money"
+        frequency:
+          type: string
+          const: MONTHLY
+        startsOn:
+          $ref: "#/components/schemas/CivilDate"
+        status:
+          type: string
+          enum: [ACTIVE, CANCELLED]
+        createdAt:
+          type: string
+          format: date-time
+          description: Instante UTC atribuído pelo servidor com precisão máxima de microssegundos.
+        cancelledAt:
+          type: string
+          format: date-time
+          description: >-
+            Presente somente em status CANCELLED; omitido em ACTIVE. É atribuído
+            pelo servidor e preservado em replay.
+    RecurrenceList:
+      type: object
+      additionalProperties: false
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/Recurrence"
     CategoryId:
       type: string
       minLength: 1
@@ -618,7 +956,37 @@ components:
         inclui uma entrada para Sem categoria.
       items:
         $ref: "#/components/schemas/CategoryDefinitionResponse"
-    ErrorEnvelope:
+    InvalidRequestError:
+      type: object
+      additionalProperties: false
+      required: [error]
+      properties:
+        error:
+          type: object
+          additionalProperties: false
+          required: [code, message]
+          properties:
+            code:
+              type: string
+              enum: [INVALID_REQUEST]
+            message:
+              type: string
+    TransactionPreviewBadRequestError:
+      type: object
+      additionalProperties: false
+      required: [error]
+      properties:
+        error:
+          type: object
+          additionalProperties: false
+          required: [code, message]
+          properties:
+            code:
+              type: string
+              enum: [INVALID_REQUEST, UNSUPPORTED_TRANSACTION_TYPE]
+            message:
+              type: string
+    TransactionCreateBadRequestError:
       type: object
       additionalProperties: false
       required: [error]
@@ -635,9 +1003,130 @@ components:
                 - UNSUPPORTED_TRANSACTION_TYPE
                 - IDEMPOTENCY_KEY_REQUIRED
                 - IDEMPOTENCY_KEY_INVALID
-                - IDEMPOTENCY_KEY_REUSED
-                - METHOD_NOT_ALLOWED
-                - INTERNAL_ERROR
+            message:
+              type: string
+    RecurrencePreviewBadRequestError:
+      type: object
+      additionalProperties: false
+      required: [error]
+      properties:
+        error:
+          type: object
+          additionalProperties: false
+          required: [code, message]
+          properties:
+            code:
+              type: string
+              enum: [INVALID_REQUEST, UNSUPPORTED_RECURRENCE_TYPE]
+            message:
+              type: string
+    RecurrenceCreateBadRequestError:
+      type: object
+      additionalProperties: false
+      required: [error]
+      properties:
+        error:
+          type: object
+          additionalProperties: false
+          required: [code, message]
+          properties:
+            code:
+              type: string
+              enum:
+                - INVALID_REQUEST
+                - UNSUPPORTED_RECURRENCE_TYPE
+                - IDEMPOTENCY_KEY_REQUIRED
+                - IDEMPOTENCY_KEY_INVALID
+            message:
+              type: string
+    RecurrenceCancelBadRequestError:
+      type: object
+      additionalProperties: false
+      required: [error]
+      properties:
+        error:
+          type: object
+          additionalProperties: false
+          required: [code, message]
+          properties:
+            code:
+              type: string
+              enum: [INVALID_REQUEST, IDEMPOTENCY_KEY_REQUIRED, IDEMPOTENCY_KEY_INVALID]
+            message:
+              type: string
+    IdempotencyConflictError:
+      type: object
+      additionalProperties: false
+      required: [error]
+      properties:
+        error:
+          type: object
+          additionalProperties: false
+          required: [code, message]
+          properties:
+            code:
+              type: string
+              enum: [IDEMPOTENCY_KEY_REUSED]
+            message:
+              type: string
+    RecurrenceCancelConflictError:
+      type: object
+      additionalProperties: false
+      required: [error]
+      properties:
+        error:
+          type: object
+          additionalProperties: false
+          required: [code, message]
+          properties:
+            code:
+              type: string
+              enum: [IDEMPOTENCY_KEY_REUSED, RECURRENCE_ALREADY_CANCELLED]
+            message:
+              type: string
+    RecurrenceNotFoundError:
+      type: object
+      additionalProperties: false
+      required: [error]
+      properties:
+        error:
+          type: object
+          additionalProperties: false
+          required: [code, message]
+          properties:
+            code:
+              type: string
+              enum: [RECURRENCE_NOT_FOUND]
+            message:
+              type: string
+    MethodNotAllowedError:
+      type: object
+      additionalProperties: false
+      required: [error]
+      properties:
+        error:
+          type: object
+          additionalProperties: false
+          required: [code, message]
+          properties:
+            code:
+              type: string
+              enum: [METHOD_NOT_ALLOWED]
+            message:
+              type: string
+    InternalError:
+      type: object
+      additionalProperties: false
+      required: [error]
+      properties:
+        error:
+          type: object
+          additionalProperties: false
+          required: [code, message]
+          properties:
+            code:
+              type: string
+              enum: [INTERNAL_ERROR]
             message:
               type: string
 tags:
@@ -647,3 +1136,5 @@ tags:
     description: Registro e consulta de despesas e receitas; nunca execução de movimentação financeira.
   - name: Categories
     description: Descoberta read-only do catálogo de classificação financeira do sistema.
+  - name: Recurrences
+    description: Compromissos mensais manuais; nunca fatos ocorridos nem criação automática de transactions.
