@@ -12,6 +12,9 @@ protocol FinancialAPI {
     func createRecurrence(_ request: RecurrenceRequest, idempotencyKey: String) async throws -> RecordedRecurrence
     func recurrences() async throws -> RecurrenceList
     func cancelRecurrence(id: String, idempotencyKey: String) async throws -> RecordedRecurrence
+    func recurrenceSuggestions() async throws -> RecurrenceSuggestionList
+    func dismissRecurrenceSuggestion(id: String) async throws -> DismissedRecurrenceSuggestion
+    func previewRecurrenceSuggestion(id: String) async throws -> RecurrencePreview
 }
 
 enum FinancialAPIError: Error, Equatable {
@@ -21,6 +24,8 @@ enum FinancialAPIError: Error, Equatable {
     case conflict
     case notFound
     case alreadyCancelled
+    case suggestionNotFound
+    case suggestionSuppressed
     case invalidResponse
     case configuration
 
@@ -38,6 +43,10 @@ enum FinancialAPIError: Error, Equatable {
             "A recorrência não foi encontrada. Atualize a lista e tente novamente."
         case .alreadyCancelled:
             "Esta recorrência já está cancelada. Atualize a lista para ver o estado atual."
+        case .suggestionNotFound:
+            "Esta sugestão não está mais disponível. Atualizamos a lista para você."
+        case .suggestionSuppressed:
+            "Esta sugestão já foi descartada. Atualizamos a lista para você."
         case .invalidResponse, .configuration:
             "Não foi possível concluir a operação. Tente novamente."
         }
@@ -205,6 +214,41 @@ final class URLSessionFinancialAPIClient: FinancialAPI {
         )
     }
 
+    func recurrenceSuggestions() async throws -> RecurrenceSuggestionList {
+        var request = baseRequest(
+            url: baseURL.appendingPathComponent("v1/recurrence-suggestions"),
+            method: "GET"
+        )
+        request.cachePolicy = .reloadIgnoringLocalCacheData
+        let (data, response) = try await perform(request)
+        try requireSuggestionStatus(response, expected: 200, data: data)
+        return try decode(data)
+    }
+
+    func dismissRecurrenceSuggestion(id: String) async throws -> DismissedRecurrenceSuggestion {
+        let request = try recurrenceSuggestionRequest(id: id, action: "dismiss")
+        let (data, response) = try await perform(request)
+        try requireSuggestionStatus(response, expected: 204, data: data)
+        guard data.isEmpty else { throw FinancialAPIError.invalidResponse }
+        let replayed: Bool
+        switch response.value(forHTTPHeaderField: "Idempotency-Replayed") {
+        case nil:
+            replayed = false
+        case "true":
+            replayed = true
+        default:
+            throw FinancialAPIError.invalidResponse
+        }
+        return DismissedRecurrenceSuggestion(replayed: replayed)
+    }
+
+    func previewRecurrenceSuggestion(id: String) async throws -> RecurrencePreview {
+        let request = try recurrenceSuggestionRequest(id: id, action: "preview")
+        let (data, response) = try await perform(request)
+        try requireSuggestionStatus(response, expected: 200, data: data)
+        return try decode(data)
+    }
+
     private func makeRequest<Body: Encodable>(path: String, method: String, body: Body) throws -> URLRequest {
         var request = baseRequest(url: baseURL.appendingPathComponent(path), method: method)
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -223,6 +267,16 @@ final class URLSessionFinancialAPIClient: FinancialAPI {
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         request.setValue("no-store", forHTTPHeaderField: "Cache-Control")
         return request
+    }
+
+    private func recurrenceSuggestionRequest(id: String, action: String) throws -> URLRequest {
+        guard RecurrenceSuggestion.isValidID(id) else { throw FinancialAPIError.invalidData }
+        let url = baseURL
+            .appendingPathComponent("v1")
+            .appendingPathComponent("recurrence-suggestions")
+            .appendingPathComponent(id)
+            .appendingPathComponent(action)
+        return baseRequest(url: url, method: "POST")
     }
 
     private func perform(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
@@ -257,6 +311,24 @@ final class URLSessionFinancialAPIClient: FinancialAPI {
                 }
                 throw FinancialAPIError.conflict
             case 500...599:
+                throw FinancialAPIError.serviceUnavailable
+            default:
+                throw FinancialAPIError.invalidResponse
+            }
+        }
+    }
+
+    private func requireSuggestionStatus(_ response: HTTPURLResponse, expected: Int, data: Data) throws {
+        guard response.statusCode == expected else {
+            let code = try? JSONDecoder().decode(APIErrorEnvelope.self, from: data).error.code
+            switch (response.statusCode, code) {
+            case (400, "INVALID_REQUEST"):
+                throw FinancialAPIError.invalidData
+            case (404, "RECURRENCE_SUGGESTION_NOT_FOUND"):
+                throw FinancialAPIError.suggestionNotFound
+            case (409, "RECURRENCE_SUGGESTION_SUPPRESSED"):
+                throw FinancialAPIError.suggestionSuppressed
+            case (500...599, _):
                 throw FinancialAPIError.serviceUnavailable
             default:
                 throw FinancialAPIError.invalidResponse

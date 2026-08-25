@@ -166,6 +166,167 @@ final class JARVISUITests: XCTestCase {
     }
 
     @MainActor
+    func testRecurrenceSuggestionAppearsRequiresReviewAndConfirmsThroughCanonicalFlow() throws {
+        continueAfterFailure = false
+        let launched = try launchApp()
+        let app = launched.app
+        defer { app.terminate() }
+        let suggestionID = "rsg_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+
+        element("tab.recurrences", in: app).tap()
+        let suggestion = element("recurrence.suggestion.\(suggestionID)", in: app)
+        XCTAssertTrue(suggestion.waitForExistence(timeout: 10), app.debugDescription)
+        XCTAssertTrue(element("recurrence.suggestions.section", in: app).exists)
+        XCTAssertTrue(suggestion.label.contains("Sugestão de possível recorrência"))
+        XCTAssertTrue(suggestion.label.contains("Internet sintética"))
+        XCTAssertTrue(suggestion.label.contains("R$ 99,90"))
+        XCTAssertTrue(suggestion.label.contains("3 ocorrências"))
+        XCTAssertTrue(element("recurrence.item.rec_ui_synthetic_active", in: app).exists)
+
+        element("recurrence.suggestion.review.\(suggestionID)", in: app).tap()
+        XCTAssertTrue(element("recurrence.review.screen", in: app).waitForExistence(timeout: 8))
+        XCTAssertTrue(element("recurrence.suggestion.review.notice", in: app).exists)
+        XCTAssertTrue(element("recurrence.review.description", in: app).label.contains("Internet sintética"))
+        XCTAssertTrue(element("recurrence.review.amount", in: app).label.contains("R$ 99,90"))
+        XCTAssertTrue(element("recurrence.review.startsOn", in: app).label.contains("10/09/2026"))
+        XCTAssertFalse(element("recurrence.edit", in: app).exists)
+        XCTAssertFalse(element("recurrence.success", in: app).exists, "Review must not create automatically")
+
+        element("recurrence.confirm", in: app).tap()
+        XCTAssertTrue(element("recurrence.success", in: app).waitForExistence(timeout: 10))
+        element("recurrence.success.return", in: app).tap()
+        XCTAssertTrue(suggestion.waitForNonExistence(timeout: 8))
+
+        let confirmed = app.descendants(matching: .any)
+            .matching(
+                NSPredicate(
+                    format: "identifier BEGINSWITH %@ AND label CONTAINS %@",
+                    "recurrence.item.",
+                    "Internet sintética"
+                )
+            )
+            .firstMatch
+        XCTAssertTrue(confirmed.waitForExistence(timeout: 8), app.debugDescription)
+        XCTAssertTrue(confirmed.label.contains("Ativa"))
+    }
+
+    @MainActor
+    func testRecurrenceSuggestionDismissRequiresConfirmationAndDoesNotAffectConfirmedItems() throws {
+        continueAfterFailure = false
+        let launched = try launchApp()
+        let app = launched.app
+        defer { app.terminate() }
+        let suggestionID = "rsg_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+
+        element("tab.recurrences", in: app).tap()
+        let suggestion = element("recurrence.suggestion.\(suggestionID)", in: app)
+        XCTAssertTrue(suggestion.waitForExistence(timeout: 10))
+        element("recurrence.suggestion.dismiss.\(suggestionID)", in: app).tap()
+        XCTAssertTrue(element("recurrence.suggestion.dismiss.cancel", in: app).waitForExistence(timeout: 5))
+        let confirmationButtons = app.buttons.matching(identifier: "recurrence.suggestion.dismiss.confirm")
+        XCTAssertTrue(confirmationButtons.firstMatch.waitForExistence(timeout: 5), app.debugDescription)
+        let alertButtons = app.alerts.firstMatch.buttons.matching(
+            identifier: "recurrence.suggestion.dismiss.confirm"
+        )
+        let destructiveAction = alertButtons.element(boundBy: max(alertButtons.count - 1, 0))
+        XCTAssertTrue(destructiveAction.waitForExistence(timeout: 5), app.debugDescription)
+        destructiveAction.tap()
+
+        XCTAssertTrue(suggestion.waitForNonExistence(timeout: 8))
+        XCTAssertTrue(element("recurrence.item.rec_ui_synthetic_active", in: app).exists)
+        XCTAssertTrue(element("recurrence.item.rec_ui_synthetic_cancelled", in: app).exists)
+        let list = element("recurrence.list", in: app)
+        XCTAssertTrue(list.exists)
+        list.swipeDown()
+        XCTAssertFalse(suggestion.waitForExistence(timeout: 3), "Refresh resurrected the dismissed suggestion")
+    }
+
+    @MainActor
+    func testStaleRecurrenceSuggestionIsRemovedWithoutInvalidReviewNavigation() {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchEnvironment["JARVIS_IOS_API_MODE"] = "stub"
+        app.launchEnvironment["JARVIS_IOS_SUGGESTION_SCENARIO"] = "stale"
+        app.launch()
+        defer { app.terminate() }
+        let suggestionID = "rsg_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+
+        XCTAssertTrue(element("tab.recurrences", in: app).waitForExistence(timeout: 8))
+        element("tab.recurrences", in: app).tap()
+        let suggestion = element("recurrence.suggestion.\(suggestionID)", in: app)
+        XCTAssertTrue(suggestion.waitForExistence(timeout: 10))
+        element("recurrence.suggestion.review.\(suggestionID)", in: app).tap()
+
+        XCTAssertTrue(suggestion.waitForNonExistence(timeout: 8))
+        XCTAssertFalse(element("recurrence.review.screen", in: app).exists)
+        XCTAssertTrue(element("recurrence.item.rec_ui_synthetic_active", in: app).exists)
+    }
+
+    @MainActor
+    func testRealAPIRecurrenceSuggestionRequiresExplicitConfirmation() throws {
+        continueAfterFailure = false
+        let launched = try launchApp()
+        guard try testConfiguration().mode == .real else {
+            throw XCTSkip("This scenario requires the official real API/PostgreSQL harness")
+        }
+        let fixture = try recurrenceSuggestionE2EFixture()
+        let app = launched.app
+        defer { app.terminate() }
+
+        element("tab.recurrences", in: app).tap()
+        let suggestion = app.descendants(matching: .any)
+            .matching(
+                NSPredicate(
+                    format: "identifier BEGINSWITH %@ AND label CONTAINS %@",
+                    "recurrence.suggestion.rsg_",
+                    fixture.description
+                )
+            )
+            .firstMatch
+        XCTAssertTrue(suggestion.waitForExistence(timeout: 12), app.debugDescription)
+        XCTAssertTrue(suggestion.label.contains("R$ 63,90"))
+        XCTAssertTrue(suggestion.label.contains("3 ocorrências"))
+
+        let existingBeforeConfirmation = app.descendants(matching: .any)
+            .matching(
+                NSPredicate(
+                    format: "identifier BEGINSWITH %@ AND label CONTAINS %@",
+                    "recurrence.item.",
+                    fixture.description
+                )
+            )
+            .firstMatch
+        XCTAssertFalse(existingBeforeConfirmation.exists, "Suggestion created a Recurrence before confirmation")
+
+        let suggestionID = String(suggestion.identifier.dropFirst("recurrence.suggestion.".count))
+        element("recurrence.suggestion.review.\(suggestionID)", in: app).tap()
+        XCTAssertTrue(element("recurrence.review.screen", in: app).waitForExistence(timeout: 10))
+        XCTAssertTrue(element("recurrence.review.description", in: app).label.contains(fixture.description))
+        XCTAssertTrue(element("recurrence.review.amount", in: app).label.contains("R$ 63,90"))
+        XCTAssertTrue(
+            element("recurrence.review.startsOn", in: app).label.contains(displayCivilDate(fixture.startsOn))
+        )
+        XCTAssertFalse(element("recurrence.success", in: app).exists)
+
+        element("recurrence.confirm", in: app).tap()
+        XCTAssertTrue(element("recurrence.success", in: app).waitForExistence(timeout: 12))
+        element("recurrence.success.return", in: app).tap()
+        XCTAssertTrue(suggestion.waitForNonExistence(timeout: 10))
+
+        let confirmed = app.descendants(matching: .any)
+            .matching(
+                NSPredicate(
+                    format: "identifier BEGINSWITH %@ AND label CONTAINS %@",
+                    "recurrence.item.",
+                    fixture.description
+                )
+            )
+            .firstMatch
+        XCTAssertTrue(confirmed.waitForExistence(timeout: 10), app.debugDescription)
+        XCTAssertTrue(confirmed.label.contains("Ativa"))
+    }
+
+    @MainActor
     func testCriticalAccessibilityIdentifiersAreExposedAtRuntime() throws {
         continueAfterFailure = false
         let launched = try launchApp()
@@ -469,6 +630,10 @@ final class JARVISUITests: XCTestCase {
 
         XCTAssertTrue(reveal("tab.recurrences", in: app))
         element("tab.recurrences", in: app).tap()
+        let suggestionID = "rsg_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        XCTAssertTrue(reveal("recurrence.suggestion.\(suggestionID)", in: app))
+        XCTAssertTrue(reveal("recurrence.suggestion.review.\(suggestionID)", in: app))
+        XCTAssertTrue(reveal("recurrence.suggestion.dismiss.\(suggestionID)", in: app))
         XCTAssertTrue(reveal("recurrence.create", in: app))
         element("recurrence.create", in: app).tap()
         XCTAssertTrue(reveal("recurrence.description", in: app))
@@ -530,6 +695,23 @@ final class JARVISUITests: XCTestCase {
             throw CocoaError(.fileReadCorruptFile)
         }
         return TestConfiguration(mode: .real, baseURL: rawBaseURL, description: description)
+    }
+
+    private func recurrenceSuggestionE2EFixture() throws -> (description: String, startsOn: String) {
+        let info = try XCTUnwrap(Bundle(for: Self.self).infoDictionary)
+        let description = try XCTUnwrap(info["JARVIS_IOS_E2E_SUGGESTION_DESCRIPTION"] as? String)
+        let startsOn = try XCTUnwrap(info["JARVIS_IOS_E2E_SUGGESTION_STARTS_ON"] as? String)
+        guard !description.isEmpty, startsOn.range(of: #"^\d{4}-\d{2}-\d{2}$"#, options: .regularExpression) != nil else {
+            XCTFail("The real suggestion E2E fixture was not configured")
+            throw CocoaError(.fileReadCorruptFile)
+        }
+        return (description, startsOn)
+    }
+
+    private func displayCivilDate(_ canonical: String) -> String {
+        let parts = canonical.split(separator: "-")
+        guard parts.count == 3 else { return canonical }
+        return "\(parts[2])/\(parts[1])/\(parts[0])"
     }
 
     @MainActor

@@ -23,7 +23,7 @@ enum RecurrenceCivilDateError: Error, Equatable {
 }
 
 /// A Gregorian civil date with no time-of-day or timezone semantics.
-struct RecurrenceCivilDate: Codable, Equatable, Hashable, Sendable {
+struct RecurrenceCivilDate: Codable, Equatable, Hashable, Comparable, Sendable {
     let year: Int
     let month: Int
     let day: Int
@@ -110,6 +110,10 @@ struct RecurrenceCivilDate: Codable, Equatable, Hashable, Sendable {
     func encode(to encoder: Encoder) throws {
         var container = encoder.singleValueContainer()
         try container.encode(canonicalValue)
+    }
+
+    static func < (lhs: Self, rhs: Self) -> Bool {
+        (lhs.year, lhs.month, lhs.day) < (rhs.year, rhs.month, rhs.day)
     }
 
     static let pickerCalendar: Calendar = {
@@ -245,5 +249,112 @@ struct RecurrenceList: Decodable, Equatable, Sendable {
 
 struct RecordedRecurrence: Equatable, Sendable {
     let recurrence: Recurrence
+    let replayed: Bool
+}
+
+struct RecurrenceSuggestion: Decodable, Equatable, Identifiable, Sendable {
+    let id: String
+    let description: String
+    let expectedAmount: FinancialMoney
+    let anchorDay: Int
+    let proposedStartsOn: RecurrenceCivilDate
+    let evidenceCount: Int
+    let observedDates: [RecurrenceCivilDate]
+
+    init(
+        id: String,
+        description: String,
+        expectedAmount: FinancialMoney,
+        anchorDay: Int,
+        proposedStartsOn: RecurrenceCivilDate,
+        observedDates: [RecurrenceCivilDate]
+    ) throws {
+        guard Self.isValidID(id),
+              !description.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              description.count <= 200,
+              expectedAmount.minor > 0,
+              expectedAmount.currency == .brl,
+              (1...31).contains(anchorDay),
+              (3...6).contains(observedDates.count),
+              zip(observedDates, observedDates.dropFirst()).allSatisfy({ $0 < $1 }),
+              observedDates.last.map({ $0 < proposedStartsOn }) == true
+        else {
+            throw RecurrenceSuggestionError.invalid
+        }
+        self.id = id
+        self.description = description
+        self.expectedAmount = expectedAmount
+        self.anchorDay = anchorDay
+        self.proposedStartsOn = proposedStartsOn
+        evidenceCount = observedDates.count
+        self.observedDates = observedDates
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let evidenceCount = try container.decode(Int.self, forKey: .evidenceCount)
+        do {
+            try self.init(
+                id: container.decode(String.self, forKey: .id),
+                description: container.decode(String.self, forKey: .description),
+                expectedAmount: container.decode(FinancialMoney.self, forKey: .expectedAmount),
+                anchorDay: container.decode(Int.self, forKey: .anchorDay),
+                proposedStartsOn: container.decode(RecurrenceCivilDate.self, forKey: .proposedStartsOn),
+                observedDates: container.decode([RecurrenceCivilDate].self, forKey: .observedDates)
+            )
+            guard self.evidenceCount == evidenceCount else {
+                throw RecurrenceSuggestionError.invalid
+            }
+        } catch {
+            throw DecodingError.dataCorruptedError(
+                forKey: .id,
+                in: container,
+                debugDescription: "Invalid recurrence suggestion"
+            )
+        }
+    }
+
+    static func isValidID(_ value: String) -> Bool {
+        let bytes = Array(value.utf8)
+        guard bytes.count == 68, bytes.starts(with: Array("rsg_".utf8)) else { return false }
+        return bytes.dropFirst(4).allSatisfy { byte in
+            (48...57).contains(byte) || (97...102).contains(byte)
+        }
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, description, expectedAmount, anchorDay, proposedStartsOn, evidenceCount, observedDates
+    }
+}
+
+enum RecurrenceSuggestionError: Error, Equatable {
+    case invalid
+}
+
+struct RecurrenceSuggestionList: Decodable, Equatable, Sendable {
+    let items: [RecurrenceSuggestion]
+
+    init(items: [RecurrenceSuggestion]) {
+        self.items = items
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        items = try container.decode([RecurrenceSuggestion].self, forKey: .items)
+        guard Set(items.map(\.id)).count == items.count else {
+            throw DecodingError.dataCorruptedError(
+                forKey: .items,
+                in: container,
+                debugDescription: "Duplicate recurrence suggestion ID"
+            )
+        }
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case items
+    }
+}
+
+struct DismissedRecurrenceSuggestion: Equatable, Sendable {
     let replayed: Bool
 }

@@ -179,6 +179,167 @@ final class RecurrenceModelsAndAPITests: XCTestCase {
         }
     }
 
+    func testSuggestionDecodingPreservesOnlyDeterministicEvidenceAndRejectsInconsistentPayloads() throws {
+        let suggestion = try JSONDecoder().decode(
+            RecurrenceSuggestion.self,
+            from: Data(Self.suggestionJSON.utf8)
+        )
+        XCTAssertEqual(suggestion.id, Self.suggestionID)
+        XCTAssertEqual(suggestion.anchorDay, 10)
+        XCTAssertEqual(suggestion.evidenceCount, 3)
+        XCTAssertEqual(suggestion.observedDates.map(\.canonicalValue), [
+            "2026-05-10", "2026-06-10", "2026-07-10"
+        ])
+        XCTAssertEqual(suggestion.proposedStartsOn.canonicalValue, "2026-09-10")
+
+        let invalidPayloads = [
+            Self.suggestionJSON.replacingOccurrences(of: Self.suggestionID, with: "rsg_bad"),
+            Self.suggestionJSON.replacingOccurrences(of: "\"evidenceCount\":3", with: "\"evidenceCount\":4"),
+            Self.suggestionJSON.replacingOccurrences(
+                of: "[\"2026-05-10\",\"2026-06-10\",\"2026-07-10\"]",
+                with: "[\"2026-06-10\",\"2026-05-10\",\"2026-07-10\"]"
+            ),
+            Self.suggestionJSON.replacingOccurrences(of: "\"minor\":9990", with: "\"minor\":0"),
+            Self.suggestionJSON.replacingOccurrences(of: "\"proposedStartsOn\":\"2026-09-10\"", with: "\"proposedStartsOn\":\"2026-07-10\"")
+        ]
+        for payload in invalidPayloads {
+            XCTAssertThrowsError(
+                try JSONDecoder().decode(RecurrenceSuggestion.self, from: Data(payload.utf8)),
+                "accepted inconsistent suggestion payload: \(payload)"
+            )
+        }
+
+        let duplicateList = "{\"items\":[\(Self.suggestionJSON),\(Self.suggestionJSON)]}"
+        XCTAssertThrowsError(
+            try JSONDecoder().decode(RecurrenceSuggestionList.self, from: Data(duplicateList.utf8))
+        )
+    }
+
+    @MainActor
+    func testSuggestionClientUsesExactEmptyBodyEndpointsAndReplayHeader() async throws {
+        RecurrenceURLProtocolStub.install { request in
+            XCTAssertNil(request.value(forHTTPHeaderField: "Idempotency-Key"))
+            switch (request.httpMethod, request.url?.path) {
+            case ("GET", "/v1/recurrence-suggestions"):
+                XCTAssertNil(request.httpBody)
+                return Self.response(request, status: 200, body: "{\"items\":[\(Self.suggestionJSON)]}")
+            case ("POST", "/v1/recurrence-suggestions/\(Self.suggestionID)/preview"):
+                XCTAssertNil(request.httpBody)
+                return Self.response(request, status: 200, body: Self.previewJSON)
+            case ("POST", "/v1/recurrence-suggestions/\(Self.suggestionID)/dismiss"):
+                XCTAssertNil(request.httpBody)
+                return Self.response(
+                    request,
+                    status: 204,
+                    body: "",
+                    headers: Self.standardHeaders.merging(["Idempotency-Replayed": "true"]) { _, new in new }
+                )
+            default:
+                XCTFail("unexpected suggestion request \(request.httpMethod ?? "nil") \(request.url?.path ?? "nil")")
+                return Self.response(request, status: 500, body: "{}")
+            }
+        }
+
+        let client = makeClient()
+        let list = try await client.recurrenceSuggestions()
+        let preview = try await client.previewRecurrenceSuggestion(id: Self.suggestionID)
+        let dismissed = try await client.dismissRecurrenceSuggestion(id: Self.suggestionID)
+
+        XCTAssertEqual(list.items.map(\.id), [Self.suggestionID])
+        XCTAssertEqual(preview.description, "Academia sintética")
+        XCTAssertTrue(dismissed.replayed)
+
+        RecurrenceURLProtocolStub.install { request in
+            Self.response(request, status: 204, body: "")
+        }
+        let firstDismiss = try await client.dismissRecurrenceSuggestion(id: Self.suggestionID)
+        XCTAssertFalse(firstDismiss.replayed)
+    }
+
+    @MainActor
+    func testSuggestionClientMapsOnlyExactPublicStaleCodesAndRejectsMalformedSuccess() async throws {
+        for (status, code, expected) in [
+            (400, "INVALID_REQUEST", FinancialAPIError.invalidData),
+            (404, "RECURRENCE_SUGGESTION_NOT_FOUND", FinancialAPIError.suggestionNotFound),
+            (409, "RECURRENCE_SUGGESTION_SUPPRESSED", FinancialAPIError.suggestionSuppressed),
+            (500, "INTERNAL_ERROR", FinancialAPIError.serviceUnavailable)
+        ] {
+            RecurrenceURLProtocolStub.install { request in
+                Self.response(
+                    request,
+                    status: status,
+                    body: "{\"error\":{\"code\":\"\(code)\",\"message\":\"private detail\"}}"
+                )
+            }
+            do {
+                _ = try await makeClient().previewRecurrenceSuggestion(id: Self.suggestionID)
+                XCTFail("expected suggestion status \(status) to fail")
+            } catch {
+                XCTAssertEqual(error as? FinancialAPIError, expected)
+                XCTAssertFalse(String(describing: error).contains("private detail"))
+            }
+        }
+
+        RecurrenceURLProtocolStub.install { request in
+            Self.response(
+                request,
+                status: 404,
+                body: "{\"error\":{\"code\":\"RECURRENCE_NOT_FOUND\",\"message\":\"wrong family\"}}"
+            )
+        }
+        do {
+            _ = try await makeClient().previewRecurrenceSuggestion(id: Self.suggestionID)
+            XCTFail("expected mismatched error family to fail closed")
+        } catch {
+            XCTAssertEqual(error as? FinancialAPIError, .invalidResponse)
+        }
+
+        for replayHeader in ["false", "TRUE"] {
+            RecurrenceURLProtocolStub.install { request in
+                Self.response(
+                    request,
+                    status: 204,
+                    body: "",
+                    headers: Self.standardHeaders.merging(["Idempotency-Replayed": replayHeader]) { _, new in new }
+                )
+            }
+            do {
+                _ = try await makeClient().dismissRecurrenceSuggestion(id: Self.suggestionID)
+                XCTFail("accepted invalid replay header \(replayHeader)")
+            } catch {
+                XCTAssertEqual(error as? FinancialAPIError, .invalidResponse)
+            }
+        }
+    }
+
+    @MainActor
+    func testSuggestionClientRejectsInvalidIDBeforeNetworkAndPreservesCancellation() async {
+        RecurrenceURLProtocolStub.install { _ in
+            XCTFail("Invalid suggestion ID reached the network")
+            return Self.response(
+                URLRequest(url: URL(string: "http://127.0.0.1")!),
+                status: 500,
+                body: "{}"
+            )
+        }
+        do {
+            _ = try await makeClient().previewRecurrenceSuggestion(id: "rsg_invalid")
+            XCTFail("Expected invalid suggestion ID")
+        } catch {
+            XCTAssertEqual(error as? FinancialAPIError, .invalidData)
+        }
+
+        RecurrenceURLProtocolStub.install { _ in throw URLError(.cancelled) }
+        do {
+            _ = try await makeClient().recurrenceSuggestions()
+            XCTFail("Expected cancellation")
+        } catch is CancellationError {
+            // Expected: suggestion requests preserve cooperative cancellation.
+        } catch {
+            XCTFail("Expected CancellationError, got \(error)")
+        }
+    }
+
     @MainActor
     private func makeClient() -> URLSessionFinancialAPIClient {
         let configuration = URLSessionConfiguration.ephemeral
@@ -230,6 +391,12 @@ final class RecurrenceModelsAndAPITests: XCTestCase {
 
     private static let cancelledJSON = """
     {"id":"rec_test_ios_001","type":"EXPENSE","description":"Academia sintética","expectedAmount":{"minor":11900,"currency":"BRL"},"frequency":"MONTHLY","startsOn":"2026-08-31","status":"CANCELLED","createdAt":"2026-08-16T18:00:00Z","cancelledAt":"2026-08-17T18:00:00Z"}
+    """
+
+    private static let suggestionID = "rsg_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+
+    private static let suggestionJSON = """
+    {"id":"\(suggestionID)","description":"Internet sintética","expectedAmount":{"minor":9990,"currency":"BRL"},"anchorDay":10,"proposedStartsOn":"2026-09-10","evidenceCount":3,"observedDates":["2026-05-10","2026-06-10","2026-07-10"]}
     """
 }
 

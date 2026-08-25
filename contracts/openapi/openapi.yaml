@@ -1,10 +1,10 @@
 openapi: 3.1.0
 info:
   title: J.A.R.V.I.S. API
-  version: 0.5.0
+  version: 0.6.0
   description: >-
     API da fundação e dos incrementos financeiros de despesas, receitas,
-    categorias e recorrências manuais. Criar uma transaction registra no
+    categorias, recorrências manuais e sugestões determinísticas. Criar uma transaction registra no
     organizador J.A.R.V.I.S. uma movimentação que já ocorreu no mundo real. Uma
     recurrence representa somente um compromisso ou expectativa futura e nunca
     cria uma Expense ou Income automaticamente. Nenhuma operação executa
@@ -272,6 +272,104 @@ paths:
           $ref: "#/components/responses/MethodNotAllowed"
         "500":
           $ref: "#/components/responses/InternalError"
+  /v1/recurrence-suggestions:
+    get:
+      operationId: listRecurrenceSuggestions
+      summary: Lista possíveis recorrências de despesa inferidas deterministicamente
+      description: >-
+        Deriva sugestões efêmeras a partir de Expenses do owner e evidências
+        atuais. Não persiste sugestões, não cria Recurrence e não altera fatos
+        financeiros. Não aceita filtros nem owner fornecido pelo cliente.
+      tags: [Recurrence Suggestions]
+      responses:
+        "200":
+          description: Sugestões atuais em ordem determinística; items nunca é null
+          headers:
+            Cache-Control:
+              $ref: "#/components/headers/CacheControl"
+            X-Content-Type-Options:
+              $ref: "#/components/headers/ContentTypeOptions"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RecurrenceSuggestionList"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowed"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /v1/recurrence-suggestions/{suggestionId}/dismiss:
+    post:
+      operationId: dismissRecurrenceSuggestion
+      summary: Rejeita idempotentemente uma sugestão atual
+      description: >-
+        Persiste somente a suppression owner-scoped da evidência atual. Não
+        aceita body e não altera Expense, Income, Category ou Recurrence.
+      tags: [Recurrence Suggestions]
+      parameters:
+        - name: suggestionId
+          in: path
+          required: true
+          description: Identificador opaco e determinístico da sugestão atual.
+          schema:
+            $ref: "#/components/schemas/RecurrenceSuggestionId"
+      responses:
+        "204":
+          description: Sugestão rejeitada ou replay da mesma decisão
+          headers:
+            Cache-Control:
+              $ref: "#/components/headers/CacheControl"
+            X-Content-Type-Options:
+              $ref: "#/components/headers/ContentTypeOptions"
+            Idempotency-Replayed:
+              $ref: "#/components/headers/IdempotencyReplayed"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "404":
+          $ref: "#/components/responses/RecurrenceSuggestionNotFound"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowed"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /v1/recurrence-suggestions/{suggestionId}/preview:
+    post:
+      operationId: previewSuggestedRecurrence
+      summary: Prepara uma sugestão atual para revisão como Recurrence
+      description: >-
+        Recalcula a sugestão pelo ID e reutiliza o preview canônico de Recurrence
+        com dados derivados no servidor. Não aceita body, não persiste Recurrence
+        e não causa qualquer escrita financeira.
+      tags: [Recurrence Suggestions]
+      parameters:
+        - name: suggestionId
+          in: path
+          required: true
+          description: Identificador opaco e determinístico da sugestão atual.
+          schema:
+            $ref: "#/components/schemas/RecurrenceSuggestionId"
+      responses:
+        "200":
+          description: Recurrence canônica pronta para Review, ainda não confirmada
+          headers:
+            Cache-Control:
+              $ref: "#/components/headers/CacheControl"
+            X-Content-Type-Options:
+              $ref: "#/components/headers/ContentTypeOptions"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RecurrencePreview"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "404":
+          $ref: "#/components/responses/RecurrenceSuggestionNotFound"
+        "409":
+          $ref: "#/components/responses/RecurrenceSuggestionSuppressed"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowed"
+        "500":
+          $ref: "#/components/responses/InternalError"
   /v1/transactions:
     post:
       operationId: recordTransaction
@@ -517,6 +615,28 @@ components:
             error:
               code: RECURRENCE_NOT_FOUND
               message: recurrence was not found
+    RecurrenceSuggestionNotFound:
+      description: Sugestão inexistente, stale ou fora do escopo do owner
+      headers:
+        Cache-Control:
+          $ref: "#/components/headers/CacheControl"
+        X-Content-Type-Options:
+          $ref: "#/components/headers/ContentTypeOptions"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/RecurrenceSuggestionNotFoundError"
+    RecurrenceSuggestionSuppressed:
+      description: Sugestão rejeitada e indisponível para preview
+      headers:
+        Cache-Control:
+          $ref: "#/components/headers/CacheControl"
+        X-Content-Type-Options:
+          $ref: "#/components/headers/ContentTypeOptions"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/RecurrenceSuggestionSuppressedError"
     MethodNotAllowed:
       description: Método não permitido para a rota financeira
       headers:
@@ -655,6 +775,57 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/Recurrence"
+    RecurrenceSuggestionId:
+      type: string
+      pattern: "^rsg_[0-9a-f]{64}$"
+      description: >-
+        Identificador opaco, owner-scoped e determinístico da evidência atual;
+        não contém owner ou Expense IDs em claro.
+    RecurrenceSuggestion:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - description
+        - expectedAmount
+        - anchorDay
+        - proposedStartsOn
+        - evidenceCount
+        - observedDates
+      properties:
+        id:
+          $ref: "#/components/schemas/RecurrenceSuggestionId"
+        description:
+          type: string
+          minLength: 1
+          maxLength: 200
+        expectedAmount:
+          $ref: "#/components/schemas/Money"
+        anchorDay:
+          type: integer
+          minimum: 1
+          maximum: 31
+        proposedStartsOn:
+          $ref: "#/components/schemas/CivilDate"
+        evidenceCount:
+          type: integer
+          minimum: 3
+          maximum: 6
+        observedDates:
+          type: array
+          minItems: 3
+          maxItems: 6
+          items:
+            $ref: "#/components/schemas/CivilDate"
+    RecurrenceSuggestionList:
+      type: object
+      additionalProperties: false
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/RecurrenceSuggestion"
     CategoryId:
       type: string
       minLength: 1
@@ -1099,6 +1270,36 @@ components:
               enum: [RECURRENCE_NOT_FOUND]
             message:
               type: string
+    RecurrenceSuggestionNotFoundError:
+      type: object
+      additionalProperties: false
+      required: [error]
+      properties:
+        error:
+          type: object
+          additionalProperties: false
+          required: [code, message]
+          properties:
+            code:
+              type: string
+              enum: [RECURRENCE_SUGGESTION_NOT_FOUND]
+            message:
+              type: string
+    RecurrenceSuggestionSuppressedError:
+      type: object
+      additionalProperties: false
+      required: [error]
+      properties:
+        error:
+          type: object
+          additionalProperties: false
+          required: [code, message]
+          properties:
+            code:
+              type: string
+              enum: [RECURRENCE_SUGGESTION_SUPPRESSED]
+            message:
+              type: string
     MethodNotAllowedError:
       type: object
       additionalProperties: false
@@ -1138,3 +1339,5 @@ tags:
     description: Descoberta read-only do catálogo de classificação financeira do sistema.
   - name: Recurrences
     description: Compromissos mensais manuais; nunca fatos ocorridos nem criação automática de transactions.
+  - name: Recurrence Suggestions
+    description: Inferências determinísticas efêmeras que somente o usuário pode levar ao fluxo de Recurrence.

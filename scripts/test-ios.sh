@@ -149,6 +149,9 @@ case "$mode" in
   --recurrence-ui)
     test_filters+=(
       "-only-testing:JARVISUITests/JARVISUITests/testRecurrencePreviewConfirmListAndCancel"
+      "-only-testing:JARVISUITests/JARVISUITests/testRecurrenceSuggestionAppearsRequiresReviewAndConfirmsThroughCanonicalFlow"
+      "-only-testing:JARVISUITests/JARVISUITests/testRecurrenceSuggestionDismissRequiresConfirmationAndDoesNotAffectConfirmedItems"
+      "-only-testing:JARVISUITests/JARVISUITests/testStaleRecurrenceSuggestionIsRemovedWithoutInvalidReviewNavigation"
     )
     ;;
   --tab-regression)
@@ -174,6 +177,7 @@ case "$mode" in
       "-only-testing:JARVISUITests/JARVISUITests/testRegisterPreviewConfirmAndHistory"
       "-only-testing:JARVISUITests/JARVISUITests/testRegisterIncomePreviewConfirmAndHistory"
       "-only-testing:JARVISUITests/JARVISUITests/testRecurrencePreviewConfirmListAndCancel"
+      "-only-testing:JARVISUITests/JARVISUITests/testRealAPIRecurrenceSuggestionRequiresExplicitConfirmation"
     )
     ;;
 esac
@@ -193,6 +197,8 @@ xcodebuild_arguments=(
   "JARVIS_IOS_TEST_MODE=$test_api_mode"
   "JARVIS_IOS_E2E_BASE_URL=${JARVIS_IOS_E2E_BASE_URL:-}"
   "JARVIS_IOS_E2E_DESCRIPTION=$test_description"
+  "JARVIS_IOS_E2E_SUGGESTION_DESCRIPTION=${JARVIS_IOS_E2E_SUGGESTION_DESCRIPTION:-}"
+  "JARVIS_IOS_E2E_SUGGESTION_STARTS_ON=${JARVIS_IOS_E2E_SUGGESTION_STARTS_ON:-}"
 )
 if ((${#test_filters[@]} > 0)); then
   for test_filter in "${test_filters[@]}"; do

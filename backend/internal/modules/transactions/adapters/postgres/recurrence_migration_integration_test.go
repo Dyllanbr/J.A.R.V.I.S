@@ -20,6 +20,7 @@ func TestMigration005FreshSchemaConstraintsAndSafeDownReapply(t *testing.T) {
 	pool := newMigratedTestDatabase(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
+	moveToMigration005(t, ctx, pool)
 	insertSyntheticUser(t, ctx, pool, syntheticUserID)
 	const ownerB = "usr-migration-recurrence-owner-b"
 	insertSyntheticUser(t, ctx, pool, ownerB)
@@ -163,8 +164,9 @@ func TestMigration005FreshSchemaConstraintsAndSafeDownReapply(t *testing.T) {
 		if err := migrations.Up(ctx, connection); err != nil {
 			t.Fatalf("migration 005 reapply failed: %v", err)
 		}
-		assertMigrationVersion(t, ctx, connection, 5)
+		assertMigrationVersion(t, ctx, connection, 6)
 	})
+	assertTableExists(t, ctx, pool, "recurrence_suggestion_suppressions", true)
 }
 
 func TestMigration005UpgradeFrom004PreservesFinancialAndCategoryData(t *testing.T) {
@@ -189,8 +191,9 @@ func TestMigration005UpgradeFrom004PreservesFinancialAndCategoryData(t *testing.
 		if err := migrations.Up(ctx, connection); err != nil {
 			t.Fatalf("migration 004 to 005 failed: %v", err)
 		}
-		assertMigrationVersion(t, ctx, connection, 5)
+		assertMigrationVersion(t, ctx, connection, 6)
 	})
+	moveToMigration005(t, ctx, pool)
 	assertFinancialRowCounts(t, ctx, pool, 1, 1, 1)
 	assertStoredCategory(t, ctx, pool, "exp-before-005", "expense.food")
 	var categoryCount, recurrenceCount int
@@ -210,6 +213,7 @@ func TestMigration005DownRefusesEverySubsystemStateAtomically(t *testing.T) {
 		pool := newMigratedTestDatabase(t)
 		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 		defer cancel()
+		moveToMigration005(t, ctx, pool)
 		insertSyntheticUser(t, ctx, pool, syntheticUserID)
 		createdAt := time.Date(2026, time.August, 16, 15, 0, 0, 0, time.UTC)
 		if err := insertRawRecurrence(ctx, pool, "rec-down-guard", syntheticUserID, "2026-08-10", "ACTIVE", createdAt, nil); err != nil {
@@ -228,6 +232,7 @@ func TestMigration005DownRefusesEverySubsystemStateAtomically(t *testing.T) {
 		pool := newMigratedTestDatabase(t)
 		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 		defer cancel()
+		moveToMigration005(t, ctx, pool)
 		insertSyntheticUser(t, ctx, pool, syntheticUserID)
 		if _, err := pool.Exec(ctx, `
 			INSERT INTO recurrence_idempotency_records (
@@ -244,6 +249,7 @@ func TestMigration005DownWaitsForWriterBeforeLockAndRefuses(t *testing.T) {
 	pool := newMigratedTestDatabase(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
+	moveToMigration005(t, ctx, pool)
 	insertSyntheticUser(t, ctx, pool, syntheticUserID)
 
 	writerConnection, err := pool.Acquire(ctx)
@@ -289,6 +295,7 @@ func TestMigration005DownBlocksWriterAfterLockWithoutSilentLoss(t *testing.T) {
 	pool := newMigratedTestDatabase(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
+	moveToMigration005(t, ctx, pool)
 	insertSyntheticUser(t, ctx, pool, syntheticUserID)
 
 	blocker, err := pool.Acquire(ctx)
@@ -348,11 +355,31 @@ func TestMigration005DownBlocksWriterAfterLockWithoutSilentLoss(t *testing.T) {
 
 func moveToMigration004(t *testing.T, ctx context.Context, pool *pgxpool.Pool) {
 	t.Helper()
+	moveToMigrationVersion(t, ctx, pool, 4)
+}
+
+func moveToMigration005(t *testing.T, ctx context.Context, pool *pgxpool.Pool) {
+	t.Helper()
+	moveToMigrationVersion(t, ctx, pool, 5)
+}
+
+func moveToMigrationVersion(t *testing.T, ctx context.Context, pool *pgxpool.Pool, target int32) {
+	t.Helper()
 	withConnection(t, ctx, pool, func(connection *pgx.Conn) {
-		if err := migrations.Down(ctx, connection); err != nil {
-			t.Fatalf("migration 005 DOWN failed: %v", err)
+		version, err := migrations.Version(ctx, connection)
+		if err != nil {
+			t.Fatalf("migration version lookup failed: %v", err)
 		}
-		assertMigrationVersion(t, ctx, connection, 4)
+		if version < target {
+			t.Fatalf("migration version = %d, cannot move down to %d", version, target)
+		}
+		for version > target {
+			if err := migrations.Down(ctx, connection); err != nil {
+				t.Fatalf("migration %03d DOWN failed: %v", version, err)
+			}
+			version--
+		}
+		assertMigrationVersion(t, ctx, connection, target)
 	})
 }
 

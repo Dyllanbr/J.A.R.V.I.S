@@ -3,6 +3,13 @@ import Foundation
 
 @MainActor
 final class StubFinancialAPI: FinancialAPI {
+    private enum SuggestionScenario: String {
+        case normal
+        case stale
+        case suppressed
+        case listError
+    }
+
     private struct StoredRecurrenceCreate {
         let request: RecurrenceRequest
         let recurrence: Recurrence
@@ -18,10 +25,16 @@ final class StubFinancialAPI: FinancialAPI {
     private var recurrencesByID: [String: Recurrence] = [:]
     private var recurrenceCreates: [String: StoredRecurrenceCreate] = [:]
     private var recurrenceCancels: [String: StoredRecurrenceCancel] = [:]
+    private var dismissedSuggestionIDs: Set<String> = []
+    private var invalidatedSuggestionIDs: Set<String> = []
     private var nextSequence = 1
     private let timestampCodec = RFC3339DateCodec()
+    private let suggestionScenario: SuggestionScenario
 
-    init() {
+    init(environment: [String: String] = ProcessInfo.processInfo.environment) {
+        suggestionScenario = SuggestionScenario(
+            rawValue: environment["JARVIS_IOS_SUGGESTION_SCENARIO"] ?? "normal"
+        ) ?? .normal
         let active = Recurrence(
             id: "rec_ui_synthetic_active",
             description: "Academia sintética",
@@ -238,6 +251,52 @@ final class StubFinancialAPI: FinancialAPI {
         return RecordedRecurrence(recurrence: cancelled, replayed: false)
     }
 
+    func recurrenceSuggestions() async throws -> RecurrenceSuggestionList {
+        try await Task.sleep(for: .milliseconds(80))
+        if suggestionScenario == .listError {
+            throw FinancialAPIError.serviceUnavailable
+        }
+        guard !dismissedSuggestionIDs.contains(Self.suggestionFixture.id),
+              !invalidatedSuggestionIDs.contains(Self.suggestionFixture.id),
+              !recurrencesByID.values.contains(where: {
+                  $0.status == .active
+                      && $0.description == Self.suggestionFixture.description
+                      && $0.expectedAmount == Self.suggestionFixture.expectedAmount
+              })
+        else {
+            return RecurrenceSuggestionList(items: [])
+        }
+        return RecurrenceSuggestionList(items: [Self.suggestionFixture])
+    }
+
+    func dismissRecurrenceSuggestion(id: String) async throws -> DismissedRecurrenceSuggestion {
+        try await Task.sleep(for: .milliseconds(80))
+        guard id == Self.suggestionFixture.id else { throw FinancialAPIError.suggestionNotFound }
+        let inserted = dismissedSuggestionIDs.insert(id).inserted
+        return DismissedRecurrenceSuggestion(replayed: !inserted)
+    }
+
+    func previewRecurrenceSuggestion(id: String) async throws -> RecurrencePreview {
+        try await Task.sleep(for: .milliseconds(80))
+        guard id == Self.suggestionFixture.id else { throw FinancialAPIError.suggestionNotFound }
+        guard !dismissedSuggestionIDs.contains(id) else { throw FinancialAPIError.suggestionSuppressed }
+        switch suggestionScenario {
+        case .stale:
+            invalidatedSuggestionIDs.insert(id)
+            throw FinancialAPIError.suggestionNotFound
+        case .suppressed:
+            dismissedSuggestionIDs.insert(id)
+            throw FinancialAPIError.suggestionSuppressed
+        case .normal, .listError:
+            break
+        }
+        return RecurrencePreview(
+            description: Self.suggestionFixture.description,
+            expectedAmount: Self.suggestionFixture.expectedAmount,
+            startsOn: Self.suggestionFixture.proposedStartsOn
+        )
+    }
+
     private func canonicalTimestamp(_ value: String) throws -> String {
         timestampCodec.encode(try timestampCodec.decode(value))
     }
@@ -274,5 +333,18 @@ final class StubFinancialAPI: FinancialAPI {
         CategoryDefinition(id: "income.benefits", type: .income, displayName: "Benefícios"),
         CategoryDefinition(id: "income.other", type: .income, displayName: "Outros")
     ]
+
+    private static let suggestionFixture = try! RecurrenceSuggestion(
+        id: "rsg_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        description: "Internet sintética",
+        expectedAmount: FinancialMoney(minor: 9_990, currency: .brl),
+        anchorDay: 10,
+        proposedStartsOn: RecurrenceCivilDate("2026-09-10"),
+        observedDates: [
+            RecurrenceCivilDate("2026-05-10"),
+            RecurrenceCivilDate("2026-06-10"),
+            RecurrenceCivilDate("2026-07-10")
+        ]
+    )
 }
 #endif

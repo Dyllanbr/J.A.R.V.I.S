@@ -108,4 +108,16 @@ private struct UnavailableFinancialAPI: FinancialAPI {
     func cancelRecurrence(id _: String, idempotencyKey _: String) async throws -> RecordedRecurrence {
         throw FinancialAPIError.configuration
     }
+
+    func recurrenceSuggestions() async throws -> RecurrenceSuggestionList {
+        throw FinancialAPIError.configuration
+    }
+
+    func dismissRecurrenceSuggestion(id _: String) async throws -> DismissedRecurrenceSuggestion {
+        throw FinancialAPIError.configuration
+    }
+
+    func previewRecurrenceSuggestion(id _: String) async throws -> RecurrencePreview {
+        throw FinancialAPIError.configuration
+    }
 }
