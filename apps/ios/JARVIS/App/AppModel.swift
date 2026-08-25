@@ -113,13 +113,22 @@ final class AppModel {
     let registration: RegistrationViewModel
     let history: HistoryViewModel
     let recurrences: RecurrencesViewModel
+    let recurrenceSuggestions: RecurrenceSuggestionsViewModel
 
     init(api: any FinancialAPI, now: Date = Date()) {
         let categories = CategoryCatalogModel(api: api)
         self.categories = categories
         let history = HistoryViewModel(api: api, categories: categories, now: now)
         self.history = history
-        recurrences = RecurrencesViewModel(api: api, now: now)
+        let recurrenceSuggestions = RecurrenceSuggestionsViewModel(api: api)
+        self.recurrenceSuggestions = recurrenceSuggestions
+        recurrences = RecurrencesViewModel(
+            api: api,
+            now: now,
+            onRecurrenceConfirmed: { [weak recurrenceSuggestions] suggestionID in
+                recurrenceSuggestions?.recurrenceWasConfirmed(suggestionID: suggestionID)
+            }
+        )
         registration = RegistrationViewModel(
             api: api,
             categories: categories,

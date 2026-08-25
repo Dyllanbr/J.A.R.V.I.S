@@ -1,6 +1,81 @@
 import { expect, test } from "@playwright/test";
 
 const contentType = "application/json; charset=utf-8";
+const financialTimeZone = "America/Sao_Paulo";
+const suggestionAnchorDay = 10;
+
+type CivilDateParts = { year: number; month: number; day: number };
+
+type SuggestionCalendarFixture = {
+  evidenceDates: string[];
+  additionalEvidenceDate: string;
+  proposedStartsOn: string;
+};
+
+const financialDateFormatter = new Intl.DateTimeFormat("en-CA", {
+  timeZone: financialTimeZone,
+  calendar: "gregory",
+  numberingSystem: "latn",
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+});
+
+function financialCivilDate(instant: Date = new Date()): CivilDateParts {
+  const parts = new Map(
+    financialDateFormatter
+      .formatToParts(instant)
+      .filter(
+        ({ type }) => type === "year" || type === "month" || type === "day",
+      )
+      .map(({ type, value }) => [type, Number(value)]),
+  );
+  const year = parts.get("year");
+  const month = parts.get("month");
+  const day = parts.get("day");
+  if (year === undefined || month === undefined || day === undefined) {
+    throw new Error("could not resolve the current financial civil date");
+  }
+  return { year, month, day };
+}
+
+function shiftedMonth(date: CivilDateParts, offset: number): CivilDateParts {
+  const shifted = new Date(Date.UTC(date.year, date.month - 1 + offset, 1));
+  return {
+    year: shifted.getUTCFullYear(),
+    month: shifted.getUTCMonth() + 1,
+    day: 1,
+  };
+}
+
+function civilDate(year: number, month: number, day: number): string {
+  return `${year.toString().padStart(4, "0")}-${month.toString().padStart(2, "0")}-${day.toString().padStart(2, "0")}`;
+}
+
+function suggestionCalendarFixture(
+  evaluatedOn: CivilDateParts,
+): SuggestionCalendarFixture {
+  const atAnchor = (offset: number) => {
+    const month = shiftedMonth(evaluatedOn, offset);
+    return civilDate(month.year, month.month, suggestionAnchorDay);
+  };
+  return {
+    evidenceDates: [-3, -2, -1].map(atAnchor),
+    additionalEvidenceDate: atAnchor(-4),
+    proposedStartsOn: atAnchor(evaluatedOn.day < suggestionAnchorDay ? 0 : 1),
+  };
+}
+
+function financialEvidenceInstant(date: string): string {
+  const instant = `${date}T12:00:00Z`;
+  const observed = financialCivilDate(new Date(instant));
+  if (civilDate(observed.year, observed.month, observed.day) !== date) {
+    throw new Error(
+      "synthetic evidence does not map to its financial CivilDate",
+    );
+  }
+  return instant;
+}
 
 function expenseRequest(description: string, occurredAt: string) {
   return {
@@ -748,4 +823,204 @@ test("expense.subscriptions remains classification and never creates recurrence"
   expect(body.items.some((item) => item.description === description)).toBe(
     false,
   );
+});
+
+test("recurrence suggestion calendar fixtures handle year and anchor boundaries", () => {
+  const cases: Array<{
+    evaluatedOn: CivilDateParts;
+    evidenceDates: string[];
+    additionalEvidenceDate: string;
+    proposedStartsOn: string;
+  }> = [
+    {
+      evaluatedOn: { year: 2026, month: 1, day: 5 },
+      evidenceDates: ["2025-10-10", "2025-11-10", "2025-12-10"],
+      additionalEvidenceDate: "2025-09-10",
+      proposedStartsOn: "2026-01-10",
+    },
+    {
+      evaluatedOn: { year: 2026, month: 1, day: 10 },
+      evidenceDates: ["2025-10-10", "2025-11-10", "2025-12-10"],
+      additionalEvidenceDate: "2025-09-10",
+      proposedStartsOn: "2026-02-10",
+    },
+    {
+      evaluatedOn: { year: 2026, month: 1, day: 25 },
+      evidenceDates: ["2025-10-10", "2025-11-10", "2025-12-10"],
+      additionalEvidenceDate: "2025-09-10",
+      proposedStartsOn: "2026-02-10",
+    },
+    {
+      evaluatedOn: { year: 2026, month: 2, day: 28 },
+      evidenceDates: ["2025-11-10", "2025-12-10", "2026-01-10"],
+      additionalEvidenceDate: "2025-10-10",
+      proposedStartsOn: "2026-03-10",
+    },
+    {
+      evaluatedOn: { year: 2026, month: 12, day: 31 },
+      evidenceDates: ["2026-09-10", "2026-10-10", "2026-11-10"],
+      additionalEvidenceDate: "2026-08-10",
+      proposedStartsOn: "2027-01-10",
+    },
+  ];
+
+  for (const expectation of cases) {
+    expect(suggestionCalendarFixture(expectation.evaluatedOn)).toEqual({
+      evidenceDates: expectation.evidenceDates,
+      additionalEvidenceDate: expectation.additionalEvidenceDate,
+      proposedStartsOn: expectation.proposedStartsOn,
+    });
+    for (const date of [
+      ...expectation.evidenceDates,
+      expectation.additionalEvidenceDate,
+    ]) {
+      expect(financialEvidenceInstant(date)).toBe(`${date}T12:00:00Z`);
+    }
+  }
+});
+
+test("recurrence suggestions preview server data, dismiss idempotently, and refresh with new evidence", async ({
+  request,
+}) => {
+  const description = "Detecção recorrente Playwright sintética";
+  const calendar = suggestionCalendarFixture(financialCivilDate());
+  for (const observedOn of calendar.evidenceDates) {
+    const occurredAt = financialEvidenceInstant(observedOn);
+    const payload = expenseRequest(description, occurredAt);
+    payload.amount.minor = 11900;
+    const created = await request.post("/v1/transactions", {
+      data: payload,
+      headers: {
+        "Idempotency-Key": `pw-suggestion-evidence-${observedOn}-001`,
+      },
+    });
+    expect(created.status()).toBe(201);
+  }
+
+  const listed = await request.get("/v1/recurrence-suggestions");
+  expect(listed.status()).toBe(200);
+  expect(listed.headers()["cache-control"]).toBe("no-store");
+  const listBody = (await listed.json()) as {
+    items: Array<Record<string, unknown>>;
+  };
+  const matches = listBody.items.filter(
+    (item) => item.description === description,
+  );
+  expect(matches).toHaveLength(1);
+  const suggestion = matches[0];
+  if (!suggestion) {
+    throw new Error("expected recurrence suggestion was not returned");
+  }
+  expect(suggestion).toMatchObject({
+    description,
+    expectedAmount: { minor: 11900, currency: "BRL" },
+    anchorDay: 10,
+    proposedStartsOn: calendar.proposedStartsOn,
+    evidenceCount: 3,
+    observedDates: calendar.evidenceDates,
+  });
+  expect(Object.keys(suggestion).sort()).toEqual([
+    "anchorDay",
+    "description",
+    "evidenceCount",
+    "expectedAmount",
+    "id",
+    "observedDates",
+    "proposedStartsOn",
+  ]);
+  const firstID = suggestion.id as string;
+
+  const preview = await request.post(
+    `/v1/recurrence-suggestions/${firstID}/preview`,
+  );
+  expect(preview.status()).toBe(200);
+  expect(await preview.json()).toEqual({
+    type: "EXPENSE",
+    description,
+    expectedAmount: { minor: 11900, currency: "BRL" },
+    frequency: "MONTHLY",
+    startsOn: calendar.proposedStartsOn,
+  });
+  const recurrences = await request.get("/v1/recurrences");
+  const recurrenceBody = (await recurrences.json()) as {
+    items: Array<{ description: string }>;
+  };
+  expect(
+    recurrenceBody.items.some((item) => item.description === description),
+  ).toBe(false);
+
+  const dismissed = await request.post(
+    `/v1/recurrence-suggestions/${firstID}/dismiss`,
+  );
+  expect(dismissed.status()).toBe(204);
+  expect(dismissed.headers()["idempotency-replayed"]).toBeUndefined();
+  expect(await dismissed.body()).toHaveLength(0);
+  const replay = await request.post(
+    `/v1/recurrence-suggestions/${firstID}/dismiss`,
+  );
+  expect(replay.status()).toBe(204);
+  expect(replay.headers()["idempotency-replayed"]).toBe("true");
+  expect(await replay.body()).toHaveLength(0);
+
+  const hidden = (await (
+    await request.get("/v1/recurrence-suggestions")
+  ).json()) as { items: Array<Record<string, unknown>> };
+  expect(hidden.items.some((item) => item.id === firstID)).toBe(false);
+
+  const additionalEvidence = expenseRequest(
+    description,
+    financialEvidenceInstant(calendar.additionalEvidenceDate),
+  );
+  additionalEvidence.amount.minor = 11900;
+  const added = await request.post("/v1/transactions", {
+    data: additionalEvidence,
+    headers: {
+      "Idempotency-Key": `pw-suggestion-evidence-${calendar.additionalEvidenceDate}-001`,
+    },
+  });
+  expect(added.status()).toBe(201);
+  const refreshed = (await (
+    await request.get("/v1/recurrence-suggestions")
+  ).json()) as { items: Array<Record<string, unknown>> };
+  const refreshedMatch = refreshed.items.find(
+    (item) => item.description === description,
+  );
+  expect(refreshedMatch).toBeDefined();
+  expect(refreshedMatch?.id).not.toBe(firstID);
+  expect(refreshedMatch?.evidenceCount).toBe(4);
+});
+
+test("recurrence suggestion endpoints reject client authority and malformed identities", async ({
+  request,
+}) => {
+  const query = await request.get(
+    "/v1/recurrence-suggestions?userId=spoofed-owner",
+  );
+  expect(query.status()).toBe(400);
+  expect(await query.json()).toEqual({
+    error: { code: "INVALID_REQUEST", message: "request is invalid" },
+  });
+
+  const malformed = await request.post(
+    "/v1/recurrence-suggestions/rsg_NOT_HEX/preview",
+  );
+  expect(malformed.status()).toBe(400);
+
+  const validUnknown = `rsg_${"f".repeat(64)}`;
+  const stale = await request.post(
+    `/v1/recurrence-suggestions/${validUnknown}/preview`,
+  );
+  expect(stale.status()).toBe(404);
+  expect(await stale.json()).toEqual({
+    error: {
+      code: "RECURRENCE_SUGGESTION_NOT_FOUND",
+      message: "recurrence suggestion was not found",
+    },
+  });
+
+  const injected = await request.post(
+    `/v1/recurrence-suggestions/${validUnknown}/dismiss`,
+    { data: { userId: "spoofed-owner", amount: 1 } },
+  );
+  expect(injected.status()).toBe(400);
 });

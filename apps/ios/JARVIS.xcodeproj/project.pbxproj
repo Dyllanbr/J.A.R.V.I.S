@@ -25,6 +25,7 @@
 		A00100000000000000000012 /* RecurrenceModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = B00100000000000000000012 /* RecurrenceModels.swift */; };
 		A00100000000000000000013 /* RecurrencesViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = B00100000000000000000013 /* RecurrencesViewModel.swift */; };
 		A00100000000000000000014 /* RecurrencesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B00100000000000000000014 /* RecurrencesView.swift */; };
+		A00100000000000000000015 /* RecurrenceSuggestionsViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = B00100000000000000000015 /* RecurrenceSuggestionsViewModel.swift */; };
 		A00200000000000000000001 /* BRLMoneyParserTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B00200000000000000000001 /* BRLMoneyParserTests.swift */; };
 		A00200000000000000000002 /* RFC3339DateCodecTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B00200000000000000000002 /* RFC3339DateCodecTests.swift */; };
 		A00200000000000000000003 /* TestFixtures.swift in Sources */ = {isa = PBXBuildFile; fileRef = B00200000000000000000003 /* TestFixtures.swift */; };
@@ -34,6 +35,7 @@
 		A00200000000000000000007 /* AppConfigurationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B00200000000000000000007 /* AppConfigurationTests.swift */; };
 		A00200000000000000000008 /* RecurrenceModelsAndAPITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B00200000000000000000008 /* RecurrenceModelsAndAPITests.swift */; };
 		A00200000000000000000009 /* RecurrencesViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B00200000000000000000009 /* RecurrencesViewModelTests.swift */; };
+		A0020000000000000000000A /* RecurrenceSuggestionsViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0020000000000000000000A /* RecurrenceSuggestionsViewModelTests.swift */; };
 		A00300000000000000000001 /* JARVISUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B00300000000000000000001 /* JARVISUITests.swift */; };
 /* End PBXBuildFile section */
 
@@ -73,6 +75,7 @@
 		B00100000000000000000012 /* RecurrenceModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecurrenceModels.swift; sourceTree = "<group>"; };
 		B00100000000000000000013 /* RecurrencesViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecurrencesViewModel.swift; sourceTree = "<group>"; };
 		B00100000000000000000014 /* RecurrencesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecurrencesView.swift; sourceTree = "<group>"; };
+		B00100000000000000000015 /* RecurrenceSuggestionsViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecurrenceSuggestionsViewModel.swift; sourceTree = "<group>"; };
 		B00100000000000000000010 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		B00100000000000000000011 /* Info-Release.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "Info-Release.plist"; sourceTree = "<group>"; };
 		B00200000000000000000001 /* BRLMoneyParserTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BRLMoneyParserTests.swift; sourceTree = "<group>"; };
@@ -84,6 +87,7 @@
 		B00200000000000000000007 /* AppConfigurationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppConfigurationTests.swift; sourceTree = "<group>"; };
 		B00200000000000000000008 /* RecurrenceModelsAndAPITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecurrenceModelsAndAPITests.swift; sourceTree = "<group>"; };
 		B00200000000000000000009 /* RecurrencesViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecurrencesViewModelTests.swift; sourceTree = "<group>"; };
+		B0020000000000000000000A /* RecurrenceSuggestionsViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecurrenceSuggestionsViewModelTests.swift; sourceTree = "<group>"; };
 		B00300000000000000000001 /* JARVISUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JARVISUITests.swift; sourceTree = "<group>"; };
 		B00300000000000000000002 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		B00400000000000000000001 /* JARVIS.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = JARVIS.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -129,11 +133,11 @@
 		F00100000000000000000005 /* Development */ = {isa = PBXGroup; children = (B00100000000000000000007); path = Development; sourceTree = "<group>"; };
 		F00100000000000000000006 /* Register */ = {isa = PBXGroup; children = (B00100000000000000000008, B00100000000000000000009); name = Register; path = Features/Register; sourceTree = "<group>"; };
 		F00100000000000000000007 /* History */ = {isa = PBXGroup; children = (B0010000000000000000000A, B0010000000000000000000B, B0010000000000000000000C); name = History; path = Features/History; sourceTree = "<group>"; };
-		F0010000000000000000000E /* Recurrences */ = {isa = PBXGroup; children = (B00100000000000000000013, B00100000000000000000014); name = Recurrences; path = Features/Recurrences; sourceTree = "<group>"; };
+		F0010000000000000000000E /* Recurrences */ = {isa = PBXGroup; children = (B00100000000000000000013, B00100000000000000000015, B00100000000000000000014); name = Recurrences; path = Features/Recurrences; sourceTree = "<group>"; };
 		F00100000000000000000008 /* Formatting */ = {isa = PBXGroup; children = (B0010000000000000000000D, B0010000000000000000000E); path = Formatting; sourceTree = "<group>"; };
 		F00100000000000000000009 /* Resources */ = {isa = PBXGroup; children = (B00100000000000000000010, B00100000000000000000011); path = Resources; sourceTree = "<group>"; };
 		F0010000000000000000000A /* UI */ = {isa = PBXGroup; children = (B0010000000000000000000F); path = UI; sourceTree = "<group>"; };
-		F0010000000000000000000B /* JARVISTests */ = {isa = PBXGroup; children = (B00200000000000000000001, B00200000000000000000002, B00200000000000000000003, B00200000000000000000004, B00200000000000000000005, B00200000000000000000006, B00200000000000000000007, B00200000000000000000008, B00200000000000000000009); path = JARVISTests; sourceTree = "<group>"; };
+		F0010000000000000000000B /* JARVISTests */ = {isa = PBXGroup; children = (B00200000000000000000001, B00200000000000000000002, B00200000000000000000003, B00200000000000000000004, B00200000000000000000005, B00200000000000000000006, B00200000000000000000007, B00200000000000000000008, B00200000000000000000009, B0020000000000000000000A); path = JARVISTests; sourceTree = "<group>"; };
 		F0010000000000000000000C /* JARVISUITests */ = {isa = PBXGroup; children = (B00300000000000000000001, B00300000000000000000002); path = JARVISUITests; sourceTree = "<group>"; };
 		F0010000000000000000000D /* Products */ = {isa = PBXGroup; children = (B00400000000000000000001, B00400000000000000000002, B00400000000000000000003); name = Products; sourceTree = "<group>"; };
 /* End PBXGroup section */
@@ -210,10 +214,10 @@
 		E00300000000000000000001 = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
-			files = (A00100000000000000000001, A00100000000000000000002, A00100000000000000000003, A00100000000000000000004, A00100000000000000000005, A00100000000000000000006, A00100000000000000000007, A00100000000000000000008, A00100000000000000000009, A0010000000000000000000A, A0010000000000000000000B, A0010000000000000000000C, A0010000000000000000000D, A0010000000000000000000E, A0010000000000000000000F, A00100000000000000000012, A00100000000000000000013, A00100000000000000000014);
+			files = (A00100000000000000000001, A00100000000000000000002, A00100000000000000000003, A00100000000000000000004, A00100000000000000000005, A00100000000000000000006, A00100000000000000000007, A00100000000000000000008, A00100000000000000000009, A0010000000000000000000A, A0010000000000000000000B, A0010000000000000000000C, A0010000000000000000000D, A0010000000000000000000E, A0010000000000000000000F, A00100000000000000000012, A00100000000000000000013, A00100000000000000000014, A00100000000000000000015);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-		E00300000000000000000002 = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (A00200000000000000000001, A00200000000000000000002, A00200000000000000000003, A00200000000000000000004, A00200000000000000000005, A00200000000000000000006, A00200000000000000000007, A00200000000000000000008, A00200000000000000000009); runOnlyForDeploymentPostprocessing = 0; };
+		E00300000000000000000002 = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (A00200000000000000000001, A00200000000000000000002, A00200000000000000000003, A00200000000000000000004, A00200000000000000000005, A00200000000000000000006, A00200000000000000000007, A00200000000000000000008, A00200000000000000000009, A0020000000000000000000A); runOnlyForDeploymentPostprocessing = 0; };
 		E00300000000000000000003 = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (A00300000000000000000001); runOnlyForDeploymentPostprocessing = 0; };
 /* End PBXSourcesBuildPhase section */
 

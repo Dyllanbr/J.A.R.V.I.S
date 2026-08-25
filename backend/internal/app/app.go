@@ -135,7 +135,49 @@ func New(
 		listRecurrences,
 		cancelRecurrence,
 	)
-	applicationInstance.server = httpserver.New(cfg.HTTPAddress, logger, financialRoutes, recurrenceRoutes)
+	recurrenceSuggestionRepository, err := transactionspostgres.NewRecurrenceSuggestionRepository(pool, postgresConfig.OperationTimeout)
+	if err != nil {
+		pool.Close()
+		return nil, err
+	}
+	listRecurrenceSuggestions, err := application.NewListRecurrenceSuggestions(
+		recurrenceSuggestionRepository,
+		recurrenceRepository,
+		recurrenceSuggestionRepository,
+		systemClock{},
+	)
+	if err != nil {
+		pool.Close()
+		return nil, err
+	}
+	dismissRecurrenceSuggestion, err := application.NewDismissRecurrenceSuggestion(
+		listRecurrenceSuggestions,
+		recurrenceSuggestionRepository,
+		recurrenceSuggestionRepository,
+		systemClock{},
+	)
+	if err != nil {
+		pool.Close()
+		return nil, err
+	}
+	prepareSuggestedRecurrence, err := application.NewPrepareSuggestedRecurrence(listRecurrenceSuggestions)
+	if err != nil {
+		pool.Close()
+		return nil, err
+	}
+	recurrenceSuggestionRoutes := httpapi.NewRecurrenceSuggestion(
+		cfg.OwnerID,
+		listRecurrenceSuggestions,
+		dismissRecurrenceSuggestion,
+		prepareSuggestedRecurrence,
+	)
+	applicationInstance.server = httpserver.New(
+		cfg.HTTPAddress,
+		logger,
+		financialRoutes,
+		recurrenceRoutes,
+		recurrenceSuggestionRoutes,
+	)
 	return applicationInstance, nil
 }
 

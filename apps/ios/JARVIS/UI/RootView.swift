@@ -86,7 +86,10 @@ private struct NativeTabContainer: UIViewControllerRepresentable {
 
         private static func recurrencesView(model: AppModel) -> AnyView {
             AnyView(
-                RecurrencesView(model: model.recurrences)
+                RecurrencesView(
+                    model: model.recurrences,
+                    suggestionsModel: model.recurrenceSuggestions
+                )
                     .environment(\.locale, Locale(identifier: "pt_BR"))
             )
         }

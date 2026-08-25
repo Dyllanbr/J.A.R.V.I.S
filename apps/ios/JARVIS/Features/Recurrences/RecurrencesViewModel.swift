@@ -1,10 +1,21 @@
 import Foundation
 import Observation
 
+enum RecurrenceReviewSource: Equatable, Sendable {
+    case manual
+    case suggestion(id: String)
+
+    var suggestionID: String? {
+        guard case let .suggestion(id) = self else { return nil }
+        return id
+    }
+}
+
 struct ReviewedRecurrence: Equatable, Sendable {
     let preview: RecurrencePreview
     let request: RecurrenceRequest
     let idempotencyKey: String
+    let source: RecurrenceReviewSource
 }
 
 enum RecurrenceCreationState: Equatable {
@@ -57,6 +68,7 @@ final class RecurrencesViewModel {
     private let api: any FinancialAPI
     private let moneyParser: BRLMoneyParser
     private let makeIdempotencyKey: () -> String
+    private let onRecurrenceConfirmed: (String?) -> Void
     private let initialStartsOn: RecurrenceCivilDate
     @ObservationIgnored private var draftGeneration: UInt64 = 0
     @ObservationIgnored private var loadGeneration: UInt64 = 0
@@ -73,11 +85,13 @@ final class RecurrencesViewModel {
         now: Date = Date(),
         calendar: Calendar = .autoupdatingCurrent,
         moneyParser: BRLMoneyParser = BRLMoneyParser(),
-        makeIdempotencyKey: @escaping () -> String = { UUID().uuidString }
+        makeIdempotencyKey: @escaping () -> String = { UUID().uuidString },
+        onRecurrenceConfirmed: @escaping (String?) -> Void = { _ in }
     ) {
         self.api = api
         self.moneyParser = moneyParser
         self.makeIdempotencyKey = makeIdempotencyKey
+        self.onRecurrenceConfirmed = onRecurrenceConfirmed
         let components = calendar.dateComponents([.year, .month, .day], from: now)
         let civilDate = try? RecurrenceCivilDate(
             year: components.year ?? 0,
@@ -150,6 +164,25 @@ final class RecurrencesViewModel {
         isPresentingCreate = true
     }
 
+    func beginSuggestionReview(preview: RecurrencePreview, suggestionID: String) {
+        guard !isPresentingCreate, RecurrenceSuggestion.isValidID(suggestionID) else { return }
+        resetCreationDraft()
+        let frozen = RecurrenceRequest(
+            description: preview.description,
+            expectedAmount: preview.expectedAmount,
+            startsOn: preview.startsOn
+        )
+        creationState = .reviewing(
+            ReviewedRecurrence(
+                preview: preview,
+                request: frozen,
+                idempotencyKey: makeIdempotencyKey(),
+                source: .suggestion(id: suggestionID)
+            )
+        )
+        isPresentingCreate = true
+    }
+
     func dismissCreation() {
         guard !isCreationBusy else { return }
         isPresentingCreate = false
@@ -192,7 +225,8 @@ final class RecurrencesViewModel {
                 ReviewedRecurrence(
                     preview: preview,
                     request: frozen,
-                    idempotencyKey: makeIdempotencyKey()
+                    idempotencyKey: makeIdempotencyKey(),
+                    source: .manual
                 )
             )
         } catch is CancellationError {
@@ -223,6 +257,7 @@ final class RecurrencesViewModel {
             )
             install(result.recurrence)
             creationState = .success(result.recurrence)
+            onRecurrenceConfirmed(reviewed.source.suggestionID)
         } catch is CancellationError {
             creationState = .retryable(reviewed)
         } catch {
@@ -236,6 +271,7 @@ final class RecurrencesViewModel {
     }
 
     func editCreation() {
+        guard reviewedRecurrence?.source == .manual else { return }
         switch creationState {
         case .reviewing, .retryable, .requiresEditing:
             creationErrorMessage = nil
@@ -464,7 +500,8 @@ final class RecurrencesViewModel {
         return switch error {
         case .connectionUnavailable, .serviceUnavailable, .invalidResponse:
             true
-        case .invalidData, .conflict, .notFound, .alreadyCancelled, .configuration:
+        case .invalidData, .conflict, .notFound, .alreadyCancelled,
+             .suggestionNotFound, .suggestionSuppressed, .configuration:
             false
         }
     }

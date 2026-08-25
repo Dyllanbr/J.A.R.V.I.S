@@ -110,6 +110,24 @@ func syntheticRecurrence(
     )
 }
 
+func syntheticRecurrenceSuggestion(
+    idSuffix: Character = "a",
+    description: String = "Internet sintética",
+    amount: Int64 = 9_990,
+    anchorDay: Int = 10,
+    proposedStartsOn: String = "2026-09-10",
+    observedDates: [String] = ["2026-05-10", "2026-06-10", "2026-07-10"]
+) -> RecurrenceSuggestion {
+    try! RecurrenceSuggestion(
+        id: "rsg_\(String(repeating: idSuffix, count: 64))",
+        description: description,
+        expectedAmount: FinancialMoney(minor: amount, currency: .brl),
+        anchorDay: anchorDay,
+        proposedStartsOn: RecurrenceCivilDate(proposedStartsOn),
+        observedDates: observedDates.map { try! RecurrenceCivilDate($0) }
+    )
+}
+
 let syntheticCategories = [
     CategoryDefinition(id: "expense.food", type: .expense, displayName: "Alimentação"),
     CategoryDefinition(id: "expense.other", type: .expense, displayName: "Outros"),
@@ -129,6 +147,9 @@ class FinancialAPISpy: FinancialAPI {
     var recurrenceCreateRequests: [(request: RecurrenceRequest, key: String)] = []
     var recurrenceCancelRequests: [(id: String, key: String)] = []
     var recurrenceListRequestCount = 0
+    var recurrenceSuggestionListRequestCount = 0
+    var recurrenceSuggestionDismissRequests: [String] = []
+    var recurrenceSuggestionPreviewRequests: [String] = []
 
     var categoriesResult: Result<[CategoryDefinition], Error> = .success(syntheticCategories)
 
@@ -157,6 +178,15 @@ class FinancialAPISpy: FinancialAPI {
         )
     ]
     var recurrenceListResult: Result<RecurrenceList, Error> = .success(RecurrenceList(items: []))
+    var recurrenceSuggestionListResult: Result<RecurrenceSuggestionList, Error> = .success(
+        RecurrenceSuggestionList(items: [])
+    )
+    var recurrenceSuggestionDismissResults: [Result<DismissedRecurrenceSuggestion, Error>] = [
+        .success(DismissedRecurrenceSuggestion(replayed: false))
+    ]
+    var recurrenceSuggestionPreviewResults: [Result<RecurrencePreview, Error>] = [
+        .success(syntheticRecurrencePreview(description: "Internet sintética", amount: 9_990, startsOn: "2026-09-10"))
+    ]
 
     func categories() async throws -> [CategoryDefinition] {
         categoryRequestCount += 1
@@ -213,5 +243,22 @@ class FinancialAPISpy: FinancialAPI {
         recurrenceCancelRequests.append((id, idempotencyKey))
         guard !recurrenceCancelResults.isEmpty else { throw FinancialAPIError.serviceUnavailable }
         return try recurrenceCancelResults.removeFirst().get()
+    }
+
+    func recurrenceSuggestions() async throws -> RecurrenceSuggestionList {
+        recurrenceSuggestionListRequestCount += 1
+        return try recurrenceSuggestionListResult.get()
+    }
+
+    func dismissRecurrenceSuggestion(id: String) async throws -> DismissedRecurrenceSuggestion {
+        recurrenceSuggestionDismissRequests.append(id)
+        guard !recurrenceSuggestionDismissResults.isEmpty else { throw FinancialAPIError.serviceUnavailable }
+        return try recurrenceSuggestionDismissResults.removeFirst().get()
+    }
+
+    func previewRecurrenceSuggestion(id: String) async throws -> RecurrencePreview {
+        recurrenceSuggestionPreviewRequests.append(id)
+        guard !recurrenceSuggestionPreviewResults.isEmpty else { throw FinancialAPIError.serviceUnavailable }
+        return try recurrenceSuggestionPreviewResults.removeFirst().get()
     }
 }

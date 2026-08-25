@@ -774,6 +774,18 @@ private final class SuspendedPreviewAPI: FinancialAPI {
         throw FinancialAPIError.invalidResponse
     }
 
+    func recurrenceSuggestions() async throws -> RecurrenceSuggestionList {
+        throw FinancialAPIError.invalidResponse
+    }
+
+    func dismissRecurrenceSuggestion(id _: String) async throws -> DismissedRecurrenceSuggestion {
+        throw FinancialAPIError.invalidResponse
+    }
+
+    func previewRecurrenceSuggestion(id _: String) async throws -> RecurrencePreview {
+        throw FinancialAPIError.invalidResponse
+    }
+
     func waitForExpensePreviewCall() async {
         guard expensePreviewContinuation == nil else { return }
         await withCheckedContinuation { expensePreviewCallWaiter = $0 }
@@ -866,6 +878,18 @@ private final class SuspendedCategoryAPI: FinancialAPI {
     }
 
     func cancelRecurrence(id _: String, idempotencyKey _: String) async throws -> RecordedRecurrence {
+        throw FinancialAPIError.invalidResponse
+    }
+
+    func recurrenceSuggestions() async throws -> RecurrenceSuggestionList {
+        throw FinancialAPIError.invalidResponse
+    }
+
+    func dismissRecurrenceSuggestion(id _: String) async throws -> DismissedRecurrenceSuggestion {
+        throw FinancialAPIError.invalidResponse
+    }
+
+    func previewRecurrenceSuggestion(id _: String) async throws -> RecurrencePreview {
         throw FinancialAPIError.invalidResponse
     }
 
