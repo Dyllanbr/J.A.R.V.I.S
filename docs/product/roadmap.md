@@ -50,7 +50,7 @@ Essa progressão não transforma o J.A.R.V.I.S. em banco nem em executor de tran
 | Incremento 2 — Receitas | **Verified** | Registro e consulta de entradas e saídas com evidência final de qualidade |
 | Incremento 3A — Categorias e filtros do histórico | **Verified** | Organização opcional por categorias do sistema, auditada e verificada |
 | Incremento 3B — Recorrências confirmadas e assinaturas | **Verified** | Compromissos recorrentes manuais, separados de Expense, Income e Category |
-| Incremento 3C — Detecção e sugestão de recorrências | **Planned** | Observar padrões, sugerir recorrências e exigir confirmação antes de promovê-las |
+| Incremento 3C — Detecção e sugestão de recorrências | **Verified** | Observar padrões, sugerir recorrências e exigir confirmação antes de promovê-las |
 | Incremento 4 — Cartões, parcelas e compromissos futuros | **Planned** | Compreensão do dinheiro já comprometido |
 | Incremento 5 — Orçamento e Disponível Seguro | **Planned** | Resposta explicável sobre quanto pode ser gasto |
 | Incremento 6 — Metas e “Posso comprar?” | **Planned** | Apoio estruturado a decisões financeiras |
@@ -152,17 +152,30 @@ Detecção automática, confiança e sugestão de possíveis recorrências não 
 
 ## Incremento 3C — Detecção e sugestão de recorrências
 
-**Estado: Planned.**
+**Estado: Verified.**
 
-O objetivo é detectar padrões que possam representar compromissos recorrentes sem transformar uma hipótese em obrigação futura automaticamente.
+O incremento detecta padrões que possam representar compromissos recorrentes sem transformar uma hipótese em obrigação futura automaticamente.
 
 O fluxo conceitual permanece:
 
 **Observar → Inferir → Sugerir → Confirmar**
 
-Uma possível recorrência detectada não é estado do aggregate `Recurrence`. A detecção deve permanecer separada do lifecycle `ACTIVE → CANCELLED`, e somente a confirmação explícita do usuário poderá iniciar a criação de uma recorrência confirmada.
+Uma possível recorrência detectada não é estado do aggregate `Recurrence`. A detecção permanece separada do lifecycle `ACTIVE → CANCELLED`, e somente a confirmação explícita do usuário inicia a criação de uma recorrência confirmada.
 
-A evolução é acompanhada operacionalmente pela Issue #70 e poderá futuramente alimentar projeções, orçamento, Disponível Seguro, alertas, Personal Financial Model e nudges contextuais. Essas capacidades futuras permanecem **Planned**.
+A entrega verificada inclui:
+
+- detector determinístico e conservador, expense-only, baseado em descrição normalizada, valor exato, recorrência mensal e evidência recente;
+- `RecurrenceSuggestion` derivada, efêmera e distinta de `Recurrence`;
+- identidade estável da evidência e suppression persistida para “Agora não”;
+- bloqueio por `Recurrence` `ACTIVE` equivalente e novo ciclo de evidências após cancelamento;
+- API/OpenAPI próprias para listar, dispensar e preparar preview de sugestões;
+- apresentação de Sugestões dentro da área existente de Recorrências no iOS;
+- fluxo Suggestion → Preview → Review → Confirm → Recurrence, sem criação automática;
+- testes de domínio, PostgreSQL, HTTP, Playwright, iOS e E2E real.
+
+A auditoria final independente concluiu com P0=0, P1=0, P2=0 e P3=0.
+
+Projeções, orçamento, Disponível Seguro, alertas, Personal Financial Model, recorrências de receitas, alterações automáticas de valor e nudges contextuais continuam **Planned**. A detecção atual não usa IA/LLM para decidir recorrência.
 
 ## Incremento 4 — Cartões, parcelas e compromissos futuros
 
