@@ -10,6 +10,11 @@ final class StubFinancialAPI: FinancialAPI {
         case listError
     }
 
+    private enum CardScenario: String {
+        case normal
+        case listError
+    }
+
     private struct StoredRecurrenceCreate {
         let request: RecurrenceRequest
         let recurrence: Recurrence
@@ -20,6 +25,16 @@ final class StubFinancialAPI: FinancialAPI {
         let recurrence: Recurrence
     }
 
+    private struct StoredCardCreate {
+        let request: CreditCardRequest
+        let card: CreditCard
+    }
+
+    private struct StoredCardArchive {
+        let cardID: String
+        let card: CreditCard
+    }
+
     private var transactionsByID: [String: FinancialTransaction] = [:]
     private var idempotency: [String: String] = [:]
     private var recurrencesByID: [String: Recurrence] = [:]
@@ -27,14 +42,19 @@ final class StubFinancialAPI: FinancialAPI {
     private var recurrenceCancels: [String: StoredRecurrenceCancel] = [:]
     private var dismissedSuggestionIDs: Set<String> = []
     private var invalidatedSuggestionIDs: Set<String> = []
+    private var cardsByID: [String: CreditCard] = [:]
+    private var cardCreates: [String: StoredCardCreate] = [:]
+    private var cardArchives: [String: StoredCardArchive] = [:]
     private var nextSequence = 1
     private let timestampCodec = RFC3339DateCodec()
     private let suggestionScenario: SuggestionScenario
+    private let cardScenario: CardScenario
 
     init(environment: [String: String] = ProcessInfo.processInfo.environment) {
         suggestionScenario = SuggestionScenario(
             rawValue: environment["JARVIS_IOS_SUGGESTION_SCENARIO"] ?? "normal"
         ) ?? .normal
+        cardScenario = CardScenario(rawValue: environment["JARVIS_IOS_CARD_SCENARIO"] ?? "normal") ?? .normal
         let active = Recurrence(
             id: "rec_ui_synthetic_active",
             description: "Academia sintética",
@@ -297,6 +317,93 @@ final class StubFinancialAPI: FinancialAPI {
         )
     }
 
+    func previewCreditCard(_ request: CreditCardRequest) async throws -> CreditCardPreview {
+        try await Task.sleep(for: .milliseconds(80))
+        let name = request.name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty,
+              request.lastFour.map(CreditCardPreview.isValidLastFour) ?? true,
+              (1...31).contains(request.closingDay),
+              (1...31).contains(request.dueDay),
+              request.creditLimit.map({ $0.minor > 0 && $0.currency == .brl }) ?? true
+        else { throw FinancialAPIError.invalidData }
+        return CreditCardPreview(
+            name: name,
+            lastFour: request.lastFour,
+            brand: request.brand,
+            closingDay: request.closingDay,
+            dueDay: request.dueDay,
+            creditLimit: request.creditLimit
+        )
+    }
+
+    func createCreditCard(
+        _ request: CreditCardRequest,
+        idempotencyKey: String
+    ) async throws -> RecordedCreditCard {
+        try await Task.sleep(for: .milliseconds(80))
+        if let stored = cardCreates[idempotencyKey] {
+            guard stored.request == request else { throw FinancialAPIError.conflict }
+            return RecordedCreditCard(card: stored.card, replayed: true)
+        }
+        let preview = try await previewCreditCard(request)
+        let id = nextCardID()
+        let card = CreditCard(
+            id: id,
+            name: preview.name,
+            lastFour: preview.lastFour,
+            brand: preview.brand,
+            closingDay: preview.closingDay,
+            dueDay: preview.dueDay,
+            creditLimit: preview.creditLimit,
+            createdAt: timestampCodec.encode(Date())
+        )
+        cardsByID[id] = card
+        cardCreates[idempotencyKey] = StoredCardCreate(request: request, card: card)
+        return RecordedCreditCard(card: card, replayed: false)
+    }
+
+    func creditCards() async throws -> CreditCardList {
+        try await Task.sleep(for: .milliseconds(80))
+        if cardScenario == .listError { throw FinancialAPIError.serviceUnavailable }
+        return CreditCardList(items: cardsByID.values.sorted { lhs, rhs in
+            if lhs.status != rhs.status { return lhs.status == .active }
+            if lhs.name != rhs.name { return lhs.name < rhs.name }
+            if lhs.createdAt != rhs.createdAt { return lhs.createdAt > rhs.createdAt }
+            return lhs.id < rhs.id
+        })
+    }
+
+    func creditCard(id: String) async throws -> CreditCard {
+        try await Task.sleep(for: .milliseconds(80))
+        guard let card = cardsByID[id] else { throw FinancialAPIError.creditCardNotFound }
+        return card
+    }
+
+    func archiveCreditCard(id: String, idempotencyKey: String) async throws -> RecordedCreditCard {
+        try await Task.sleep(for: .milliseconds(80))
+        if let stored = cardArchives[idempotencyKey] {
+            guard stored.cardID == id else { throw FinancialAPIError.conflict }
+            return RecordedCreditCard(card: stored.card, replayed: true)
+        }
+        guard let card = cardsByID[id] else { throw FinancialAPIError.creditCardNotFound }
+        guard card.status == .active else { throw FinancialAPIError.creditCardAlreadyArchived }
+        let archived = CreditCard(
+            id: card.id,
+            name: card.name,
+            lastFour: card.lastFour,
+            brand: card.brand,
+            closingDay: card.closingDay,
+            dueDay: card.dueDay,
+            creditLimit: card.creditLimit,
+            status: .archived,
+            createdAt: card.createdAt,
+            archivedAt: timestampCodec.encode(Date())
+        )
+        cardsByID[id] = archived
+        cardArchives[idempotencyKey] = StoredCardArchive(cardID: id, card: archived)
+        return RecordedCreditCard(card: archived, replayed: false)
+    }
+
     private func canonicalTimestamp(_ value: String) throws -> String {
         timestampCodec.encode(try timestampCodec.decode(value))
     }
@@ -304,6 +411,11 @@ final class StubFinancialAPI: FinancialAPI {
     private func nextID(prefix: String) -> String {
         defer { nextSequence += 1 }
         return "\(prefix)_ui_synthetic_\(String(format: "%03d", nextSequence))"
+    }
+
+    private func nextCardID() -> String {
+        defer { nextSequence += 1 }
+        return "card_\(String(format: "%032x", nextSequence))"
     }
 
     private func validate(categoryID: String?, for type: TransactionType) throws {

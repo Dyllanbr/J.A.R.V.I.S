@@ -31,6 +31,9 @@ func TestMigration003PreservesVersion2ExpenseData(t *testing.T) {
 			t.Fatal("migration UP failed")
 		}
 		if err := migrations.Down(ctx, connection); err != nil {
+			t.Fatal("migration 007 DOWN failed")
+		}
+		if err := migrations.Down(ctx, connection); err != nil {
 			t.Fatal("migration 006 DOWN failed")
 		}
 		if err := migrations.Down(ctx, connection); err != nil {
@@ -67,7 +70,7 @@ func TestMigration003PreservesVersion2ExpenseData(t *testing.T) {
 		if err := migrations.Up(ctx, connection); err != nil {
 			t.Fatal("migration 002 to current failed")
 		}
-		assertMigrationVersion(t, ctx, connection, 6)
+		assertMigrationVersion(t, ctx, connection, 7)
 	})
 
 	var transactionType, paymentMethod, operationType string
@@ -89,6 +92,9 @@ func TestMigration003PreservesVersion2ExpenseData(t *testing.T) {
 	assertFinancialRowCounts(t, ctx, pool, 1, 1, 1)
 
 	withConnection(t, ctx, pool, func(connection *pgx.Conn) {
+		if err := migrations.Down(ctx, connection); err != nil {
+			t.Fatal("migration 007 DOWN with no credit card data failed")
+		}
 		if err := migrations.Down(ctx, connection); err != nil {
 			t.Fatal("migration 006 DOWN with no suppression data failed")
 		}
@@ -121,6 +127,9 @@ func TestMigration003DownFailsAtomicallyWhenIncomeExists(t *testing.T) {
 	}
 
 	withConnection(t, ctx, pool, func(connection *pgx.Conn) {
+		if err := migrations.Down(ctx, connection); err != nil {
+			t.Fatal("migration 007 DOWN with no credit card data failed")
+		}
 		if err := migrations.Down(ctx, connection); err != nil {
 			t.Fatal("migration 006 DOWN with no suppression data failed")
 		}

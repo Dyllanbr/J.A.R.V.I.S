@@ -114,6 +114,7 @@ final class AppModel {
     let history: HistoryViewModel
     let recurrences: RecurrencesViewModel
     let recurrenceSuggestions: RecurrenceSuggestionsViewModel
+    let creditCards: CreditCardsViewModel
 
     init(api: any FinancialAPI, now: Date = Date()) {
         let categories = CategoryCatalogModel(api: api)
@@ -129,6 +130,7 @@ final class AppModel {
                 recurrenceSuggestions?.recurrenceWasConfirmed(suggestionID: suggestionID)
             }
         )
+        creditCards = CreditCardsViewModel(api: api)
         registration = RegistrationViewModel(
             api: api,
             categories: categories,

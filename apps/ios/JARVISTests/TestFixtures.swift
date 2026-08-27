@@ -128,6 +128,42 @@ func syntheticRecurrenceSuggestion(
     )
 }
 
+func syntheticCreditCardPreview(
+    name: String = "Cartão sintético",
+    lastFour: String? = "4821",
+    brand: CreditCardBrand? = .visa,
+    creditLimit: Int64? = 250_000
+) -> CreditCardPreview {
+    CreditCardPreview(
+        name: name,
+        lastFour: lastFour,
+        brand: brand,
+        closingDay: 5,
+        dueDay: 12,
+        creditLimit: creditLimit.map { FinancialMoney(minor: $0, currency: .brl) }
+    )
+}
+
+func syntheticCreditCard(
+    idSuffix: Character = "a",
+    name: String = "Cartão sintético",
+    status: CreditCardStatus = .active,
+    archivedAt: String? = nil
+) -> CreditCard {
+    CreditCard(
+        id: "card_\(String(repeating: idSuffix, count: 32))",
+        name: name,
+        lastFour: "4821",
+        brand: .visa,
+        closingDay: 5,
+        dueDay: 12,
+        creditLimit: FinancialMoney(minor: 250_000, currency: .brl),
+        status: status,
+        createdAt: "2026-08-26T12:00:00Z",
+        archivedAt: archivedAt
+    )
+}
+
 let syntheticCategories = [
     CategoryDefinition(id: "expense.food", type: .expense, displayName: "Alimentação"),
     CategoryDefinition(id: "expense.other", type: .expense, displayName: "Outros"),
@@ -150,6 +186,11 @@ class FinancialAPISpy: FinancialAPI {
     var recurrenceSuggestionListRequestCount = 0
     var recurrenceSuggestionDismissRequests: [String] = []
     var recurrenceSuggestionPreviewRequests: [String] = []
+    var creditCardPreviewRequests: [CreditCardRequest] = []
+    var creditCardCreateRequests: [(request: CreditCardRequest, key: String)] = []
+    var creditCardListRequestCount = 0
+    var creditCardDetailRequests: [String] = []
+    var creditCardArchiveRequests: [(id: String, key: String)] = []
 
     var categoriesResult: Result<[CategoryDefinition], Error> = .success(syntheticCategories)
 
@@ -186,6 +227,20 @@ class FinancialAPISpy: FinancialAPI {
     ]
     var recurrenceSuggestionPreviewResults: [Result<RecurrencePreview, Error>] = [
         .success(syntheticRecurrencePreview(description: "Internet sintética", amount: 9_990, startsOn: "2026-09-10"))
+    ]
+    var creditCardPreviewResult: Result<CreditCardPreview, Error> = .success(syntheticCreditCardPreview())
+    var creditCardCreateResults: [Result<RecordedCreditCard, Error>] = [
+        .success(RecordedCreditCard(card: syntheticCreditCard(), replayed: false))
+    ]
+    var creditCardListResult: Result<CreditCardList, Error> = .success(CreditCardList(items: []))
+    var creditCardDetailResults: [Result<CreditCard, Error>] = [.success(syntheticCreditCard())]
+    var creditCardArchiveResults: [Result<RecordedCreditCard, Error>] = [
+        .success(
+            RecordedCreditCard(
+                card: syntheticCreditCard(status: .archived, archivedAt: "2026-08-27T12:00:00Z"),
+                replayed: false
+            )
+        )
     ]
 
     func categories() async throws -> [CategoryDefinition] {
@@ -260,5 +315,36 @@ class FinancialAPISpy: FinancialAPI {
         recurrenceSuggestionPreviewRequests.append(id)
         guard !recurrenceSuggestionPreviewResults.isEmpty else { throw FinancialAPIError.serviceUnavailable }
         return try recurrenceSuggestionPreviewResults.removeFirst().get()
+    }
+
+    func previewCreditCard(_ request: CreditCardRequest) async throws -> CreditCardPreview {
+        creditCardPreviewRequests.append(request)
+        return try creditCardPreviewResult.get()
+    }
+
+    func createCreditCard(
+        _ request: CreditCardRequest,
+        idempotencyKey: String
+    ) async throws -> RecordedCreditCard {
+        creditCardCreateRequests.append((request, idempotencyKey))
+        guard !creditCardCreateResults.isEmpty else { throw FinancialAPIError.serviceUnavailable }
+        return try creditCardCreateResults.removeFirst().get()
+    }
+
+    func creditCards() async throws -> CreditCardList {
+        creditCardListRequestCount += 1
+        return try creditCardListResult.get()
+    }
+
+    func creditCard(id: String) async throws -> CreditCard {
+        creditCardDetailRequests.append(id)
+        guard !creditCardDetailResults.isEmpty else { throw FinancialAPIError.serviceUnavailable }
+        return try creditCardDetailResults.removeFirst().get()
+    }
+
+    func archiveCreditCard(id: String, idempotencyKey: String) async throws -> RecordedCreditCard {
+        creditCardArchiveRequests.append((id, idempotencyKey))
+        guard !creditCardArchiveResults.isEmpty else { throw FinancialAPIError.serviceUnavailable }
+        return try creditCardArchiveResults.removeFirst().get()
     }
 }

@@ -501,7 +501,8 @@ final class RecurrencesViewModel {
         case .connectionUnavailable, .serviceUnavailable, .invalidResponse:
             true
         case .invalidData, .conflict, .notFound, .alreadyCancelled,
-             .suggestionNotFound, .suggestionSuppressed, .configuration:
+             .suggestionNotFound, .suggestionSuppressed, .creditCardNotFound,
+             .creditCardAlreadyArchived, .configuration:
             false
         }
     }

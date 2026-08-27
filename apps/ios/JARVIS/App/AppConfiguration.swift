@@ -120,4 +120,24 @@ private struct UnavailableFinancialAPI: FinancialAPI {
     func previewRecurrenceSuggestion(id _: String) async throws -> RecurrencePreview {
         throw FinancialAPIError.configuration
     }
+
+    func previewCreditCard(_: CreditCardRequest) async throws -> CreditCardPreview {
+        throw FinancialAPIError.configuration
+    }
+
+    func createCreditCard(_: CreditCardRequest, idempotencyKey _: String) async throws -> RecordedCreditCard {
+        throw FinancialAPIError.configuration
+    }
+
+    func creditCards() async throws -> CreditCardList {
+        throw FinancialAPIError.configuration
+    }
+
+    func creditCard(id _: String) async throws -> CreditCard {
+        throw FinancialAPIError.configuration
+    }
+
+    func archiveCreditCard(id _: String, idempotencyKey _: String) async throws -> RecordedCreditCard {
+        throw FinancialAPIError.configuration
+    }
 }

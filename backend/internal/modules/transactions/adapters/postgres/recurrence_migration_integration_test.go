@@ -164,7 +164,7 @@ func TestMigration005FreshSchemaConstraintsAndSafeDownReapply(t *testing.T) {
 		if err := migrations.Up(ctx, connection); err != nil {
 			t.Fatalf("migration 005 reapply failed: %v", err)
 		}
-		assertMigrationVersion(t, ctx, connection, 6)
+		assertMigrationVersion(t, ctx, connection, 7)
 	})
 	assertTableExists(t, ctx, pool, "recurrence_suggestion_suppressions", true)
 }
@@ -191,7 +191,7 @@ func TestMigration005UpgradeFrom004PreservesFinancialAndCategoryData(t *testing.
 		if err := migrations.Up(ctx, connection); err != nil {
 			t.Fatalf("migration 004 to 005 failed: %v", err)
 		}
-		assertMigrationVersion(t, ctx, connection, 6)
+		assertMigrationVersion(t, ctx, connection, 7)
 	})
 	moveToMigration005(t, ctx, pool)
 	assertFinancialRowCounts(t, ctx, pool, 1, 1, 1)

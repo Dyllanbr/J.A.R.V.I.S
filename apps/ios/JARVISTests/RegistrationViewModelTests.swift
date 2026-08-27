@@ -786,6 +786,12 @@ private final class SuspendedPreviewAPI: FinancialAPI {
         throw FinancialAPIError.invalidResponse
     }
 
+    func previewCreditCard(_: CreditCardRequest) async throws -> CreditCardPreview { throw FinancialAPIError.invalidResponse }
+    func createCreditCard(_: CreditCardRequest, idempotencyKey _: String) async throws -> RecordedCreditCard { throw FinancialAPIError.invalidResponse }
+    func creditCards() async throws -> CreditCardList { throw FinancialAPIError.invalidResponse }
+    func creditCard(id _: String) async throws -> CreditCard { throw FinancialAPIError.invalidResponse }
+    func archiveCreditCard(id _: String, idempotencyKey _: String) async throws -> RecordedCreditCard { throw FinancialAPIError.invalidResponse }
+
     func waitForExpensePreviewCall() async {
         guard expensePreviewContinuation == nil else { return }
         await withCheckedContinuation { expensePreviewCallWaiter = $0 }
@@ -892,6 +898,12 @@ private final class SuspendedCategoryAPI: FinancialAPI {
     func previewRecurrenceSuggestion(id _: String) async throws -> RecurrencePreview {
         throw FinancialAPIError.invalidResponse
     }
+
+    func previewCreditCard(_: CreditCardRequest) async throws -> CreditCardPreview { throw FinancialAPIError.invalidResponse }
+    func createCreditCard(_: CreditCardRequest, idempotencyKey _: String) async throws -> RecordedCreditCard { throw FinancialAPIError.invalidResponse }
+    func creditCards() async throws -> CreditCardList { throw FinancialAPIError.invalidResponse }
+    func creditCard(id _: String) async throws -> CreditCard { throw FinancialAPIError.invalidResponse }
+    func archiveCreditCard(id _: String, idempotencyKey _: String) async throws -> RecordedCreditCard { throw FinancialAPIError.invalidResponse }
 
     func waitForCategoryRequest() async {
         guard categoryContinuation == nil else { return }

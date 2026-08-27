@@ -90,7 +90,11 @@ final class RecurrenceSuggestionsViewModelTests: XCTestCase {
         await api.waitForList(call: 3)
         XCTAssertEqual(model.suggestions, [], "the older GET resurrected a dismissed suggestion")
 
+        let reconciliationPublished = awaitStateChange(of: model) {
+            $0.suggestions == [newEvidenceSuggestion]
+        }
         api.resolveList(call: 3, items: [newEvidenceSuggestion])
+        await reconciliationPublished.value
         await olderLoad.value
         await dismiss.value
         XCTAssertEqual(model.suggestions, [newEvidenceSuggestion])
