@@ -1,7 +1,7 @@
 # Product Book do J.A.R.V.I.S.
 
 - Maturidade documental: **Proposed**
-- Estado das capacidades: **misto** — Incrementos 1, 2, 3A e 3B **Verified**; Incremento 3C e demais capacidades futuras **Planned**
+- Estado das capacidades: **misto** — Incrementos 1, 2, 3A, 3B e 3C **Verified**; demais capacidades futuras **Planned**
 
 ## Propósito do documento
 
@@ -73,7 +73,7 @@ A IA não é a fonte de verdade dos cálculos financeiros. Ela não deve possuir
 
 Na visão futura, o Financial Engine realiza cálculos financeiros determinísticos. Verdades financeiras, limites, projeções e composições não podem depender da criatividade ou da probabilidade de uma resposta de IA.
 
-O núcleo determinístico de despesas do Incremento 1 e o registro determinístico de receitas do Incremento 2 são capacidades atuais **Verified**. Categorias do Incremento 3A e recorrências confirmadas do Incremento 3B também possuem implementação e evidência verificadas dentro de seus respectivos escopos. Nenhuma dessas entregas significa que todo o Financial Engine futuro já exista.
+O núcleo determinístico de despesas do Incremento 1 e o registro determinístico de receitas do Incremento 2 são capacidades atuais **Verified**. Categorias do Incremento 3A, recorrências confirmadas do Incremento 3B e detecção determinística com sugestões do Incremento 3C também possuem implementação e evidência verificadas dentro de seus respectivos escopos. Nenhuma dessas entregas significa que todo o Financial Engine futuro já exista.
 
 ### Policy / Security Engine
 
@@ -160,15 +160,30 @@ Uma `Recurrence` nunca cria `Expense` ou `Income` automaticamente, não executa 
 
 Detecção automática, confiança e sugestão de possíveis recorrências não fazem parte do Incremento 3B.
 
-## Próxima capacidade — Incremento 3C
+## Estado atual — Incremento 3C
 
-O Incremento 3C — Detecção e sugestão de recorrências permanece **Planned** e é acompanhado operacionalmente pela Issue #70.
+O Incremento 3C — Detecção e sugestão de recorrências está **Verified**. A entrega observa despesas já registradas para derivar sugestões conservadoras, sem alterar fatos financeiros ou transformar inferência em compromisso automaticamente.
 
 Seu fluxo conceitual é:
 
 **Observar → Inferir → Sugerir → Confirmar**
 
-Uma possível recorrência detectada não é estado do aggregate `Recurrence`. Nenhum padrão observado deve se transformar automaticamente em obrigação futura; somente a confirmação explícita do usuário poderá iniciar a criação de uma recorrência confirmada.
+Dentro desse escopo, o sistema:
+
+- considera somente despesas com mesma descrição após normalização conservadora e mesmo valor exato;
+- exige ao menos três ocorrências em meses civis consecutivos, sem duplicidade equivalente no mês;
+- aceita consistência de dia em ±2, preserva fim de mês e observa janela de até seis meses com evidência recente;
+- produz uma `RecurrenceSuggestion` derivada, efêmera e separada de `Recurrence`;
+- mostra evidência e contexto na área existente de Recorrências no iOS, sem criar uma quarta tab;
+- permite “Agora não” por decisão explícita, persistindo somente a suppression daquela identidade/evidência;
+- permite que evidência materialmente nova origine outra sugestão;
+- reutiliza o fluxo Suggestion → Preview → Review → Confirm → Recurrence, com dados da sugestão validados server-side.
+
+Uma possível recorrência detectada não é estado do aggregate `Recurrence`: `POSSIBLE`, `DETECTED` e `SUGGESTED` não pertencem ao lifecycle `ACTIVE → CANCELLED`. Revisar ou aceitar uma sugestão não cria uma recorrência imediatamente; somente `Confirm` explícito cria o compromisso confirmado. Uma `Recurrence` `ACTIVE` equivalente impede sugestão duplicada. Uma `Recurrence` `CANCELLED` não bloqueia para sempre: novas evidências posteriores podem formar outra sugestão, enquanto despesas históricas permanecem inalteradas.
+
+A detecção é determinística; nenhuma IA ou LLM decide se uma despesa é recorrente. A explicabilidade vem das ocorrências, do valor e das datas observadas, não de score ou porcentagem de confiança.
+
+A auditoria final independente foi concluída com P0=0, P1=0, P2=0 e P3=0.
 
 Projeções, orçamento, Disponível Seguro, alertas, Personal Financial Model e nudges contextuais que utilizem esses sinais continuam capacidades futuras **Planned**.
 
@@ -179,7 +194,6 @@ Detalhes e evidências permanecem nas fontes especializadas de [arquitetura](../
 As capacidades a seguir estão **Planned**. A presença nesta visão não define ordem, prazo, escopo técnico nem compromisso de entrega:
 
 - categorias customizadas e reclassificação;
-- detecção e sugestão de possíveis recorrências;
 - cartões e parcelas;
 - compromissos futuros;
 - orçamento;
