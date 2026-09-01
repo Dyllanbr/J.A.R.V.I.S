@@ -26,12 +26,14 @@ private struct NativeTabContainer: UIViewControllerRepresentable {
         private let registerController: UIHostingController<AnyView>
         private let historyController: UIHostingController<AnyView>
         private let recurrencesController: UIHostingController<AnyView>
+        private let cardsController: UIHostingController<AnyView>
 
         init(model: AppModel) {
             currentModel = model
             registerController = UIHostingController(rootView: Self.registerView(model: model))
             historyController = UIHostingController(rootView: Self.historyView(model: model))
             recurrencesController = UIHostingController(rootView: Self.recurrencesView(model: model))
+            cardsController = UIHostingController(rootView: Self.cardsView(model: model))
             super.init(nibName: nil, bundle: nil)
 
             registerController.tabBarItem = Self.tabBarItem(
@@ -52,7 +54,16 @@ private struct NativeTabContainer: UIViewControllerRepresentable {
                 selectedImage: "arrow.triangle.2.circlepath.circle.fill",
                 identifier: "tab.recurrences"
             )
-            setViewControllers([registerController, historyController, recurrencesController], animated: false)
+            cardsController.tabBarItem = Self.tabBarItem(
+                title: "Cartões",
+                image: "creditcard",
+                selectedImage: "creditcard.fill",
+                identifier: "tab.cards"
+            )
+            setViewControllers(
+                [registerController, historyController, recurrencesController, cardsController],
+                animated: false
+            )
         }
 
         @available(*, unavailable)
@@ -68,6 +79,7 @@ private struct NativeTabContainer: UIViewControllerRepresentable {
             registerController.rootView = Self.registerView(model: model)
             historyController.rootView = Self.historyView(model: model)
             recurrencesController.rootView = Self.recurrencesView(model: model)
+            cardsController.rootView = Self.cardsView(model: model)
         }
 
         private static func registerView(model: AppModel) -> AnyView {
@@ -90,6 +102,13 @@ private struct NativeTabContainer: UIViewControllerRepresentable {
                     model: model.recurrences,
                     suggestionsModel: model.recurrenceSuggestions
                 )
+                    .environment(\.locale, Locale(identifier: "pt_BR"))
+            )
+        }
+
+        private static func cardsView(model: AppModel) -> AnyView {
+            AnyView(
+                CreditCardsView(model: model.creditCards)
                     .environment(\.locale, Locale(identifier: "pt_BR"))
             )
         }

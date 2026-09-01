@@ -88,3 +88,21 @@ func TestGeneratorCreatesDomainCompatibleDistinctRecurrenceIDs(t *testing.T) {
 		t.Fatalf("generated Recurrence ID is not domain compatible: %v", err)
 	}
 }
+
+func TestCreditCardGeneratorCreatesDomainCompatibleDistinctIDs(t *testing.T) {
+	generator := randomid.NewCreditCardGenerator()
+	first, err := generator.NewCreditCardID()
+	if err != nil {
+		t.Fatalf("first NewCreditCardID() error = %v", err)
+	}
+	second, err := generator.NewCreditCardID()
+	if err != nil {
+		t.Fatalf("second NewCreditCardID() error = %v", err)
+	}
+	if first == second || len(first) != len("card_")+32 {
+		t.Fatal("generator did not create distinct 128-bit opaque CreditCard IDs")
+	}
+	if err := domain.ValidateCreditCardID(first); err != nil {
+		t.Fatalf("generated CreditCard ID is not domain compatible: %v", err)
+	}
+}

@@ -15,6 +15,11 @@ protocol FinancialAPI {
     func recurrenceSuggestions() async throws -> RecurrenceSuggestionList
     func dismissRecurrenceSuggestion(id: String) async throws -> DismissedRecurrenceSuggestion
     func previewRecurrenceSuggestion(id: String) async throws -> RecurrencePreview
+    func previewCreditCard(_ request: CreditCardRequest) async throws -> CreditCardPreview
+    func createCreditCard(_ request: CreditCardRequest, idempotencyKey: String) async throws -> RecordedCreditCard
+    func creditCards() async throws -> CreditCardList
+    func creditCard(id: String) async throws -> CreditCard
+    func archiveCreditCard(id: String, idempotencyKey: String) async throws -> RecordedCreditCard
 }
 
 enum FinancialAPIError: Error, Equatable {
@@ -26,6 +31,8 @@ enum FinancialAPIError: Error, Equatable {
     case alreadyCancelled
     case suggestionNotFound
     case suggestionSuppressed
+    case creditCardNotFound
+    case creditCardAlreadyArchived
     case invalidResponse
     case configuration
 
@@ -47,6 +54,10 @@ enum FinancialAPIError: Error, Equatable {
             "Esta sugestão não está mais disponível. Atualizamos a lista para você."
         case .suggestionSuppressed:
             "Esta sugestão já foi descartada. Atualizamos a lista para você."
+        case .creditCardNotFound:
+            "Este cartão não está mais disponível. Atualize a lista e tente novamente."
+        case .creditCardAlreadyArchived:
+            "Este cartão já está arquivado. Atualizamos os dados para você."
         case .invalidResponse, .configuration:
             "Não foi possível concluir a operação. Tente novamente."
         }
@@ -249,6 +260,57 @@ final class URLSessionFinancialAPIClient: FinancialAPI {
         return try decode(data)
     }
 
+    func previewCreditCard(_ requestBody: CreditCardRequest) async throws -> CreditCardPreview {
+        let request = try makeRequest(path: "v1/cards/preview", method: "POST", body: requestBody)
+        let (data, response) = try await perform(request)
+        try requireCreditCardStatus(response, expected: 200, data: data)
+        return try decode(data)
+    }
+
+    func createCreditCard(
+        _ requestBody: CreditCardRequest,
+        idempotencyKey: String
+    ) async throws -> RecordedCreditCard {
+        var request = try makeRequest(path: "v1/cards", method: "POST", body: requestBody)
+        request.setValue(idempotencyKey, forHTTPHeaderField: "Idempotency-Key")
+        let (data, response) = try await perform(request)
+        try requireCreditCardStatus(response, expected: 201, data: data)
+        let card: CreditCard = try decode(data)
+        guard creditCardTimestampsAreValid(card) else { throw FinancialAPIError.invalidResponse }
+        return RecordedCreditCard(card: card, replayed: try replayedValue(response))
+    }
+
+    func creditCards() async throws -> CreditCardList {
+        var request = baseRequest(url: baseURL.appendingPathComponent("v1/cards"), method: "GET")
+        request.cachePolicy = .reloadIgnoringLocalCacheData
+        let (data, response) = try await perform(request)
+        try requireCreditCardStatus(response, expected: 200, data: data)
+        let result: CreditCardList = try decode(data)
+        guard result.items.allSatisfy(creditCardTimestampsAreValid) else {
+            throw FinancialAPIError.invalidResponse
+        }
+        return result
+    }
+
+    func creditCard(id: String) async throws -> CreditCard {
+        let request = try creditCardRequest(id: id, action: nil, method: "GET")
+        let (data, response) = try await perform(request)
+        try requireCreditCardStatus(response, expected: 200, data: data)
+        let card: CreditCard = try decode(data)
+        guard creditCardTimestampsAreValid(card) else { throw FinancialAPIError.invalidResponse }
+        return card
+    }
+
+    func archiveCreditCard(id: String, idempotencyKey: String) async throws -> RecordedCreditCard {
+        var request = try creditCardRequest(id: id, action: "archive", method: "POST")
+        request.setValue(idempotencyKey, forHTTPHeaderField: "Idempotency-Key")
+        let (data, response) = try await perform(request)
+        try requireCreditCardStatus(response, expected: 200, data: data)
+        let card: CreditCard = try decode(data)
+        guard creditCardTimestampsAreValid(card) else { throw FinancialAPIError.invalidResponse }
+        return RecordedCreditCard(card: card, replayed: try replayedValue(response))
+    }
+
     private func makeRequest<Body: Encodable>(path: String, method: String, body: Body) throws -> URLRequest {
         var request = baseRequest(url: baseURL.appendingPathComponent(path), method: method)
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -277,6 +339,13 @@ final class URLSessionFinancialAPIClient: FinancialAPI {
             .appendingPathComponent(id)
             .appendingPathComponent(action)
         return baseRequest(url: url, method: "POST")
+    }
+
+    private func creditCardRequest(id: String, action: String?, method: String) throws -> URLRequest {
+        guard CreditCard.isValidID(id) else { throw FinancialAPIError.invalidData }
+        var url = baseURL.appendingPathComponent("v1").appendingPathComponent("cards").appendingPathComponent(id)
+        if let action { url = url.appendingPathComponent(action) }
+        return baseRequest(url: url, method: method)
     }
 
     private func perform(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
@@ -336,6 +405,34 @@ final class URLSessionFinancialAPIClient: FinancialAPI {
         }
     }
 
+    private func requireCreditCardStatus(_ response: HTTPURLResponse, expected: Int, data: Data) throws {
+        guard response.statusCode == expected else {
+            let code = try? JSONDecoder().decode(APIErrorEnvelope.self, from: data).error.code
+            switch (response.statusCode, code) {
+            case (400, _):
+                throw FinancialAPIError.invalidData
+            case (404, "CREDIT_CARD_NOT_FOUND"):
+                throw FinancialAPIError.creditCardNotFound
+            case (409, "CREDIT_CARD_ALREADY_ARCHIVED"):
+                throw FinancialAPIError.creditCardAlreadyArchived
+            case (409, "IDEMPOTENCY_KEY_REUSED"):
+                throw FinancialAPIError.conflict
+            case (500...599, _):
+                throw FinancialAPIError.serviceUnavailable
+            default:
+                throw FinancialAPIError.invalidResponse
+            }
+        }
+    }
+
+    private func replayedValue(_ response: HTTPURLResponse) throws -> Bool {
+        switch response.value(forHTTPHeaderField: "Idempotency-Replayed") {
+        case nil: false
+        case "true": true
+        default: throw FinancialAPIError.invalidResponse
+        }
+    }
+
     private func decode<Value: Decodable>(_ data: Data) throws -> Value {
         do {
             return try JSONDecoder().decode(Value.self, from: data)
@@ -373,6 +470,17 @@ final class URLSessionFinancialAPIClient: FinancialAPI {
         case .cancelled:
             guard let cancelledAt = recurrence.cancelledAt else { return false }
             return (try? timestampCodec.decode(cancelledAt)) != nil
+        }
+    }
+
+    private func creditCardTimestampsAreValid(_ card: CreditCard) -> Bool {
+        guard (try? timestampCodec.decode(card.createdAt)) != nil else { return false }
+        switch card.status {
+        case .active:
+            return card.archivedAt == nil
+        case .archived:
+            guard let archivedAt = card.archivedAt else { return false }
+            return (try? timestampCodec.decode(archivedAt)) != nil
         }
     }
 

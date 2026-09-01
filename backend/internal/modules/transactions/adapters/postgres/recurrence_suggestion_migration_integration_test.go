@@ -19,6 +19,7 @@ func TestMigration006FreshSchemaConstraintsSafeDownAndReapply(t *testing.T) {
 	pool := newMigratedTestDatabase(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
+	moveToMigrationVersion(t, ctx, pool, 6)
 	insertSyntheticUser(t, ctx, pool, syntheticUserID)
 	const ownerB = "usr_suggestion_migration_owner_b"
 	insertSyntheticUser(t, ctx, pool, ownerB)
@@ -119,7 +120,7 @@ func TestMigration006FreshSchemaConstraintsSafeDownAndReapply(t *testing.T) {
 		if err := migrations.Up(ctx, connection); err != nil {
 			t.Fatalf("migration 006 reapply failed: %v", err)
 		}
-		assertMigrationVersion(t, ctx, connection, 6)
+		assertMigrationVersion(t, ctx, connection, 7)
 	})
 	assertTableExists(t, ctx, pool, "recurrence_suggestion_suppressions", true)
 }
@@ -142,7 +143,7 @@ func TestMigration006UpgradeFrom005PreservesExistingFinancialAndRecurrenceData(t
 		if err := migrations.Up(ctx, connection); err != nil {
 			t.Fatalf("migration 005 to 006 failed: %v", err)
 		}
-		assertMigrationVersion(t, ctx, connection, 6)
+		assertMigrationVersion(t, ctx, connection, 7)
 	})
 	var expenseCount, recurrenceCount, suppressionCount int
 	if err := pool.QueryRow(ctx, "SELECT count(*) FROM transactions WHERE id = 'exp-before-006'").Scan(&expenseCount); err != nil {
@@ -163,6 +164,7 @@ func TestMigration006DownWaitsForWriterBeforeLockAndRefuses(t *testing.T) {
 	pool := newMigratedTestDatabase(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
+	moveToMigrationVersion(t, ctx, pool, 6)
 	insertSyntheticUser(t, ctx, pool, syntheticUserID)
 
 	writer, err := pool.Acquire(ctx)
@@ -213,6 +215,7 @@ func TestMigration006DownBlocksWriterQueuedAfterLockWithoutSilentLoss(t *testing
 	pool := newMigratedTestDatabase(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
+	moveToMigrationVersion(t, ctx, pool, 6)
 	insertSyntheticUser(t, ctx, pool, syntheticUserID)
 
 	blocker, err := pool.Acquire(ctx)

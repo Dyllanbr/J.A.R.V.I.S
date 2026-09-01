@@ -171,12 +171,56 @@ func New(
 		dismissRecurrenceSuggestion,
 		prepareSuggestedRecurrence,
 	)
+	creditCardRepository, err := transactionspostgres.NewCreditCardRepository(pool, postgresConfig.OperationTimeout)
+	if err != nil {
+		pool.Close()
+		return nil, err
+	}
+	recordCreditCard, err := application.NewRecordCreditCard(
+		creditCardRepository,
+		creditCardRepository,
+		randomid.NewCreditCardGenerator(),
+		systemClock{},
+	)
+	if err != nil {
+		pool.Close()
+		return nil, err
+	}
+	listCreditCards, err := application.NewListCreditCards(creditCardRepository)
+	if err != nil {
+		pool.Close()
+		return nil, err
+	}
+	getCreditCard, err := application.NewGetCreditCard(creditCardRepository)
+	if err != nil {
+		pool.Close()
+		return nil, err
+	}
+	archiveCreditCard, err := application.NewArchiveCreditCard(
+		creditCardRepository,
+		creditCardRepository,
+		creditCardRepository,
+		systemClock{},
+	)
+	if err != nil {
+		pool.Close()
+		return nil, err
+	}
+	creditCardRoutes := httpapi.NewCreditCard(
+		cfg.OwnerID,
+		application.PreviewCreditCard{},
+		recordCreditCard,
+		listCreditCards,
+		getCreditCard,
+		archiveCreditCard,
+	)
 	applicationInstance.server = httpserver.New(
 		cfg.HTTPAddress,
 		logger,
 		financialRoutes,
 		recurrenceRoutes,
 		recurrenceSuggestionRoutes,
+		creditCardRoutes,
 	)
 	return applicationInstance, nil
 }

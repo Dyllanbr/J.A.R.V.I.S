@@ -327,6 +327,101 @@ final class JARVISUITests: XCTestCase {
     }
 
     @MainActor
+    func testCreditCardPreviewConfirmDetailAndArchive() throws {
+        continueAfterFailure = false
+        let launched = try launchApp()
+        let app = launched.app
+        defer { app.terminate() }
+        let name = creditCardName(from: launched.description)
+
+        XCTAssertTrue(element("tab.cards", in: app).waitForExistence(timeout: 8))
+        element("tab.cards", in: app).tap()
+        XCTAssertTrue(element("card.empty", in: app).waitForExistence(timeout: 10), app.debugDescription)
+        element("card.create", in: app).tap()
+        fillCreditCardForm(in: app, name: name)
+        element("card.review", in: app).tap()
+
+        XCTAssertTrue(element("card.review.screen", in: app).waitForExistence(timeout: 10))
+        XCTAssertFalse(element("card.success", in: app).exists, "Preview must not persist a card")
+        element("card.confirm", in: app).tap()
+        XCTAssertTrue(element("card.success", in: app).waitForExistence(timeout: 12))
+        element("card.new", in: app).tap()
+        XCTAssertTrue(element("card.list", in: app).waitForExistence(timeout: 12))
+
+        let item = app.descendants(matching: .any)
+            .matching(NSPredicate(format: "identifier BEGINSWITH %@", "card.item.card_"))
+            .firstMatch
+        XCTAssertTrue(item.waitForExistence(timeout: 12), app.debugDescription)
+        XCTAssertTrue(item.label.contains(name))
+        XCTAssertTrue(item.label.contains("final 4821"))
+        XCTAssertTrue(item.label.localizedCaseInsensitiveContains("ativo"))
+        let cardID = String(item.identifier.dropFirst("card.item.".count))
+        item.tap()
+
+        XCTAssertTrue(element("card.detail", in: app).waitForExistence(timeout: 10))
+        let archive = element("card.archive.\(cardID)", in: app)
+        XCTAssertTrue(archive.waitForExistence(timeout: 8))
+        archive.tap()
+        XCTAssertTrue(element("card.archive.cancel", in: app).waitForExistence(timeout: 5))
+        let alert = app.alerts.firstMatch
+        XCTAssertTrue(alert.waitForExistence(timeout: 5), app.debugDescription)
+        let alertButtons = alert.buttons.matching(identifier: "card.archive.confirm")
+        let confirm = alertButtons.element(boundBy: max(alertButtons.count - 1, 0))
+        XCTAssertTrue(confirm.waitForExistence(timeout: 5), alert.debugDescription)
+        confirm.tap()
+
+        XCTAssertTrue(archive.waitForNonExistence(timeout: 12), app.debugDescription)
+        XCTAssertTrue(element("card.detail", in: app).exists)
+        app.navigationBars.buttons.firstMatch.tap()
+        XCTAssertTrue(item.waitForExistence(timeout: 10))
+        XCTAssertTrue(item.label.localizedCaseInsensitiveContains("arquivado"))
+
+        if try testConfiguration().mode == .real {
+            app.terminate()
+            let relaunched = try launchApp().app
+            element("tab.cards", in: relaunched).tap()
+            let durable = relaunched.descendants(matching: .any)
+                .matching(NSPredicate(format: "identifier == %@", "card.item.\(cardID)"))
+                .firstMatch
+            XCTAssertTrue(durable.waitForExistence(timeout: 12), relaunched.debugDescription)
+            XCTAssertTrue(durable.label.localizedCaseInsensitiveContains("arquivado"))
+            relaunched.terminate()
+        }
+    }
+
+    @MainActor
+    func testRealAPICreditCardPreviewStopsBeforeConfirmation() throws {
+        continueAfterFailure = false
+        let launched = try launchApp()
+        guard try testConfiguration().mode == .real else {
+            throw XCTSkip("This scenario requires the official real API/PostgreSQL harness")
+        }
+        let app = launched.app
+        defer { app.terminate() }
+        element("tab.cards", in: app).tap()
+        XCTAssertTrue(element("card.empty", in: app).waitForExistence(timeout: 10))
+        element("card.create", in: app).tap()
+        fillCreditCardForm(in: app, name: creditCardName(from: launched.description))
+        element("card.review", in: app).tap()
+        XCTAssertTrue(element("card.review.screen", in: app).waitForExistence(timeout: 10))
+        XCTAssertFalse(element("card.success", in: app).exists)
+    }
+
+    @MainActor
+    func testCreditCardFailureExposesSafeRetry() {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchEnvironment["JARVIS_IOS_API_MODE"] = "stub"
+        app.launchEnvironment["JARVIS_IOS_CARD_SCENARIO"] = "listError"
+        app.launch()
+        defer { app.terminate() }
+        element("tab.cards", in: app).tap()
+        XCTAssertTrue(element("card.error", in: app).waitForExistence(timeout: 10))
+        XCTAssertTrue(element("card.retry", in: app).exists)
+        XCTAssertFalse(app.staticTexts.matching(NSPredicate(format: "label CONTAINS[c] 'sql' OR label CONTAINS[c] 'pgx'")).firstMatch.exists)
+    }
+
+    @MainActor
     func testCriticalAccessibilityIdentifiersAreExposedAtRuntime() throws {
         continueAfterFailure = false
         let launched = try launchApp()
@@ -337,6 +432,7 @@ final class JARVISUITests: XCTestCase {
             "tab.register",
             "tab.history",
             "tab.recurrences",
+            "tab.cards",
             "register.type",
             "register.type.expense",
             "register.type.income",
@@ -407,6 +503,7 @@ final class JARVISUITests: XCTestCase {
         XCTAssertTrue(element("tab.register", in: app).waitForExistence(timeout: 8))
         XCTAssertTrue(element("tab.history", in: app).waitForExistence(timeout: 8))
         XCTAssertTrue(element("tab.recurrences", in: app).waitForExistence(timeout: 8))
+        XCTAssertTrue(element("tab.cards", in: app).waitForExistence(timeout: 8))
         fillForm(in: app, description: "Tabs_sinteticas_UI")
         element("register.review", in: app).tap()
         XCTAssertTrue(element("review.confirm", in: app).waitForExistence(timeout: 8))
@@ -429,6 +526,11 @@ final class JARVISUITests: XCTestCase {
             )
             recurrencesTab.tap()
             XCTAssertTrue(element("recurrence.create", in: app).waitForExistence(timeout: 8))
+
+            let cardsTab = element("tab.cards", in: app)
+            XCTAssertTrue(cardsTab.waitForExistence(timeout: 5), "tab.cards disappeared in cycle \(cycle)")
+            cardsTab.tap()
+            XCTAssertTrue(element("card.create", in: app).waitForExistence(timeout: 8))
 
             let registerTab = element("tab.register", in: app)
             XCTAssertTrue(
@@ -642,6 +744,54 @@ final class JARVISUITests: XCTestCase {
         element("recurrence.review", in: app).tap()
         XCTAssertTrue(reveal("recurrence.confirm", in: app))
         XCTAssertTrue(element("recurrence.review.description", in: app).label.contains("Dynamic_Type_recorrencia_sintetica"))
+
+        element("recurrence.confirm", in: app).tap()
+        XCTAssertTrue(element("recurrence.success", in: app).waitForExistence(timeout: 10))
+        XCTAssertTrue(reveal("recurrence.success.return", in: app))
+        element("recurrence.success.return", in: app).tap()
+        XCTAssertTrue(reveal("tab.cards", in: app))
+        element("tab.cards", in: app).tap()
+        XCTAssertTrue(reveal("card.create", in: app))
+        element("card.create", in: app).tap()
+        fillCreditCardForm(in: app, name: "Dynamic_Type_cartao_sintetico")
+        XCTAssertTrue(reveal("card.review", in: app))
+        element("card.review", in: app).tap()
+        XCTAssertTrue(reveal("card.confirm", in: app))
+        element("card.confirm", in: app).tap()
+
+        XCTAssertTrue(element("card.success", in: app).waitForExistence(timeout: 10))
+        XCTAssertTrue(reveal("card.new", in: app))
+        element("card.new", in: app).tap()
+        XCTAssertTrue(element("card.list", in: app).waitForExistence(timeout: 10))
+
+        let cardItem = app.descendants(matching: .any)
+            .matching(NSPredicate(format: "identifier BEGINSWITH %@", "card.item."))
+            .firstMatch
+        XCTAssertTrue(cardItem.waitForExistence(timeout: 10), app.debugDescription)
+        let cardItemIdentifier = cardItem.identifier
+        XCTAssertTrue(reveal(cardItemIdentifier, in: app))
+        let cardID = String(cardItemIdentifier.dropFirst("card.item.".count))
+        element(cardItemIdentifier, in: app).tap()
+
+        XCTAssertTrue(element("card.detail", in: app).waitForExistence(timeout: 10))
+        let archiveIdentifier = "card.archive.\(cardID)"
+        XCTAssertTrue(reveal(archiveIdentifier, in: app))
+        element(archiveIdentifier, in: app).tap()
+
+        let archiveAlert = app.alerts.firstMatch
+        XCTAssertTrue(archiveAlert.waitForExistence(timeout: 5), app.debugDescription)
+        let archiveConfirmQuery = archiveAlert.buttons.matching(identifier: "card.archive.confirm")
+        let archiveCancelQuery = archiveAlert.buttons.matching(identifier: "card.archive.cancel")
+        XCTAssertTrue(archiveConfirmQuery.firstMatch.waitForExistence(timeout: 5), app.debugDescription)
+        XCTAssertTrue(archiveCancelQuery.firstMatch.waitForExistence(timeout: 5), app.debugDescription)
+        let archiveConfirm = try XCTUnwrap(
+            archiveConfirmQuery.allElementsBoundByAccessibilityElement.first(where: \.isHittable)
+        )
+        let archiveCancel = try XCTUnwrap(
+            archiveCancelQuery.allElementsBoundByAccessibilityElement.first(where: \.isHittable)
+        )
+        XCTAssertTrue(archiveConfirm.isHittable)
+        XCTAssertTrue(archiveCancel.isHittable)
     }
 
     @MainActor
@@ -708,6 +858,10 @@ final class JARVISUITests: XCTestCase {
         return (description, startsOn)
     }
 
+    private func creditCardName(from description: String) -> String {
+        "\(description)_card"
+    }
+
     private func displayCivilDate(_ canonical: String) -> String {
         let parts = canonical.split(separator: "-")
         guard parts.count == 3 else { return canonical }
@@ -742,6 +896,33 @@ final class JARVISUITests: XCTestCase {
         if app.keyboards.firstMatch.exists {
             app.collectionViews["recurrence.create.screen"].swipeUp()
         }
+    }
+
+    @MainActor
+    private func fillCreditCardForm(in app: XCUIApplication, name: String) {
+        let nameField = app.textFields["card.name"]
+        XCTAssertTrue(nameField.waitForExistence(timeout: 8))
+        nameField.tap()
+        nameField.typeText(name)
+
+        let suffix = app.textFields["card.lastFour"]
+        XCTAssertTrue(suffix.exists)
+        suffix.tap()
+        suffix.typeText("4821")
+        dismissKeyboard(in: app)
+
+        let brand = element("card.brand", in: app)
+        XCTAssertTrue(brand.waitForExistence(timeout: 5))
+        brand.tap()
+        let visa = app.buttons["Visa"].firstMatch
+        XCTAssertTrue(visa.waitForExistence(timeout: 5), app.debugDescription)
+        visa.tap()
+
+        let limit = app.textFields["card.creditLimit"]
+        XCTAssertTrue(reveal("card.creditLimit", in: app))
+        limit.tap()
+        limit.typeText("2500,00")
+        dismissKeyboard(in: app)
     }
 
     @MainActor
@@ -806,7 +987,7 @@ final class JARVISUITests: XCTestCase {
     @MainActor
     private func dismissKeyboard(in app: XCUIApplication) {
         if app.keyboards.firstMatch.exists {
-            app.collectionViews["register.screen"].swipeUp()
+            app.swipeUp()
         }
     }
 

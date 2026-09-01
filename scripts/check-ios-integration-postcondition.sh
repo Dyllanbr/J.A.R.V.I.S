@@ -19,6 +19,7 @@ done
 
 income_description="${JARVIS_IOS_E2E_DESCRIPTION}_income"
 recurrence_description="${JARVIS_IOS_E2E_DESCRIPTION}_recurrence"
+card_name="${JARVIS_IOS_E2E_DESCRIPTION}_card"
 
 counts="$(
   docker compose \
@@ -32,6 +33,7 @@ counts="$(
     --set=recurrence_description="$recurrence_description" \
     --set=suggestion_description="$JARVIS_IOS_E2E_SUGGESTION_DESCRIPTION" \
     --set=suggestion_starts_on="$JARVIS_IOS_E2E_SUGGESTION_STARTS_ON" \
+    --set=card_name="$card_name" \
     --username "$JARVIS_POSTGRES_USER" \
     --dbname "$JARVIS_POSTGRES_DB" <<'SQL'
 WITH expense_target AS (
@@ -229,6 +231,61 @@ suggestion_suppression_count AS (
     FROM recurrence_suggestion_suppressions
     WHERE user_id = :'owner_id'
       AND suggestion_id LIKE 'rsg_%'
+),
+card_target AS (
+    SELECT id
+    FROM credit_cards
+    WHERE user_id = :'owner_id'
+      AND name = :'card_name'
+      AND last_four = '4821'
+      AND brand = 'VISA'
+      AND closing_day = 1
+      AND due_day = 10
+      AND credit_limit_minor = 250000
+      AND credit_limit_currency = 'BRL'
+      AND status = 'ARCHIVED'
+      AND archived_at IS NOT NULL
+),
+card_count AS (
+    SELECT count(*) AS value FROM card_target
+),
+card_created_audit_count AS (
+    SELECT count(*) AS value FROM credit_card_audit_events
+    WHERE user_id = :'owner_id'
+      AND credit_card_id IN (SELECT id FROM card_target)
+      AND event_type = 'CREDIT_CARD_CREATED'
+),
+card_archived_audit_count AS (
+    SELECT count(*) AS value FROM credit_card_audit_events
+    WHERE user_id = :'owner_id'
+      AND credit_card_id IN (SELECT id FROM card_target)
+      AND event_type = 'CREDIT_CARD_ARCHIVED'
+),
+card_create_idempotency_count AS (
+    SELECT count(*) AS value FROM credit_card_idempotency_records
+    WHERE user_id = :'owner_id'
+      AND credit_card_id IN (SELECT id FROM card_target)
+      AND operation = 'CREATE_CREDIT_CARD'
+      AND state = 'COMPLETED'
+),
+card_archive_idempotency_count AS (
+    SELECT count(*) AS value FROM credit_card_idempotency_records
+    WHERE user_id = :'owner_id'
+      AND credit_card_id IN (SELECT id FROM card_target)
+      AND operation = 'ARCHIVE_CREDIT_CARD'
+      AND state = 'COMPLETED'
+),
+card_legacy_transaction_count AS (
+    SELECT count(*) AS value FROM transactions
+    WHERE user_id = :'owner_id' AND description = :'card_name'
+),
+card_legacy_audit_count AS (
+    SELECT count(*) AS value FROM audit_events
+    WHERE user_id = :'owner_id' AND aggregate_id IN (SELECT id FROM card_target)
+),
+card_legacy_idempotency_count AS (
+    SELECT count(*) AS value FROM idempotency_records
+    WHERE user_id = :'owner_id' AND transaction_id IN (SELECT id FROM card_target)
 )
 SELECT expense_transaction_count.value
     || '|' || expense_audit_count.value
@@ -251,6 +308,14 @@ SELECT expense_transaction_count.value
     || '|' || suggestion_recurrence_audit_count.value
     || '|' || suggestion_recurrence_idempotency_count.value
     || '|' || suggestion_suppression_count.value
+    || '|' || card_count.value
+    || '|' || card_created_audit_count.value
+    || '|' || card_archived_audit_count.value
+    || '|' || card_create_idempotency_count.value
+    || '|' || card_archive_idempotency_count.value
+    || '|' || card_legacy_transaction_count.value
+    || '|' || card_legacy_audit_count.value
+    || '|' || card_legacy_idempotency_count.value
 FROM expense_transaction_count,
      expense_audit_count,
      expense_idempotency_count,
@@ -271,13 +336,21 @@ FROM expense_transaction_count,
      suggestion_recurrence_count,
      suggestion_recurrence_audit_count,
      suggestion_recurrence_idempotency_count,
-     suggestion_suppression_count;
+     suggestion_suppression_count,
+     card_count,
+     card_created_audit_count,
+     card_archived_audit_count,
+     card_create_idempotency_count,
+     card_archive_idempotency_count,
+     card_legacy_transaction_count,
+     card_legacy_audit_count,
+     card_legacy_idempotency_count;
 SQL
 )"
 
-if [[ "$counts" != "1|1|1|1|1|1|1|1|1|1|1|0|0|0|3|3|3|1|1|1|0" ]]; then
-  echo "iOS real integration postcondition failed (legacy Expense/Income/Recurrence counts followed by suggestion evidence transaction|audit|idempotency, confirmed recurrence|audit|idempotency, suppression=$counts)." >&2
+if [[ "$counts" != "1|1|1|1|1|1|1|1|1|1|1|0|0|0|3|3|3|1|1|1|0|1|1|1|1|1|0|0|0" ]]; then
+  echo "iOS real integration postcondition failed (legacy flows, suggestion flow, then card|created audit|archived audit|create completion|archive completion|legacy side effects=$counts)." >&2
   exit 1
 fi
 
-echo "iOS real integration PostgreSQL postcondition passed for Expense/Income, manual Recurrence, and suggestion Review/Confirm with exactly three evidence Expenses and one confirmed Recurrence."
+echo "iOS real integration PostgreSQL postcondition passed for legacy flows and CreditCard Review/Confirm/Archive exactly once with zero legacy financial side effects."

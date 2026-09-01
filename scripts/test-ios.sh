@@ -72,9 +72,9 @@ trap 'exit 130' INT
 trap 'exit 143' TERM
 
 case "$mode" in
-  --all | --unit | --ui | --recurrence-ui | --tab-regression | --real-api) ;;
+  --all | --unit | --ui | --recurrence-ui | --card-ui | --tab-regression | --card-preview-real-api | --real-api) ;;
   *)
-    echo "Usage: scripts/test-ios.sh [--all|--unit|--ui|--recurrence-ui|--tab-regression|--real-api]" >&2
+    echo "Usage: scripts/test-ios.sh [--all|--unit|--ui|--recurrence-ui|--card-ui|--tab-regression|--card-preview-real-api|--real-api]" >&2
     exit 2
     ;;
 esac
@@ -154,12 +154,18 @@ case "$mode" in
       "-only-testing:JARVISUITests/JARVISUITests/testStaleRecurrenceSuggestionIsRemovedWithoutInvalidReviewNavigation"
     )
     ;;
+  --card-ui)
+    test_filters+=(
+      "-only-testing:JARVISUITests/JARVISUITests/testCreditCardPreviewConfirmDetailAndArchive"
+      "-only-testing:JARVISUITests/JARVISUITests/testCreditCardFailureExposesSafeRetry"
+    )
+    ;;
   --tab-regression)
     test_filters+=(
       "-only-testing:JARVISUITests/JARVISUITests/testTabIdentifiersSurviveSuccessAndRepeatedNavigation"
     )
     ;;
-  --real-api)
+  --card-preview-real-api | --real-api)
     if [[ -z "${JARVIS_IOS_E2E_BASE_URL:-}" ]]; then
       echo "--real-api requires JARVIS_IOS_E2E_BASE_URL." >&2
       exit 1
@@ -173,12 +179,19 @@ case "$mode" in
     esac
     test_api_mode="real"
     test_description="${JARVIS_IOS_E2E_DESCRIPTION:-Mercado_sintetico_E2E_$$_$RANDOM}"
-    test_filters+=(
-      "-only-testing:JARVISUITests/JARVISUITests/testRegisterPreviewConfirmAndHistory"
-      "-only-testing:JARVISUITests/JARVISUITests/testRegisterIncomePreviewConfirmAndHistory"
-      "-only-testing:JARVISUITests/JARVISUITests/testRecurrencePreviewConfirmListAndCancel"
-      "-only-testing:JARVISUITests/JARVISUITests/testRealAPIRecurrenceSuggestionRequiresExplicitConfirmation"
-    )
+    if [[ "$mode" == "--card-preview-real-api" ]]; then
+      test_filters+=(
+        "-only-testing:JARVISUITests/JARVISUITests/testRealAPICreditCardPreviewStopsBeforeConfirmation"
+      )
+    else
+      test_filters+=(
+        "-only-testing:JARVISUITests/JARVISUITests/testRegisterPreviewConfirmAndHistory"
+        "-only-testing:JARVISUITests/JARVISUITests/testRegisterIncomePreviewConfirmAndHistory"
+        "-only-testing:JARVISUITests/JARVISUITests/testRecurrencePreviewConfirmListAndCancel"
+        "-only-testing:JARVISUITests/JARVISUITests/testRealAPIRecurrenceSuggestionRequiresExplicitConfirmation"
+        "-only-testing:JARVISUITests/JARVISUITests/testCreditCardPreviewConfirmDetailAndArchive"
+      )
+    fi
     ;;
 esac
 

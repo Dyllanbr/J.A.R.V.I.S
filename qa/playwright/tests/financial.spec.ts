@@ -115,6 +115,20 @@ function recurrenceRequest(description: string, startsOn: string) {
   };
 }
 
+function creditCardRequest(name: string) {
+  return {
+    name,
+    lastFour: "4242",
+    brand: "VISA",
+    closingDay: 31,
+    dueDay: 10,
+    creditLimit: {
+      minor: 250000,
+      currency: "BRL",
+    },
+  };
+}
+
 test("preview validates and normalizes without persistence", async ({
   request,
 }) => {
@@ -1023,4 +1037,173 @@ test("recurrence suggestion endpoints reject client authority and malformed iden
     { data: { userId: "spoofed-owner", amount: 1 } },
   );
   expect(injected.status()).toBe(400);
+});
+
+test("credit card preview, create, replay, list, detail, archive, and historical replay stay metadata-only", async ({
+  request,
+}) => {
+  const name = "Cartão Playwright sintético exclusivo";
+  const payload = creditCardRequest(name);
+
+  const rejectedPreviewQuery = await request.post(
+    "/v1/cards/preview?foo;bar=baz",
+    { data: payload },
+  );
+  expect(rejectedPreviewQuery.status()).toBe(400);
+  expect(await rejectedPreviewQuery.json()).toEqual({
+    error: { code: "INVALID_REQUEST", message: "request is invalid" },
+  });
+
+  const preview = await request.post("/v1/cards/preview", { data: payload });
+  expect(preview.status()).toBe(200);
+  expect(preview.headers()["cache-control"]).toBe("no-store");
+  expect(await preview.json()).toEqual(payload);
+
+  const injected = await request.post("/v1/cards/preview", {
+    data: { ...payload, userId: "spoofed-owner" },
+  });
+  expect(injected.status()).toBe(400);
+  expect(await injected.json()).toEqual({
+    error: { code: "INVALID_REQUEST", message: "request is invalid" },
+  });
+
+  const missingKey = await request.post("/v1/cards", { data: payload });
+  expect(missingKey.status()).toBe(400);
+  expect(await missingKey.json()).toEqual({
+    error: {
+      code: "IDEMPOTENCY_KEY_REQUIRED",
+      message: "idempotency key is required",
+    },
+  });
+
+  const createHeaders = {
+    "Idempotency-Key": "pw-credit-card-create-exclusive-001",
+  };
+  const rejectedCreateQuery = await request.post("/v1/cards?foo;bar=baz", {
+    data: payload,
+    headers: createHeaders,
+  });
+  expect(rejectedCreateQuery.status()).toBe(400);
+  expect(await rejectedCreateQuery.json()).toEqual({
+    error: { code: "INVALID_REQUEST", message: "request is invalid" },
+  });
+
+  const created = await request.post("/v1/cards", {
+    data: payload,
+    headers: createHeaders,
+  });
+  expect(created.status()).toBe(201);
+  expect(created.headers()["idempotency-replayed"]).toBeUndefined();
+  const createdBytes = await created.body();
+  const createdBody = JSON.parse(createdBytes.toString()) as Record<
+    string,
+    unknown
+  >;
+  expect(createdBody).toMatchObject({ ...payload, status: "ACTIVE" });
+  expect(Object.keys(createdBody).sort()).toEqual([
+    "brand",
+    "closingDay",
+    "createdAt",
+    "creditLimit",
+    "dueDay",
+    "id",
+    "lastFour",
+    "name",
+    "status",
+  ]);
+  const cardID = createdBody.id as string;
+  expect(cardID).toMatch(/^card_[0-9a-f]{32}$/);
+
+  const createReplay = await request.post("/v1/cards", {
+    data: payload,
+    headers: createHeaders,
+  });
+  expect(createReplay.status()).toBe(201);
+  expect(createReplay.headers()["idempotency-replayed"]).toBe("true");
+  expect(await createReplay.body()).toEqual(createdBytes);
+
+  const conflict = await request.post("/v1/cards", {
+    data: { ...payload, name: `${name} alterado` },
+    headers: createHeaders,
+  });
+  expect(conflict.status()).toBe(409);
+  expect(await conflict.json()).toEqual({
+    error: {
+      code: "IDEMPOTENCY_KEY_REUSED",
+      message: "idempotency key was reused with a different request",
+    },
+  });
+
+  const rejectedListQuery = await request.get("/v1/cards?foo;bar=baz");
+  expect(rejectedListQuery.status()).toBe(400);
+  expect(await rejectedListQuery.json()).toEqual({
+    error: { code: "INVALID_REQUEST", message: "request is invalid" },
+  });
+
+  const listed = await request.get("/v1/cards");
+  expect(listed.status()).toBe(200);
+  const listBody = (await listed.json()) as {
+    items: Array<Record<string, unknown>>;
+  };
+  expect(listBody.items.filter((item) => item.id === cardID)).toEqual([
+    createdBody,
+  ]);
+  const detail = await request.get(`/v1/cards/${cardID}`);
+  expect(detail.status()).toBe(200);
+  expect(await detail.body()).toEqual(createdBytes);
+
+  const archiveHeaders = {
+    "Idempotency-Key": "pw-credit-card-archive-exclusive-001",
+  };
+  const archived = await request.post(`/v1/cards/${cardID}/archive`, {
+    headers: archiveHeaders,
+  });
+  expect(archived.status()).toBe(200);
+  expect(archived.headers()["idempotency-replayed"]).toBeUndefined();
+  const archivedBytes = await archived.body();
+  expect(JSON.parse(archivedBytes.toString())).toMatchObject({
+    id: cardID,
+    status: "ARCHIVED",
+  });
+  const archiveReplay = await request.post(`/v1/cards/${cardID}/archive`, {
+    headers: archiveHeaders,
+  });
+  expect(archiveReplay.status()).toBe(200);
+  expect(archiveReplay.headers()["idempotency-replayed"]).toBe("true");
+  expect(await archiveReplay.body()).toEqual(archivedBytes);
+
+  const historicalCreate = await request.post("/v1/cards", {
+    data: payload,
+    headers: createHeaders,
+  });
+  expect(historicalCreate.status()).toBe(201);
+  expect(historicalCreate.headers()["idempotency-replayed"]).toBe("true");
+  expect(await historicalCreate.body()).toEqual(createdBytes);
+  const current = await request.get(`/v1/cards/${cardID}`);
+  expect((await current.json()) as Record<string, unknown>).toMatchObject({
+    id: cardID,
+    status: "ARCHIVED",
+  });
+
+  const alreadyArchived = await request.post(`/v1/cards/${cardID}/archive`, {
+    headers: { "Idempotency-Key": "pw-credit-card-archive-new-001" },
+  });
+  expect(alreadyArchived.status()).toBe(409);
+  expect(await alreadyArchived.json()).toEqual({
+    error: {
+      code: "CREDIT_CARD_ALREADY_ARCHIVED",
+      message: "credit card is already archived",
+    },
+  });
+
+  for (const target of [
+    "/v1/cards",
+    "/v1/cards/preview",
+    `/v1/cards/${cardID}`,
+    `/v1/cards/${cardID}/archive`,
+  ]) {
+    const head = await request.head(target);
+    expect(head.status()).toBe(405);
+    expect(head.headers()["cache-control"]).toBe("no-store");
+  }
 });
