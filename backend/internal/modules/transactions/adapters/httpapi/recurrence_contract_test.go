@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"slices"
+	"strings"
 	"testing"
 
 	"gopkg.in/yaml.v3"
@@ -25,8 +26,8 @@ type recurrenceOperationContract struct {
 
 func TestRecurrenceOpenAPIContractStructurallyMatchesRuntime(t *testing.T) {
 	document := loadOpenAPIContract(t)
-	if got := contractString(t, contractAt(t, document, "info", "version"), "info.version"); got != "0.7.0" {
-		t.Fatalf("info.version = %q, want 0.7.0", got)
+	if got := contractString(t, contractAt(t, document, "info", "version"), "info.version"); got != "0.8.0" {
+		t.Fatalf("info.version = %q, want 0.8.0", got)
 	}
 
 	paths := contractObject(t, contractAt(t, document, "paths"), "paths")
@@ -108,6 +109,260 @@ func TestRecurrenceOpenAPIContractStructurallyMatchesRuntime(t *testing.T) {
 	assertRecurrenceSchemas(t, document)
 	assertNarrowErrorSchemas(t, document)
 	assertLegacyOperationsUseNarrowErrors(t, paths)
+}
+
+func TestCardPurchaseAndInstallmentPlanOpenAPIContract(t *testing.T) {
+	document := loadOpenAPIContract(t)
+	paths := contractObject(t, contractAt(t, document, "paths"), "paths")
+	wantedPaths := []string{
+		"/v1/card-purchases/preview",
+		"/v1/card-purchases",
+		"/v1/installment-plans",
+		"/v1/installment-plans/{installmentPlanId}",
+		"/v1/installment-plans/{installmentPlanId}/cancellation-preview",
+		"/v1/installment-plans/{installmentPlanId}/cancel",
+	}
+	for _, path := range wantedPaths {
+		if _, ok := paths[path]; !ok {
+			t.Fatalf("missing 4B path %s", path)
+		}
+	}
+	wantedPathSet := make(map[string]struct{}, len(wantedPaths))
+	for _, path := range wantedPaths {
+		wantedPathSet[path] = struct{}{}
+	}
+	for path := range paths {
+		if strings.HasPrefix(path, "/v1/card-purchases") || strings.HasPrefix(path, "/v1/installment-plans") {
+			if _, ok := wantedPathSet[path]; ok {
+				continue
+			}
+			t.Fatalf("unexpected 4B path %s", path)
+		}
+	}
+	assertHTTPMethods(t, paths, "/v1/card-purchases/preview", []string{"post"})
+	assertHTTPMethods(t, paths, "/v1/card-purchases", []string{"post"})
+	assertHTTPMethods(t, paths, "/v1/installment-plans", []string{"get"})
+	assertHTTPMethods(t, paths, "/v1/installment-plans/{installmentPlanId}", []string{"get"})
+	assertHTTPMethods(t, paths, "/v1/installment-plans/{installmentPlanId}/cancellation-preview", []string{"post"})
+	assertHTTPMethods(t, paths, "/v1/installment-plans/{installmentPlanId}/cancel", []string{"post"})
+
+	tests := []struct {
+		path, method, operation, request, success, response string
+		statuses                                            []string
+		parameters                                          []string
+		successHeaders                                      []string
+		errorResponses                                      map[string]string
+	}{
+		{"/v1/card-purchases/preview", "post", "previewCardPurchase", "CardPurchasePreviewRequest", "200", "CardPurchasePreview", []string{"200", "400", "404", "405", "409", "500"}, nil, []string{"Cache-Control", "X-Content-Type-Options"}, map[string]string{"400": "InvalidRequest", "404": "CreditCardNotFound", "405": "MethodNotAllowed", "409": "CreditCardArchived", "500": "InternalError"}},
+		{"/v1/card-purchases", "post", "recordCardPurchase", "CardPurchaseCreateRequest", "201", "CardPurchase", []string{"201", "400", "404", "405", "409", "500"}, []string{"#/components/parameters/IdempotencyKey"}, []string{"Cache-Control", "Idempotency-Replayed", "X-Content-Type-Options"}, map[string]string{"400": "CardPurchaseCreateBadRequest", "404": "CreditCardNotFound", "405": "MethodNotAllowed", "409": "CardPurchaseConflict", "500": "InternalError"}},
+		{"/v1/installment-plans", "get", "listInstallmentPlans", "", "200", "InstallmentPlanListResponse", []string{"200", "400", "405", "500"}, nil, []string{"Cache-Control", "X-Content-Type-Options"}, map[string]string{"400": "InvalidRequest", "405": "MethodNotAllowed", "500": "InternalError"}},
+		{"/v1/installment-plans/{installmentPlanId}", "get", "getInstallmentPlan", "", "200", "InstallmentPlan", []string{"200", "400", "404", "405", "500"}, []string{"#/components/parameters/InstallmentPlanId"}, []string{"Cache-Control", "X-Content-Type-Options"}, map[string]string{"400": "InvalidRequest", "404": "InstallmentPlanNotFound", "405": "MethodNotAllowed", "500": "InternalError"}},
+		{"/v1/installment-plans/{installmentPlanId}/cancellation-preview", "post", "previewInstallmentPlanCancellation", "", "200", "InstallmentPlanCancellationPreview", []string{"200", "400", "404", "405", "409", "500"}, []string{"#/components/parameters/InstallmentPlanId"}, []string{"Cache-Control", "X-Content-Type-Options"}, map[string]string{"400": "InvalidRequest", "404": "InstallmentPlanNotFound", "405": "MethodNotAllowed", "409": "InstallmentPlanAlreadyCancelled", "500": "InternalError"}},
+		{"/v1/installment-plans/{installmentPlanId}/cancel", "post", "cancelInstallmentPlan", "InstallmentPlanCancelRequest", "200", "InstallmentPlan", []string{"200", "400", "404", "405", "409", "500"}, []string{"#/components/parameters/InstallmentPlanId", "#/components/parameters/IdempotencyKey"}, []string{"Cache-Control", "Idempotency-Replayed", "X-Content-Type-Options"}, map[string]string{"400": "InvalidRequest", "404": "InstallmentPlanNotFound", "405": "MethodNotAllowed", "409": "InstallmentPlanConflict", "500": "InternalError"}},
+	}
+	for _, test := range tests {
+		t.Run(test.operation, func(t *testing.T) {
+			operation := contractOperation(t, paths, test.path, test.method)
+			if contractString(t, operation["operationId"], "operationId") != test.operation {
+				t.Fatalf("operationId mismatch")
+			}
+			if test.request == "" {
+				if _, exists := operation["requestBody"]; exists {
+					t.Fatal("unexpected request body")
+				}
+			} else {
+				body := contractObject(t, operation["requestBody"], "requestBody")
+				if !contractBool(t, body["required"], "requestBody.required") {
+					t.Fatal("request body must be required")
+				}
+				assertRef(t, contractAt(t, body, "content", "application/json", "schema"), "schemas", test.request)
+			}
+			refs, inline := operationParameters(t, operation)
+			assertExactStrings(t, refs, test.parameters, "parameters")
+			if len(inline) != 0 {
+				t.Fatalf("unexpected inline parameters: %v", inline)
+			}
+			responses := contractObject(t, operation["responses"], "responses")
+			assertExactStrings(t, mapKeys(responses), test.statuses, test.operation+" statuses")
+			success := contractObject(t, responses[test.success], "success response")
+			assertRef(t, contractAt(t, success, "content", "application/json", "schema"), "schemas", test.response)
+			headers := contractObject(t, success["headers"], "success headers")
+			assertExactStrings(t, mapKeys(headers), test.successHeaders, test.operation+" success headers")
+			for header := range headers {
+				assertRef(t, headers[header], "headers", headerComponentName(header))
+			}
+			for status, component := range test.errorResponses {
+				assertRef(t, responses[status], "responses", component)
+			}
+		})
+	}
+
+	schemas := contractObject(t, contractAt(t, document, "components", "schemas"), "schemas")
+	for _, name := range []string{"CardPurchasePreviewRequest", "CardPurchaseCreateRequest", "CardPurchasePreview", "CardPurchase", "InstallmentPlan", "Installment", "InstallmentPlanCancellationPreview", "InstallmentPlanCancelRequest"} {
+		if _, ok := schemas[name]; !ok {
+			t.Fatalf("missing schema %s", name)
+		}
+	}
+	assertClosedObject(t, contractObject(t, schemas["CardPurchasePreviewRequest"], "CardPurchasePreviewRequest"), "CardPurchasePreviewRequest", []string{"description", "amount", "occurredAt", "creditCardId"})
+	assertClosedObject(t, contractObject(t, schemas["CardPurchaseCreateRequest"], "CardPurchaseCreateRequest"), "CardPurchaseCreateRequest", []string{"description", "amount", "occurredAt", "creditCardId"})
+	assertClosedObject(t, contractObject(t, schemas["InstallmentPlan"], "InstallmentPlan"), "InstallmentPlan", []string{"id", "creditCardId", "expenseId", "totalAmount", "installmentCount", "firstDueDate", "dueDayAnchor", "status", "createdAt", "schedule"})
+	assertFourBSchemaProperties(t, schemas)
+	assertFourBSchemaPrimitives(t, schemas)
+	assertInstallmentPlanIDParameter(t, document)
+	assertFourBErrorComponents(t, document)
+}
+
+func assertFourBSchemaProperties(t *testing.T, schemas map[string]any) {
+	t.Helper()
+	wanted := map[string]struct {
+		properties []string
+		required   []string
+	}{
+		"CardPurchasePreviewRequest": {
+			properties: []string{"description", "amount", "occurredAt", "categoryId", "creditCardId", "installmentCount"},
+			required:   []string{"description", "amount", "occurredAt", "creditCardId"},
+		},
+		"CardPurchaseCreateRequest": {
+			properties: []string{"description", "amount", "occurredAt", "categoryId", "creditCardId", "installmentCount"},
+			required:   []string{"description", "amount", "occurredAt", "creditCardId"},
+		},
+		"CardPurchasePreview": {
+			properties: []string{"description", "amount", "occurredAt", "categoryId", "creditCardId", "purchaseMode", "statementClosingOn", "statementDueOn", "installmentSummary"},
+			required:   []string{"description", "amount", "occurredAt", "creditCardId", "purchaseMode", "statementClosingOn", "statementDueOn"},
+		},
+		"InstallmentSummary": {
+			properties: []string{"installmentCount", "firstDueDate", "lastDueDate", "dueDayAnchor", "regularInstallmentAmount", "lastInstallmentAmount"},
+			required:   []string{"installmentCount", "firstDueDate", "lastDueDate", "dueDayAnchor", "regularInstallmentAmount", "lastInstallmentAmount"},
+		},
+		"CardPurchaseExpense": {
+			properties: []string{"id", "type", "description", "amount", "paymentMethod", "categoryId", "creditCardId", "statementDueOn", "occurredAt", "financialTimezone", "origin", "status", "version", "createdAt", "updatedAt"},
+			required:   []string{"id", "type", "description", "amount", "paymentMethod", "creditCardId", "statementDueOn", "occurredAt", "financialTimezone", "origin", "status", "version", "createdAt", "updatedAt"},
+		},
+		"InstallmentPlanListResponse": {
+			properties: []string{"items"},
+			required:   []string{"items"},
+		},
+		"Installment": {
+			properties: []string{"number", "totalCount", "dueDate", "amount"},
+			required:   []string{"number", "totalCount", "dueDate", "amount"},
+		},
+		"InstallmentPlan": {
+			properties: []string{"id", "creditCardId", "expenseId", "totalAmount", "installmentCount", "firstDueDate", "dueDayAnchor", "status", "createdAt", "cancelledOn", "schedule"},
+			required:   []string{"id", "creditCardId", "expenseId", "totalAmount", "installmentCount", "firstDueDate", "dueDayAnchor", "status", "createdAt", "schedule"},
+		},
+		"CardPurchase": {
+			properties: []string{"expense", "installmentPlan", "purchaseMode"},
+			required:   []string{"expense", "purchaseMode"},
+		},
+		"InstallmentPlanCancellationPreview": {
+			properties: []string{"installmentPlanId", "expectedCancelledOn", "plan"},
+			required:   []string{"installmentPlanId", "expectedCancelledOn", "plan"},
+		},
+		"InstallmentPlanCancelRequest": {
+			properties: []string{"expectedCancelledOn"},
+			required:   []string{"expectedCancelledOn"},
+		},
+	}
+	for name, expected := range wanted {
+		schema := contractObject(t, schemas[name], name)
+		assertClosedObject(t, schema, name, expected.required)
+		assertExactStrings(t, mapKeys(contractObject(t, schema["properties"], name+".properties")), expected.properties, name+" properties")
+	}
+}
+
+func assertInstallmentPlanIDParameter(t *testing.T, document map[string]any) {
+	t.Helper()
+	parameter := contractObject(t, contractAt(t, document, "components", "parameters", "InstallmentPlanId"), "InstallmentPlanId")
+	if contractString(t, parameter["name"], "InstallmentPlanId.name") != "installmentPlanId" {
+		t.Fatal("InstallmentPlanId.name drifted")
+	}
+	if contractString(t, parameter["in"], "InstallmentPlanId.in") != "path" {
+		t.Fatal("InstallmentPlanId.in must be path")
+	}
+	if !contractBool(t, parameter["required"], "InstallmentPlanId.required") {
+		t.Fatal("InstallmentPlanId.required must be true")
+	}
+	assertRef(t, parameter["schema"], "schemas", "InstallmentPlanId")
+}
+
+func assertFourBSchemaPrimitives(t *testing.T, schemas map[string]any) {
+	t.Helper()
+	mode := contractObject(t, schemas["CardPurchaseMode"], "CardPurchaseMode")
+	if contractString(t, mode["type"], "CardPurchaseMode.type") != "string" {
+		t.Fatal("CardPurchaseMode.type must be string")
+	}
+	assertExactStrings(t, contractStrings(t, mode["enum"], "CardPurchaseMode.enum"), []string{"ONE_TIME", "INSTALLMENT"}, "CardPurchaseMode.enum")
+	plan := contractObject(t, schemas["InstallmentPlan"], "InstallmentPlan")
+	properties := contractObject(t, plan["properties"], "InstallmentPlan.properties")
+	assertExactStrings(t, contractStrings(t, contractAt(t, properties, "status", "enum"), "InstallmentPlan.status.enum"), []string{"ACTIVE", "CANCELLED"}, "InstallmentPlan.status.enum")
+	creditCardID := contractObject(t, schemas["CreditCardId"], "CreditCardId")
+	if contractString(t, creditCardID["pattern"], "CreditCardId.pattern") != `^card_[0-9a-f]{32}$` {
+		t.Fatal("CreditCardId pattern drifted")
+	}
+	planID := contractObject(t, schemas["InstallmentPlanId"], "InstallmentPlanId")
+	if contractString(t, planID["pattern"], "InstallmentPlanId.pattern") != `^ipl_[0-9a-f]{32}$` {
+		t.Fatal("InstallmentPlanId pattern drifted")
+	}
+	money := contractObject(t, schemas["Money"], "Money")
+	moneyProperties := contractObject(t, money["properties"], "Money.properties")
+	if contractString(t, contractObject(t, moneyProperties["minor"], "Money.minor")["type"], "Money.minor.type") != "integer" {
+		t.Fatal("Money.minor must be integer")
+	}
+	assertConst(t, moneyProperties["currency"], "BRL")
+	civilDate := contractObject(t, schemas["CivilDate"], "CivilDate")
+	if contractString(t, civilDate["type"], "CivilDate.type") != "string" || contractString(t, civilDate["format"], "CivilDate.format") != "date" || contractString(t, civilDate["pattern"], "CivilDate.pattern") != `^(?!0000-)[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$` {
+		t.Fatal("CivilDate contract drifted")
+	}
+}
+
+func assertFourBErrorComponents(t *testing.T, document map[string]any) {
+	t.Helper()
+	responses := contractObject(t, contractAt(t, document, "components", "responses"), "components.responses")
+	components := map[string]string{
+		"InvalidRequest":                  "InvalidRequestError",
+		"CreditCardNotFound":              "CreditCardNotFoundError",
+		"CreditCardArchived":              "CreditCardArchivedError",
+		"CardPurchaseCreateBadRequest":    "CardPurchaseCreateBadRequestError",
+		"CardPurchaseConflict":            "CardPurchaseConflictError",
+		"InstallmentPlanNotFound":         "InstallmentPlanNotFoundError",
+		"InstallmentPlanAlreadyCancelled": "InstallmentPlanAlreadyCancelledError",
+		"InstallmentPlanConflict":         "InstallmentPlanConflictError",
+		"MethodNotAllowed":                "MethodNotAllowedError",
+		"InternalError":                   "InternalError",
+	}
+	for responseName, schemaName := range components {
+		response := contractObject(t, responses[responseName], responseName)
+		assertRef(t, contractAt(t, response, "content", "application/json", "schema"), "schemas", schemaName)
+		assertExactStrings(t, mapKeys(contractObject(t, response["headers"], responseName+".headers")), []string{"Cache-Control", "X-Content-Type-Options"}, responseName+" headers")
+		schema := contractObject(t, contractAt(t, document, "components", "schemas", schemaName), schemaName)
+		assertClosedObject(t, schema, schemaName, []string{"error"})
+		errorObject := contractObject(t, contractAt(t, schema, "properties", "error"), schemaName+".error")
+		assertClosedObject(t, errorObject, schemaName+".error", []string{"code", "message"})
+		assertExactStrings(t, mapKeys(contractObject(t, errorObject["properties"], schemaName+".error.properties")), []string{"code", "message"}, schemaName+" error properties")
+		for _, propertyName := range []string{"code", "message"} {
+			property := contractObject(t, contractAt(t, errorObject, "properties", propertyName), schemaName+".error."+propertyName)
+			if contractString(t, property["type"], schemaName+".error."+propertyName+".type") != "string" {
+				t.Fatalf("%s.error.%s.type must be string", schemaName, propertyName)
+			}
+		}
+	}
+	wantedCodes := map[string][]string{
+		"InvalidRequestError":                  {"INVALID_REQUEST"},
+		"CreditCardNotFoundError":              {"CREDIT_CARD_NOT_FOUND"},
+		"CreditCardArchivedError":              {"CREDIT_CARD_ARCHIVED"},
+		"CardPurchaseCreateBadRequestError":    {"INVALID_REQUEST", "IDEMPOTENCY_KEY_REQUIRED", "IDEMPOTENCY_KEY_INVALID"},
+		"CardPurchaseConflictError":            {"IDEMPOTENCY_KEY_REUSED", "CREDIT_CARD_ARCHIVED"},
+		"InstallmentPlanNotFoundError":         {"INSTALLMENT_PLAN_NOT_FOUND"},
+		"InstallmentPlanAlreadyCancelledError": {"INSTALLMENT_PLAN_ALREADY_CANCELLED"},
+		"InstallmentPlanConflictError":         {"IDEMPOTENCY_KEY_REUSED", "INSTALLMENT_PLAN_ALREADY_CANCELLED", "INSTALLMENT_CANCELLATION_DATE_STALE"},
+		"MethodNotAllowedError":                {"METHOD_NOT_ALLOWED"},
+		"InternalError":                        {"INTERNAL_ERROR"},
+	}
+	schemas := contractObject(t, contractAt(t, document, "components", "schemas"), "schemas")
+	for schemaName, codes := range wantedCodes {
+		errorObject := contractObject(t, contractAt(t, schemas, schemaName, "properties", "error"), schemaName+".error")
+		assertExactStrings(t, contractStrings(t, contractAt(t, errorObject, "properties", "code", "enum"), schemaName+".code.enum"), codes, schemaName+" code enum")
+	}
 }
 
 func assertRecurrenceOperation(t *testing.T, operation map[string]any, expectation recurrenceOperationContract) {
@@ -228,7 +483,7 @@ func assertNarrowErrorSchemas(t *testing.T, document map[string]any) {
 	wantedCodes := map[string][]string{
 		"InvalidRequestError":               {"INVALID_REQUEST"},
 		"TransactionPreviewBadRequestError": {"INVALID_REQUEST", "UNSUPPORTED_TRANSACTION_TYPE"},
-		"TransactionCreateBadRequestError":  {"IDEMPOTENCY_KEY_INVALID", "IDEMPOTENCY_KEY_REQUIRED", "INVALID_REQUEST", "UNSUPPORTED_TRANSACTION_TYPE"},
+		"TransactionCreateBadRequestError":  {"CREDIT_CARD_REQUIRED", "IDEMPOTENCY_KEY_INVALID", "IDEMPOTENCY_KEY_REQUIRED", "INVALID_REQUEST", "UNSUPPORTED_TRANSACTION_TYPE"},
 		"RecurrencePreviewBadRequestError":  {"INVALID_REQUEST", "UNSUPPORTED_RECURRENCE_TYPE"},
 		"RecurrenceCreateBadRequestError":   {"IDEMPOTENCY_KEY_INVALID", "IDEMPOTENCY_KEY_REQUIRED", "INVALID_REQUEST", "UNSUPPORTED_RECURRENCE_TYPE"},
 		"RecurrenceCancelBadRequestError":   {"IDEMPOTENCY_KEY_INVALID", "IDEMPOTENCY_KEY_REQUIRED", "INVALID_REQUEST"},

@@ -20,6 +20,12 @@ protocol FinancialAPI {
     func creditCards() async throws -> CreditCardList
     func creditCard(id: String) async throws -> CreditCard
     func archiveCreditCard(id: String, idempotencyKey: String) async throws -> RecordedCreditCard
+    func previewCardPurchase(_ request: CardPurchasePreviewRequest) async throws -> CardPurchasePreview
+    func createCardPurchase(_ request: CardPurchaseCreateRequest, idempotencyKey: String) async throws -> RecordedCardPurchase
+    func installmentPlans() async throws -> InstallmentPlanListResponse
+    func installmentPlan(id: String) async throws -> InstallmentPlan
+    func previewInstallmentPlanCancellation(id: String) async throws -> InstallmentPlanCancellationPreview
+    func cancelInstallmentPlan(id: String, expectedCancelledOn: RecurrenceCivilDate, idempotencyKey: String) async throws -> RecordedInstallmentPlan
 }
 
 enum FinancialAPIError: Error, Equatable {
@@ -33,6 +39,12 @@ enum FinancialAPIError: Error, Equatable {
     case suggestionSuppressed
     case creditCardNotFound
     case creditCardAlreadyArchived
+    case idempotencyKeyRequired
+    case idempotencyKeyInvalid
+    case cardPurchaseConflict
+    case installmentPlanNotFound
+    case installmentPlanAlreadyCancelled
+    case installmentCancellationDateStale
     case invalidResponse
     case configuration
 
@@ -58,6 +70,16 @@ enum FinancialAPIError: Error, Equatable {
             "Este cartão não está mais disponível. Atualize a lista e tente novamente."
         case .creditCardAlreadyArchived:
             "Este cartão já está arquivado. Atualizamos os dados para você."
+        case .idempotencyKeyRequired, .idempotencyKeyInvalid:
+            "Não foi possível confirmar porque a chave de idempotência é inválida. Tente novamente."
+        case .cardPurchaseConflict:
+            "Esta compra já foi confirmada com outros dados. Revise e tente novamente."
+        case .installmentPlanNotFound:
+            "Este plano de parcelas não foi encontrado. Atualize a lista e tente novamente."
+        case .installmentPlanAlreadyCancelled:
+            "Este plano já está cancelado. Atualizamos os dados para você."
+        case .installmentCancellationDateStale:
+            "A data de cancelamento mudou. Atualize a tela e revise novamente."
         case .invalidResponse, .configuration:
             "Não foi possível concluir a operação. Tente novamente."
         }
@@ -311,6 +333,73 @@ final class URLSessionFinancialAPIClient: FinancialAPI {
         return RecordedCreditCard(card: card, replayed: try replayedValue(response))
     }
 
+    func previewCardPurchase(_ requestBody: CardPurchasePreviewRequest) async throws -> CardPurchasePreview {
+        guard requestBody.isValid() else { throw FinancialAPIError.invalidData }
+        let request = try makeRequest(path: "v1/card-purchases/preview", method: "POST", body: requestBody)
+        let (data, response) = try await perform(request)
+        try requireCardPurchaseStatus(response, expected: 200, data: data)
+        do {
+            return try decode(data)
+        } catch {
+            throw FinancialAPIError.invalidResponse
+        }
+    }
+
+    func createCardPurchase(
+        _ requestBody: CardPurchaseCreateRequest,
+        idempotencyKey: String
+    ) async throws -> RecordedCardPurchase {
+        guard requestBody.isValid() else { throw FinancialAPIError.invalidData }
+        try validateIdempotencyKey(idempotencyKey)
+        var request = try makeRequest(path: "v1/card-purchases", method: "POST", body: requestBody)
+        request.setValue(idempotencyKey, forHTTPHeaderField: "Idempotency-Key")
+        let (data, response) = try await perform(request)
+        try requireCardPurchaseStatus(response, expected: 201, data: data)
+        let purchase: CardPurchase = try decode(data)
+        return RecordedCardPurchase(purchase: purchase, replayed: try replayedValue(response))
+    }
+
+    func installmentPlans() async throws -> InstallmentPlanListResponse {
+        var request = baseRequest(url: baseURL.appendingPathComponent("v1/installment-plans"), method: "GET")
+        request.cachePolicy = .reloadIgnoringLocalCacheData
+        let (data, response) = try await perform(request)
+        try requireInstallmentPlanStatus(response, expected: 200, data: data)
+        return try decode(data)
+    }
+
+    func installmentPlan(id: String) async throws -> InstallmentPlan {
+        let request = try installmentPlanRequest(id: id, action: nil, method: "GET")
+        let (data, response) = try await perform(request)
+        try requireInstallmentPlanStatus(response, expected: 200, data: data)
+        return try decode(data)
+    }
+
+    func previewInstallmentPlanCancellation(id: String) async throws -> InstallmentPlanCancellationPreview {
+        let request = try installmentPlanRequest(id: id, action: "cancellation-preview", method: "POST")
+        let (data, response) = try await perform(request)
+        try requireInstallmentPlanStatus(response, expected: 200, data: data)
+        return try decode(data)
+    }
+
+    func cancelInstallmentPlan(
+        id: String,
+        expectedCancelledOn: RecurrenceCivilDate,
+        idempotencyKey: String
+    ) async throws -> RecordedInstallmentPlan {
+        guard InstallmentPlan.isValidID(id) else { throw FinancialAPIError.invalidData }
+        try validateIdempotencyKey(idempotencyKey)
+        var request = try makeRequest(
+            path: "v1/installment-plans/\(id)/cancel",
+            method: "POST",
+            body: InstallmentPlanCancelRequest(expectedCancelledOn: expectedCancelledOn)
+        )
+        request.setValue(idempotencyKey, forHTTPHeaderField: "Idempotency-Key")
+        let (data, response) = try await perform(request)
+        try requireInstallmentPlanStatus(response, expected: 200, data: data)
+        let plan: InstallmentPlan = try decode(data)
+        return RecordedInstallmentPlan(plan: plan, replayed: try replayedValue(response))
+    }
+
     private func makeRequest<Body: Encodable>(path: String, method: String, body: Body) throws -> URLRequest {
         var request = baseRequest(url: baseURL.appendingPathComponent(path), method: method)
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -320,6 +409,14 @@ final class URLSessionFinancialAPIClient: FinancialAPI {
             throw FinancialAPIError.invalidData
         }
         return request
+    }
+
+    private func validateIdempotencyKey(_ key: String) throws {
+        let bytes = Array(key.utf8)
+        guard !bytes.isEmpty else { throw FinancialAPIError.idempotencyKeyRequired }
+        guard bytes.count <= 128, bytes.allSatisfy({ (33...126).contains($0) }) else {
+            throw FinancialAPIError.idempotencyKeyInvalid
+        }
     }
 
     private func baseRequest(url: URL, method: String) -> URLRequest {
@@ -344,6 +441,13 @@ final class URLSessionFinancialAPIClient: FinancialAPI {
     private func creditCardRequest(id: String, action: String?, method: String) throws -> URLRequest {
         guard CreditCard.isValidID(id) else { throw FinancialAPIError.invalidData }
         var url = baseURL.appendingPathComponent("v1").appendingPathComponent("cards").appendingPathComponent(id)
+        if let action { url = url.appendingPathComponent(action) }
+        return baseRequest(url: url, method: method)
+    }
+
+    private func installmentPlanRequest(id: String, action: String?, method: String) throws -> URLRequest {
+        guard InstallmentPlan.isValidID(id) else { throw FinancialAPIError.invalidData }
+        var url = baseURL.appendingPathComponent("v1").appendingPathComponent("installment-plans").appendingPathComponent(id)
         if let action { url = url.appendingPathComponent(action) }
         return baseRequest(url: url, method: method)
     }
@@ -415,6 +519,56 @@ final class URLSessionFinancialAPIClient: FinancialAPI {
                 throw FinancialAPIError.creditCardNotFound
             case (409, "CREDIT_CARD_ALREADY_ARCHIVED"):
                 throw FinancialAPIError.creditCardAlreadyArchived
+            case (409, "IDEMPOTENCY_KEY_REUSED"):
+                throw FinancialAPIError.conflict
+            case (500...599, _):
+                throw FinancialAPIError.serviceUnavailable
+            default:
+                throw FinancialAPIError.invalidResponse
+            }
+        }
+    }
+
+    private func requireCardPurchaseStatus(_ response: HTTPURLResponse, expected: Int, data: Data) throws {
+        guard response.statusCode == expected else {
+            let code = try? JSONDecoder().decode(APIErrorEnvelope.self, from: data).error.code
+            switch (response.statusCode, code) {
+            case (400, "IDEMPOTENCY_KEY_REQUIRED"):
+                throw FinancialAPIError.idempotencyKeyRequired
+            case (400, "IDEMPOTENCY_KEY_INVALID"):
+                throw FinancialAPIError.idempotencyKeyInvalid
+            case (400, _):
+                throw FinancialAPIError.invalidData
+            case (404, "CREDIT_CARD_NOT_FOUND"):
+                throw FinancialAPIError.creditCardNotFound
+            case (409, "CREDIT_CARD_ARCHIVED"):
+                throw FinancialAPIError.creditCardAlreadyArchived
+            case (409, "IDEMPOTENCY_KEY_REUSED"):
+                throw FinancialAPIError.cardPurchaseConflict
+            case (500...599, _):
+                throw FinancialAPIError.serviceUnavailable
+            default:
+                throw FinancialAPIError.invalidResponse
+            }
+        }
+    }
+
+    private func requireInstallmentPlanStatus(_ response: HTTPURLResponse, expected: Int, data: Data) throws {
+        guard response.statusCode == expected else {
+            let code = try? JSONDecoder().decode(APIErrorEnvelope.self, from: data).error.code
+            switch (response.statusCode, code) {
+            case (400, "IDEMPOTENCY_KEY_REQUIRED"):
+                throw FinancialAPIError.idempotencyKeyRequired
+            case (400, "IDEMPOTENCY_KEY_INVALID"):
+                throw FinancialAPIError.idempotencyKeyInvalid
+            case (400, _):
+                throw FinancialAPIError.invalidData
+            case (404, "INSTALLMENT_PLAN_NOT_FOUND"):
+                throw FinancialAPIError.installmentPlanNotFound
+            case (409, "INSTALLMENT_PLAN_ALREADY_CANCELLED"):
+                throw FinancialAPIError.installmentPlanAlreadyCancelled
+            case (409, "INSTALLMENT_CANCELLATION_DATE_STALE"):
+                throw FinancialAPIError.installmentCancellationDateStale
             case (409, "IDEMPOTENCY_KEY_REUSED"):
                 throw FinancialAPIError.conflict
             case (500...599, _):

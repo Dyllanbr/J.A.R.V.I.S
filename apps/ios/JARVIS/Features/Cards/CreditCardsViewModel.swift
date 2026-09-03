@@ -444,7 +444,9 @@ final class CreditCardsViewModel {
         return switch error {
         case .connectionUnavailable, .serviceUnavailable, .invalidResponse: true
         case .invalidData, .conflict, .notFound, .alreadyCancelled, .suggestionNotFound,
-             .suggestionSuppressed, .creditCardNotFound, .creditCardAlreadyArchived, .configuration: false
+             .suggestionSuppressed, .creditCardNotFound, .creditCardAlreadyArchived, .idempotencyKeyRequired,
+             .idempotencyKeyInvalid, .cardPurchaseConflict, .installmentPlanNotFound,
+             .installmentPlanAlreadyCancelled, .installmentCancellationDateStale, .configuration: false
         }
     }
 }

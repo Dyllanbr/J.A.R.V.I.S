@@ -1207,3 +1207,197 @@ test("credit card preview, create, replay, list, detail, archive, and historical
     expect(head.headers()["cache-control"]).toBe("no-store");
   }
 });
+
+test("card purchase one-time and installment flows remain explicit and replayable", async ({
+  request,
+}) => {
+  const legacyCredit = await request.post("/v1/transactions", {
+    data: {
+      type: "EXPENSE",
+      description: "CREDIT legado 4B rejeitado",
+      amount: { minor: 10000, currency: "BRL" },
+      paymentMethod: "CREDIT",
+      occurredAt: "2026-08-25T14:00:00Z",
+    },
+    headers: { "Idempotency-Key": "pw-4b-legacy-credit-rejected-001" },
+  });
+  expect(legacyCredit.status()).toBe(400);
+  expect(await legacyCredit.json()).toEqual({
+    error: {
+      code: "CREDIT_CARD_REQUIRED",
+      message: "credit card is required for new CREDIT expenses",
+    },
+  });
+
+  const card = await request.post("/v1/cards", {
+    data: creditCardRequest("Cartão Playwright 4B sintético"),
+    headers: { "Idempotency-Key": "pw-4b-card-create-001" },
+  });
+  expect(card.status()).toBe(201);
+  const cardBody = (await card.json()) as { id: string };
+  expect(cardBody.id).toMatch(/^card_[0-9a-f]{32}$/);
+
+  const oneTimePayload = {
+    description: "Compra Playwright 4B à vista",
+    amount: { minor: 10000, currency: "BRL" },
+    occurredAt: "2026-08-25T14:00:00Z",
+    creditCardId: cardBody.id,
+  };
+  const oneTimePreview = await request.post("/v1/card-purchases/preview", {
+    data: oneTimePayload,
+  });
+  expect(oneTimePreview.status()).toBe(200);
+  expect(await oneTimePreview.json()).toMatchObject({
+    description: oneTimePayload.description,
+    amount: oneTimePayload.amount,
+    purchaseMode: "ONE_TIME",
+    statementClosingOn: "2026-08-31",
+    statementDueOn: "2026-09-10",
+  });
+
+  const oneTime = await request.post("/v1/card-purchases", {
+    data: oneTimePayload,
+    headers: { "Idempotency-Key": "pw-4b-purchase-one-time-001" },
+  });
+  expect(oneTime.status()).toBe(201);
+  expect(oneTime.headers()["idempotency-replayed"]).toBeUndefined();
+  const oneTimeBytes = await oneTime.body();
+  const oneTimeBody = JSON.parse(oneTimeBytes.toString()) as Record<
+    string,
+    unknown
+  >;
+  expect(oneTimeBody).toMatchObject({ purchaseMode: "ONE_TIME" });
+  expect(oneTimeBody.installmentPlan).toBeUndefined();
+  expect((oneTimeBody.expense as Record<string, unknown>).paymentMethod).toBe(
+    "CREDIT",
+  );
+
+  const oneTimeReplay = await request.post("/v1/card-purchases", {
+    data: oneTimePayload,
+    headers: { "Idempotency-Key": "pw-4b-purchase-one-time-001" },
+  });
+  expect(oneTimeReplay.status()).toBe(201);
+  expect(oneTimeReplay.headers()["idempotency-replayed"]).toBe("true");
+  expect(await oneTimeReplay.body()).toEqual(oneTimeBytes);
+
+  const installmentPayload = {
+    description: "Compra Playwright 4B parcelada",
+    amount: { minor: 10100, currency: "BRL" },
+    occurredAt: "2026-08-25T14:00:00Z",
+    creditCardId: cardBody.id,
+    installmentCount: 3,
+  };
+  const installmentPreview = await request.post("/v1/card-purchases/preview", {
+    data: installmentPayload,
+  });
+  expect(installmentPreview.status()).toBe(200);
+  expect(await installmentPreview.json()).toMatchObject({
+    purchaseMode: "INSTALLMENT",
+    statementDueOn: "2026-09-10",
+    installmentSummary: {
+      installmentCount: 3,
+      firstDueDate: "2026-09-10",
+      lastDueDate: "2026-11-10",
+      dueDayAnchor: 10,
+      regularInstallmentAmount: { minor: 3366, currency: "BRL" },
+      lastInstallmentAmount: { minor: 3368, currency: "BRL" },
+    },
+  });
+
+  const installment = await request.post("/v1/card-purchases", {
+    data: installmentPayload,
+    headers: { "Idempotency-Key": "pw-4b-purchase-installment-001" },
+  });
+  expect(installment.status()).toBe(201);
+  expect(installment.headers()["idempotency-replayed"]).toBeUndefined();
+  const installmentBody = (await installment.json()) as {
+    purchaseMode: string;
+    installmentPlan: { id: string; status: string; schedule: unknown[] };
+  };
+  expect(installmentBody.purchaseMode).toBe("INSTALLMENT");
+  expect(installmentBody.installmentPlan.id).toMatch(/^ipl_[0-9a-f]{32}$/);
+  expect(installmentBody.installmentPlan.status).toBe("ACTIVE");
+  expect(installmentBody.installmentPlan.schedule).toHaveLength(3);
+
+  const planID = installmentBody.installmentPlan.id;
+  const plans = await request.get("/v1/installment-plans");
+  expect(plans.status()).toBe(200);
+  expect((await plans.json()).items).toEqual([
+    expect.objectContaining({ id: planID, status: "ACTIVE" }),
+  ]);
+  const detail = await request.get(`/v1/installment-plans/${planID}`);
+  expect(detail.status()).toBe(200);
+  expect(await detail.json()).toMatchObject({ id: planID, status: "ACTIVE" });
+
+  const cancellationPreview = await request.post(
+    `/v1/installment-plans/${planID}/cancellation-preview`,
+  );
+  expect(cancellationPreview.status()).toBe(200);
+  const cancellationPreviewBody = (await cancellationPreview.json()) as {
+    expectedCancelledOn: string;
+  };
+  expect(cancellationPreviewBody.expectedCancelledOn).toMatch(
+    /^\d{4}-\d{2}-\d{2}$/,
+  );
+
+  const cancellation = await request.post(
+    `/v1/installment-plans/${planID}/cancel`,
+    {
+      data: {
+        expectedCancelledOn: cancellationPreviewBody.expectedCancelledOn,
+      },
+      headers: { "Idempotency-Key": "pw-4b-plan-cancel-001" },
+    },
+  );
+  expect(cancellation.status()).toBe(200);
+  expect(cancellation.headers()["idempotency-replayed"]).toBeUndefined();
+  const cancellationBytes = await cancellation.body();
+  expect(JSON.parse(cancellationBytes.toString())).toMatchObject({
+    id: planID,
+    status: "CANCELLED",
+    cancelledOn: cancellationPreviewBody.expectedCancelledOn,
+  });
+
+  const cancellationReplay = await request.post(
+    `/v1/installment-plans/${planID}/cancel`,
+    {
+      data: {
+        expectedCancelledOn: cancellationPreviewBody.expectedCancelledOn,
+      },
+      headers: { "Idempotency-Key": "pw-4b-plan-cancel-001" },
+    },
+  );
+  expect(cancellationReplay.status()).toBe(200);
+  expect(cancellationReplay.headers()["idempotency-replayed"]).toBe("true");
+  expect(await cancellationReplay.body()).toEqual(cancellationBytes);
+
+  const alreadyCancelled = await request.post(
+    `/v1/installment-plans/${planID}/cancel`,
+    {
+      data: {
+        expectedCancelledOn: cancellationPreviewBody.expectedCancelledOn,
+      },
+      headers: { "Idempotency-Key": "pw-4b-plan-cancel-002" },
+    },
+  );
+  expect(alreadyCancelled.status()).toBe(409);
+  expect(await alreadyCancelled.json()).toEqual({
+    error: {
+      code: "INSTALLMENT_PLAN_ALREADY_CANCELLED",
+      message: "installment plan is already cancelled",
+    },
+  });
+
+  const augustTransactions = await request.get(
+    "/v1/transactions?month=2026-08",
+  );
+  expect(augustTransactions.status()).toBe(200);
+  const transactionItems = (await augustTransactions.json()).items as Array<{
+    description: string;
+  }>;
+  expect(
+    transactionItems.filter(({ description }) =>
+      description.startsWith("Compra Playwright 4B"),
+    ),
+  ).toHaveLength(2);
+});

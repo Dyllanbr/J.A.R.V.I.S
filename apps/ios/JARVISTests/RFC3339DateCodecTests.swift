@@ -11,6 +11,8 @@ final class RFC3339DateCodecTests: XCTestCase {
 
         XCTAssertEqual(microseconds.timeIntervalSince(whole), 0.123456, accuracy: 0.000_001)
         XCTAssertEqual(nanoseconds.timeIntervalSince(whole), 0.123456789, accuracy: 0.000_001)
+        XCTAssertNotEqual(microseconds, nanoseconds)
+        XCTAssertEqual(nanoseconds.timeIntervalSince(microseconds), 0.000000789, accuracy: 0.000_0002)
     }
 
     func testEquivalentOffsetRepresentsSameInstant() throws {
@@ -27,6 +29,13 @@ final class RFC3339DateCodecTests: XCTestCase {
     }
 
     func testRejectsInvalidTimestamp() {
-        XCTAssertThrowsError(try codec.decode("14/08/2026 15:00"))
+        for value in [
+            "14/08/2026 15:00",
+            "2026-08-14T15:00:00.Z",
+            "2026-08-14T15:00:00.not-a-numberZ",
+            "2026-08-14T15:00:00Z.123",
+        ] {
+            XCTAssertThrowsError(try codec.decode(value), value)
+        }
     }
 }

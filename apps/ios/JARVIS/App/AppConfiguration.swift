@@ -140,4 +140,28 @@ private struct UnavailableFinancialAPI: FinancialAPI {
     func archiveCreditCard(id _: String, idempotencyKey _: String) async throws -> RecordedCreditCard {
         throw FinancialAPIError.configuration
     }
+
+    func previewCardPurchase(_: CardPurchasePreviewRequest) async throws -> CardPurchasePreview {
+        throw FinancialAPIError.configuration
+    }
+
+    func createCardPurchase(_: CardPurchaseCreateRequest, idempotencyKey _: String) async throws -> RecordedCardPurchase {
+        throw FinancialAPIError.configuration
+    }
+
+    func installmentPlans() async throws -> InstallmentPlanListResponse {
+        throw FinancialAPIError.configuration
+    }
+
+    func installmentPlan(id _: String) async throws -> InstallmentPlan {
+        throw FinancialAPIError.configuration
+    }
+
+    func previewInstallmentPlanCancellation(id _: String) async throws -> InstallmentPlanCancellationPreview {
+        throw FinancialAPIError.configuration
+    }
+
+    func cancelInstallmentPlan(id _: String, expectedCancelledOn _: RecurrenceCivilDate, idempotencyKey _: String) async throws -> RecordedInstallmentPlan {
+        throw FinancialAPIError.configuration
+    }
 }

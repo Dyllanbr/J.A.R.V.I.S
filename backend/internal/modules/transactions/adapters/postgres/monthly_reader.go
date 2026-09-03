@@ -5,6 +5,8 @@ import (
 	"errors"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgtype"
+
 	"jarvis/backend/internal/modules/transactions/application"
 	"jarvis/backend/internal/modules/transactions/domain"
 )
@@ -28,7 +30,7 @@ func (repository *ExpenseRepository) ListMonthlyTransactions(
 	rows, err := repository.pool.Query(operationContext, `
 		SELECT
 			id, user_id, type, description, amount_minor, currency,
-			payment_method, category_id, occurred_at, financial_timezone, origin,
+			payment_method, category_id, credit_card_id, statement_due_on, occurred_at, financial_timezone, origin,
 			status, version, created_at, updated_at
 		FROM transactions
 		WHERE user_id = $1
@@ -62,12 +64,14 @@ func scanMonthlyTransaction(row rowScanner) (application.MonthlyTransaction, err
 		currency, timezone, origin, status       string
 		paymentMethod                            *string
 		categoryID                               *string
+		creditCardID                             *string
+		statementDueOn                           pgtype.Date
 		amountMinor, version                     int64
 		occurredAt, createdAt, updatedAt         time.Time
 	)
 	if err := row.Scan(
 		&id, &userID, &transactionType, &description, &amountMinor, &currency,
-		&paymentMethod, &categoryID, &occurredAt, &timezone, &origin, &status, &version,
+		&paymentMethod, &categoryID, &creditCardID, &statementDueOn, &occurredAt, &timezone, &origin, &status, &version,
 		&createdAt, &updatedAt,
 	); err != nil {
 		return application.MonthlyTransaction{}, newRepositoryError(ErrLoadMonthlyTransaction, err)
@@ -90,6 +94,17 @@ func scanMonthlyTransaction(row rowScanner) (application.MonthlyTransaction, err
 		if paymentMethod == nil || status != string(domain.ExpenseStatusRecorded) {
 			return application.MonthlyTransaction{}, ErrLoadMonthlyTransaction
 		}
+		var dueOn *domain.CivilDate
+		if statementDueOn.Valid || statementDueOn.InfinityModifier != pgtype.Finite {
+			value, dateErr := civilDateFromPostgres(statementDueOn)
+			if dateErr != nil {
+				return application.MonthlyTransaction{}, newRepositoryError(ErrLoadMonthlyTransaction, dateErr)
+			}
+			dueOn = &value
+		}
+		if (creditCardID == nil) != (dueOn == nil) {
+			return application.MonthlyTransaction{}, ErrLoadMonthlyTransaction
+		}
 		expense, err := domain.NewExpense(domain.ExpenseParams{
 			ID: id,
 			Details: domain.ExpenseDetails{
@@ -98,6 +113,8 @@ func scanMonthlyTransaction(row rowScanner) (application.MonthlyTransaction, err
 				Amount:            amount,
 				PaymentMethod:     domain.PaymentMethod(*paymentMethod),
 				CategoryID:        storedCategoryID,
+				CreditCardID:      creditCardID,
+				StatementDueOn:    dueOn,
 				OccurredAt:        occurredAt,
 				FinancialTimezone: timezone,
 				Origin:            domain.Origin(origin),

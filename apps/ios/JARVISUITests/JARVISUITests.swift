@@ -408,6 +408,123 @@ final class JARVISUITests: XCTestCase {
     }
 
     @MainActor
+    func testRealAPICardPurchaseAndInstallmentPlanLifecycle() throws {
+        continueAfterFailure = false
+        let launched = try launchApp()
+        guard try testConfiguration().mode == .real else {
+            throw XCTSkip("This scenario requires the official real API/PostgreSQL harness")
+        }
+        let app = launched.app
+        defer { app.terminate() }
+
+        let cardName = "\(launched.description)_purchase_card"
+        let oneTimePurchaseDescription = "\(launched.description)_purchase_one_time"
+        let installmentPurchaseDescription = "\(launched.description)_purchase_installment"
+
+        XCTAssertTrue(element("tab.cards", in: app).waitForExistence(timeout: 8))
+        element("tab.cards", in: app).tap()
+        let cardsContent = app.descendants(matching: .any)
+            .matching(
+                NSPredicate(
+                    format: "identifier == %@ OR identifier == %@",
+                    "card.empty",
+                    "card.list"
+                )
+            )
+            .firstMatch
+        XCTAssertTrue(cardsContent.waitForExistence(timeout: 12), app.debugDescription)
+        element("card.create", in: app).tap()
+        fillCreditCardForm(in: app, name: cardName)
+        element("card.review", in: app).tap()
+        XCTAssertTrue(element("card.review.screen", in: app).waitForExistence(timeout: 10))
+        element("card.confirm", in: app).tap()
+        XCTAssertTrue(element("card.success", in: app).waitForExistence(timeout: 12))
+        element("card.new", in: app).tap()
+        XCTAssertTrue(element("card.list", in: app).waitForExistence(timeout: 12))
+
+        let item = app.descendants(matching: .any)
+            .matching(
+                NSPredicate(
+                    format: "identifier BEGINSWITH %@ AND label CONTAINS %@",
+                    "card.item.card_",
+                    cardName
+                )
+            )
+            .firstMatch
+        XCTAssertTrue(item.waitForExistence(timeout: 12), app.debugDescription)
+        let cardID = String(item.identifier.dropFirst("card.item.".count))
+        item.tap()
+        XCTAssertTrue(element("card.detail", in: app).waitForExistence(timeout: 10))
+        element("card.purchase.\(cardID)", in: app).tap()
+
+        func createPurchase(in app: XCUIApplication, description: String, amount: String, installments: String?) {
+            XCTAssertTrue(element("cardPurchase.form", in: app).waitForExistence(timeout: 10))
+            app.textFields["cardPurchase.description"].tap()
+            app.textFields["cardPurchase.description"].typeText(description)
+            app.textFields["cardPurchase.amount"].tap()
+            app.textFields["cardPurchase.amount"].typeText(amount)
+            dismissKeyboard(in: app)
+            if let installments {
+                app.textFields["cardPurchase.installments"].tap()
+                app.textFields["cardPurchase.installments"].typeText(installments)
+                dismissKeyboard(in: app)
+            }
+            element("cardPurchase.review", in: app).tap()
+
+            XCTAssertTrue(element("cardPurchase.review", in: app).waitForExistence(timeout: 12))
+            if installments == nil {
+                XCTAssertTrue(element("cardPurchase.review.mode", in: app).exists)
+                XCTAssertFalse(element("cardPurchase.review.installments", in: app).exists)
+            } else {
+                XCTAssertTrue(element("cardPurchase.review.installments", in: app).exists)
+            }
+            XCTAssertFalse(element("cardPurchase.success", in: app).exists)
+            element("cardPurchase.confirm", in: app).tap()
+            XCTAssertTrue(element("cardPurchase.success", in: app).waitForExistence(timeout: 15))
+            element("cardPurchase.done", in: app).tap()
+        }
+
+        createPurchase(in: app, description: oneTimePurchaseDescription, amount: "80,00", installments: nil)
+
+        app.terminate()
+        let secondApp = try launchApp().app
+        defer { secondApp.terminate() }
+        XCTAssertTrue(element("tab.cards", in: secondApp).waitForExistence(timeout: 8), secondApp.debugDescription)
+        element("tab.cards", in: secondApp).tap()
+        let cardAfterOneTime = secondApp.buttons["card.item.\(cardID)"].firstMatch
+        XCTAssertTrue(cardAfterOneTime.waitForExistence(timeout: 12), secondApp.debugDescription)
+        XCTAssertTrue(cardAfterOneTime.isHittable, secondApp.debugDescription)
+        cardAfterOneTime.tap()
+        XCTAssertTrue(element("card.detail", in: secondApp).waitForExistence(timeout: 10), secondApp.debugDescription)
+        XCTAssertTrue(element("card.purchase.\(cardID)", in: secondApp).waitForExistence(timeout: 8))
+        element("card.purchase.\(cardID)", in: secondApp).tap()
+        createPurchase(in: secondApp, description: installmentPurchaseDescription, amount: "120,00", installments: "2")
+
+        element("installmentPlans.open", in: secondApp).tap()
+        XCTAssertTrue(element("installmentPlans.list", in: secondApp).waitForExistence(timeout: 12))
+        let plan = secondApp.descendants(matching: .any)
+            .matching(NSPredicate(format: "identifier BEGINSWITH %@", "installmentPlan.item.ipl_"))
+            .firstMatch
+        XCTAssertTrue(plan.waitForExistence(timeout: 12), secondApp.debugDescription)
+        plan.tap()
+        XCTAssertTrue(element("installmentPlan.detail", in: secondApp).waitForExistence(timeout: 12))
+        element("installmentPlan.cancel.preview", in: secondApp).tap()
+        let cancel = secondApp.alerts.firstMatch.buttons.matching(identifier: "installmentPlan.cancel.confirm").firstMatch
+        XCTAssertTrue(cancel.waitForExistence(timeout: 8), secondApp.debugDescription)
+        cancel.tap()
+        XCTAssertTrue(element("installmentPlan.detail", in: secondApp).waitForExistence(timeout: 12))
+        XCTAssertTrue(
+            element("installmentPlan.cancel.preview", in: secondApp).waitForNonExistence(timeout: 10),
+            secondApp.debugDescription
+        )
+        XCTAssertTrue(
+            secondApp.staticTexts.matching(NSPredicate(format: "label CONTAINS[c] %@", "Cancelado")).firstMatch
+                .waitForExistence(timeout: 8),
+            secondApp.debugDescription
+        )
+    }
+
+    @MainActor
     func testCreditCardFailureExposesSafeRetry() {
         continueAfterFailure = false
         let app = XCUIApplication()
@@ -419,6 +536,75 @@ final class JARVISUITests: XCTestCase {
         XCTAssertTrue(element("card.error", in: app).waitForExistence(timeout: 10))
         XCTAssertTrue(element("card.retry", in: app).exists)
         XCTAssertFalse(app.staticTexts.matching(NSPredicate(format: "label CONTAINS[c] 'sql' OR label CONTAINS[c] 'pgx'")).firstMatch.exists)
+    }
+
+    @MainActor
+    func testCardPurchaseReviewConfirmAndInstallmentPlanCancellation() throws {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchEnvironment["JARVIS_IOS_API_MODE"] = "stub"
+        app.launch()
+        defer { app.terminate() }
+
+        XCTAssertTrue(element("tab.cards", in: app).waitForExistence(timeout: 8))
+        element("tab.cards", in: app).tap()
+        XCTAssertTrue(element("card.empty", in: app).waitForExistence(timeout: 10))
+        element("card.create", in: app).tap()
+        fillCreditCardForm(in: app, name: "Cartão compra 4B")
+        element("card.review", in: app).tap()
+        XCTAssertTrue(element("card.review.screen", in: app).waitForExistence(timeout: 10))
+        element("card.confirm", in: app).tap()
+        XCTAssertTrue(element("card.success", in: app).waitForExistence(timeout: 12))
+        element("card.new", in: app).tap()
+        XCTAssertTrue(element("card.list", in: app).waitForExistence(timeout: 12))
+
+        let card = app.descendants(matching: .any)
+            .matching(NSPredicate(format: "identifier BEGINSWITH %@", "card.item.card_"))
+            .firstMatch
+        XCTAssertTrue(card.waitForExistence(timeout: 10), app.debugDescription)
+        let cardID = String(card.identifier.dropFirst("card.item.".count))
+        card.tap()
+        XCTAssertTrue(element("card.detail", in: app).waitForExistence(timeout: 10))
+        let purchaseButton = element("card.purchase.\(cardID)", in: app)
+        XCTAssertTrue(purchaseButton.waitForExistence(timeout: 8))
+        purchaseButton.tap()
+
+        XCTAssertTrue(element("cardPurchase.form", in: app).waitForExistence(timeout: 8))
+        app.textFields["cardPurchase.description"].tap()
+        app.textFields["cardPurchase.description"].typeText("Compra parcelada 4B")
+        app.textFields["cardPurchase.amount"].tap()
+        app.textFields["cardPurchase.amount"].typeText("120,00")
+        dismissKeyboard(in: app)
+        app.textFields["cardPurchase.installments"].tap()
+        app.textFields["cardPurchase.installments"].typeText("2")
+        dismissKeyboard(in: app)
+        element("cardPurchase.review", in: app).tap()
+
+        XCTAssertTrue(element("cardPurchase.review", in: app).waitForExistence(timeout: 10))
+        XCTAssertFalse(element("cardPurchase.success", in: app).exists)
+        XCTAssertTrue(element("cardPurchase.review.installments", in: app).exists)
+        element("cardPurchase.confirm", in: app).tap()
+        XCTAssertTrue(element("cardPurchase.success", in: app).waitForExistence(timeout: 12))
+        element("cardPurchase.done", in: app).tap()
+
+        element("installmentPlans.open", in: app).tap()
+        XCTAssertTrue(element("installmentPlans.list", in: app).waitForExistence(timeout: 10))
+        let plan = app.descendants(matching: .any)
+            .matching(NSPredicate(format: "identifier BEGINSWITH %@", "installmentPlan.item.ipl_"))
+            .firstMatch
+        XCTAssertTrue(plan.waitForExistence(timeout: 10), app.debugDescription)
+        plan.tap()
+        XCTAssertTrue(element("installmentPlan.detail", in: app).waitForExistence(timeout: 10))
+        element("installmentPlan.cancel.preview", in: app).tap()
+        let cancel = app.alerts.firstMatch.buttons.matching(identifier: "installmentPlan.cancel.confirm").firstMatch
+        XCTAssertTrue(cancel.waitForExistence(timeout: 8), app.debugDescription)
+        cancel.tap()
+        XCTAssertTrue(element("installmentPlan.detail", in: app).waitForExistence(timeout: 10))
+        XCTAssertTrue(
+            app.staticTexts.matching(NSPredicate(format: "label CONTAINS[c] %@", "Cancelado")).firstMatch
+                .waitForExistence(timeout: 8),
+            app.debugDescription
+        )
     }
 
     @MainActor

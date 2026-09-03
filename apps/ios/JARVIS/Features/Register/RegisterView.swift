@@ -2,6 +2,7 @@ import SwiftUI
 
 struct RegisterView: View {
     @Bindable var model: RegistrationViewModel
+    @Bindable var purchaseModel: CardPurchaseViewModel
     @FocusState private var focusedField: FormField?
 
     private let moneyFormatter = BRLMoneyFormatter()
@@ -19,6 +20,16 @@ struct RegisterView: View {
         }
         .task {
             await model.loadCategoriesIfNeeded()
+        }
+        .sheet(
+            isPresented: Binding(
+                get: { purchaseModel.isPresenting },
+                set: { if !$0 { purchaseModel.dismiss() } }
+            )
+        ) {
+            CardPurchaseView(model: purchaseModel)
+                .environment(\.locale, Locale(identifier: "pt_BR"))
+                .interactiveDismissDisabled(purchaseModel.isBusy)
         }
     }
 
@@ -148,7 +159,16 @@ struct RegisterView: View {
             Section {
                 Button {
                     focusedField = nil
-                    Task { await model.review() }
+                    if model.transactionType == .expense && model.paymentMethod == .credit {
+                        purchaseModel.begin(
+                            description: model.description,
+                            amountText: model.amountText,
+                            occurredAt: model.occurredAt,
+                            categoryID: model.selectedCategoryID
+                        )
+                    } else {
+                        Task { await model.review() }
+                    }
                 } label: {
                     HStack {
                         Spacer()
@@ -156,14 +176,14 @@ struct RegisterView: View {
                             ProgressView()
                                 .accessibilityLabel("Revisando movimentação")
                         } else {
-                            Text("Revisar")
+                            Text(model.transactionType == .expense && model.paymentMethod == .credit ? "Continuar com cartão" : "Revisar")
                         }
                         Spacer()
                     }
                     .frame(minHeight: 44)
                 }
                 .disabled(model.isBusy)
-                .accessibilityIdentifier("register.review")
+                .accessibilityIdentifier(model.transactionType == .expense && model.paymentMethod == .credit ? "register.cardPurchase" : "register.review")
             }
         }
         .accessibilityIdentifier("register.screen")

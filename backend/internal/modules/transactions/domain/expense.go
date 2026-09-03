@@ -13,15 +13,17 @@ const (
 )
 
 var (
-	ErrInvalidExpenseID         = errors.New("expense: invalid id")
-	ErrInvalidUserID            = errors.New("expense: invalid user id")
-	ErrInvalidDescription       = errors.New("expense: invalid description")
-	ErrInvalidExpenseAmount     = errors.New("expense: amount must be positive")
-	ErrInvalidPaymentMethod     = errors.New("expense: invalid payment method")
-	ErrInvalidOccurredAt        = errors.New("expense: invalid occurrence time")
-	ErrInvalidFinancialTimezone = errors.New("expense: invalid financial timezone")
-	ErrInvalidOrigin            = errors.New("expense: invalid origin")
-	ErrInvalidCreatedAt         = errors.New("expense: invalid creation time")
+	ErrInvalidExpenseID             = errors.New("expense: invalid id")
+	ErrInvalidUserID                = errors.New("expense: invalid user id")
+	ErrInvalidDescription           = errors.New("expense: invalid description")
+	ErrInvalidExpenseAmount         = errors.New("expense: amount must be positive")
+	ErrInvalidPaymentMethod         = errors.New("expense: invalid payment method")
+	ErrInvalidOccurredAt            = errors.New("expense: invalid occurrence time")
+	ErrInvalidFinancialTimezone     = errors.New("expense: invalid financial timezone")
+	ErrInvalidOrigin                = errors.New("expense: invalid origin")
+	ErrInvalidCreatedAt             = errors.New("expense: invalid creation time")
+	ErrInvalidExpenseCreditCardLink = errors.New("expense: invalid credit card link")
+	ErrInvalidExpenseStatementDueOn = errors.New("expense: invalid statement due date")
 )
 
 // PaymentMethod identifies how an expense was paid.
@@ -51,6 +53,8 @@ type ExpenseDetails struct {
 	Amount            Money
 	PaymentMethod     PaymentMethod
 	CategoryID        *CategoryID
+	CreditCardID      *string
+	StatementDueOn    *CivilDate
 	OccurredAt        time.Time
 	FinancialTimezone string
 	Origin            Origin
@@ -73,6 +77,10 @@ type Expense struct {
 	amount            Money
 	paymentMethod     PaymentMethod
 	categoryID        *CategoryID
+	creditCardID      string
+	hasCreditCardID   bool
+	statementDueOn    CivilDate
+	hasStatementDueOn bool
 	occurredAt        time.Time
 	financialTimezone string
 	origin            Origin
@@ -106,6 +114,21 @@ func NormalizeExpenseDetails(details ExpenseDetails) (ExpenseDetails, error) {
 	}
 	if !details.PaymentMethod.valid() {
 		return ExpenseDetails{}, ErrInvalidPaymentMethod
+	}
+	if (details.CreditCardID == nil) != (details.StatementDueOn == nil) {
+		return ExpenseDetails{}, ErrInvalidExpenseCreditCardLink
+	}
+	if details.CreditCardID != nil {
+		if details.PaymentMethod != PaymentMethodCredit || ValidateCreditCardID(*details.CreditCardID) != nil {
+			return ExpenseDetails{}, ErrInvalidExpenseCreditCardLink
+		}
+		cardID := *details.CreditCardID
+		details.CreditCardID = &cardID
+		if details.StatementDueOn == nil || !details.StatementDueOn.valid() {
+			return ExpenseDetails{}, ErrInvalidExpenseStatementDueOn
+		}
+		dueOn := *details.StatementDueOn
+		details.StatementDueOn = &dueOn
 	}
 	categoryID, err := normalizeOptionalCategoryID(details.CategoryID)
 	if err != nil {
@@ -142,6 +165,18 @@ func NewExpense(params ExpenseParams) (Expense, error) {
 	}
 
 	createdAt := normalizeInstant(params.CreatedAt)
+	var creditCardID string
+	var hasCreditCardID bool
+	if details.CreditCardID != nil {
+		creditCardID = *details.CreditCardID
+		hasCreditCardID = true
+	}
+	var statementDueOn CivilDate
+	var hasStatementDueOn bool
+	if details.StatementDueOn != nil {
+		statementDueOn = *details.StatementDueOn
+		hasStatementDueOn = true
+	}
 	return Expense{
 		id:                params.ID,
 		userID:            details.UserID,
@@ -150,6 +185,10 @@ func NewExpense(params ExpenseParams) (Expense, error) {
 		amount:            details.Amount,
 		paymentMethod:     details.PaymentMethod,
 		categoryID:        details.CategoryID,
+		creditCardID:      creditCardID,
+		hasCreditCardID:   hasCreditCardID,
+		statementDueOn:    statementDueOn,
+		hasStatementDueOn: hasStatementDueOn,
 		occurredAt:        details.OccurredAt,
 		financialTimezone: details.FinancialTimezone,
 		origin:            details.Origin,
@@ -180,6 +219,12 @@ func (e Expense) CategoryID() (CategoryID, bool) {
 		return "", false
 	}
 	return *e.categoryID, true
+}
+func (e Expense) CreditCardID() (string, bool) {
+	return e.creditCardID, e.hasCreditCardID
+}
+func (e Expense) StatementDueOn() (CivilDate, bool) {
+	return e.statementDueOn, e.hasStatementDueOn
 }
 func (e Expense) OccurredAt() time.Time     { return e.occurredAt }
 func (e Expense) FinancialTimezone() string { return e.financialTimezone }

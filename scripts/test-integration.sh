@@ -11,7 +11,46 @@ client_command=("$@")
 api_host="127.0.0.1"
 api_port="${JARVIS_FINANCIAL_API_TEST_PORT:-18081}"
 api_base_url="http://${api_host}:${api_port}"
-api_owner="usr_test_api_owner_001"
+default_integration_owner="usr_test_api_owner_001"
+api_owner="${JARVIS_INTEGRATION_OWNER_ID:-$default_integration_owner}"
+owner_b="${JARVIS_INTEGRATION_OWNER_B_ID:-usr_test_api_owner_002}"
+owner_isolation_mode="${JARVIS_INTEGRATION_OWNER_ISOLATION:-false}"
+
+validate_owner_id() {
+  local owner_id="$1"
+  if [[ ! "$owner_id" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$ ]]; then
+    echo "Integration owner must contain 1-128 ASCII letters, digits, '.', '_' or '-'." >&2
+    return 1
+  fi
+}
+
+case "$owner_isolation_mode" in
+  "" | false | FALSE | 0)
+    owner_isolation_mode=false
+    ;;
+  true | TRUE | 1)
+    owner_isolation_mode=true
+    ;;
+  *)
+    echo "JARVIS_INTEGRATION_OWNER_ISOLATION must be true or false." >&2
+    exit 2
+    ;;
+esac
+
+validate_owner_id "$api_owner"
+if [[ "$owner_isolation_mode" == true ]]; then
+  validate_owner_id "$owner_b"
+  if [[ "$api_owner" == "$owner_b" ]]; then
+    echo "Owner isolation requires distinct owner IDs." >&2
+    exit 2
+  fi
+  if ((${#client_command[@]} == 0)); then
+    echo "Owner isolation requires a real client command." >&2
+    exit 2
+  fi
+fi
+export JARVIS_INTEGRATION_OWNER_ID="$api_owner"
+
 temporary_dir="$(mktemp -d -t jarvis-financial-api.XXXXXX)"
 api_binary="$temporary_dir/jarvis-api"
 migrate_binary="$temporary_dir/jarvis-migrate"
@@ -64,6 +103,237 @@ stop_api() {
     api_cleanup_status=1
   fi
   return "$api_cleanup_status"
+}
+
+start_api() {
+  local owner="$1"
+  printf '\n=== Financial API owner %s ===\n' "$owner" >>"$api_log"
+  JARVIS_HTTP_ADDRESS="${api_host}:${api_port}" \
+  JARVIS_SHUTDOWN_TIMEOUT="5s" \
+  JARVIS_FINANCIAL_API_ENABLED="true" \
+  JARVIS_OWNER_ID="$owner" \
+    "$api_binary" >>"$api_log" 2>&1 &
+  api_pid=$!
+
+  ready=0
+  for _ in {1..50}; do
+    if ! kill -0 "$api_pid" 2>/dev/null; then
+      echo "Financial API exited before readiness." >&2
+      return 1
+    fi
+    if curl --fail --silent --show-error \
+      --connect-timeout 1 \
+      --max-time 2 \
+      "$api_base_url/healthz" >/dev/null 2>&1; then
+      ready=1
+      break
+    fi
+    sleep 0.1
+  done
+  if [[ "$ready" -ne 1 ]]; then
+    echo "Financial API readiness timed out." >&2
+    return 1
+  fi
+}
+
+psql_test() {
+  docker compose \
+    --project-name "$project_name" \
+    --file "$compose_file" \
+    exec -T postgres \
+    psql --quiet --tuples-only --no-align --set=ON_ERROR_STOP=1 \
+    --username "$JARVIS_POSTGRES_USER" \
+    --dbname "$JARVIS_POSTGRES_DB" \
+    "$@"
+}
+
+seed_user() {
+  local owner="$1"
+  psql_test --set=owner_id="$owner" <<'SQL'
+INSERT INTO users (id, created_at, updated_at)
+VALUES (:'owner_id', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+ON CONFLICT (id) DO NOTHING;
+SQL
+}
+
+owner_counts() {
+  local owner="$1"
+  psql_test --set=owner_id="$owner" <<'SQL'
+SELECT (SELECT count(*) FROM transactions WHERE user_id = :'owner_id') || '|' ||
+       (SELECT count(*) FROM audit_events WHERE user_id = :'owner_id') || '|' ||
+       (SELECT count(*) FROM idempotency_records WHERE user_id = :'owner_id') || '|' ||
+       (SELECT count(*) FROM recurrences WHERE user_id = :'owner_id') || '|' ||
+       (SELECT count(*) FROM recurrence_audit_events WHERE user_id = :'owner_id') || '|' ||
+       (SELECT count(*) FROM recurrence_idempotency_records WHERE user_id = :'owner_id') || '|' ||
+       (SELECT count(*) FROM recurrence_suggestion_suppressions WHERE user_id = :'owner_id') || '|' ||
+       (SELECT count(*) FROM credit_cards WHERE user_id = :'owner_id') || '|' ||
+       (SELECT count(*) FROM credit_card_audit_events WHERE user_id = :'owner_id') || '|' ||
+       (SELECT count(*) FROM credit_card_idempotency_records WHERE user_id = :'owner_id') || '|' ||
+       (SELECT count(*) FROM installment_plans WHERE user_id = :'owner_id') || '|' ||
+       (SELECT count(*) FROM installment_plan_audit_events WHERE user_id = :'owner_id') || '|' ||
+       (SELECT count(*) FROM installment_plan_idempotency_records WHERE user_id = :'owner_id') || '|' ||
+       (SELECT count(*) FROM card_purchase_idempotency_records WHERE user_id = :'owner_id');
+SQL
+}
+
+read_owner_ids() {
+  local owner="$1"
+  local table_name="$2"
+  case "$table_name" in
+    credit_cards)
+      psql_test --set=owner_id="$owner" <<'SQL'
+SELECT id FROM credit_cards WHERE user_id = :'owner_id' ORDER BY id;
+SQL
+      ;;
+    recurrences)
+      psql_test --set=owner_id="$owner" <<'SQL'
+SELECT id FROM recurrences WHERE user_id = :'owner_id' ORDER BY id;
+SQL
+      ;;
+    installment_plans)
+      psql_test --set=owner_id="$owner" <<'SQL'
+SELECT id FROM installment_plans WHERE user_id = :'owner_id' ORDER BY id;
+SQL
+      ;;
+    *) echo "Unsupported owner-isolation table: $table_name" >&2; return 2 ;;
+  esac
+}
+
+response_counter=0
+request_response_file=""
+request_status=""
+
+capture_get() {
+  local url="$1"
+  response_counter=$((response_counter + 1))
+  request_response_file="$temporary_dir/owner-isolation-response-${response_counter}.json"
+  if ! request_status="$(curl --silent --show-error --output "$request_response_file" --write-out '%{http_code}' --connect-timeout 2 --max-time 5 -H 'Accept: application/json' "$url")"; then
+    echo "Owner isolation request failed: $url" >&2
+    return 1
+  fi
+}
+
+assert_list_count() {
+  local url="$1"
+  local expected_count="$2"
+  capture_get "$url"
+  if [[ "$request_status" != 200 ]]; then
+    echo "Owner isolation list $url returned HTTP $request_status." >&2
+    return 1
+  fi
+  node - "$request_response_file" "$expected_count" <<'NODE'
+const fs = require('fs');
+const file = process.argv[2];
+const expected = Number(process.argv[3]);
+const body = JSON.parse(fs.readFileSync(file, 'utf8'));
+if (!body || !Array.isArray(body.items) || body.items.length !== expected) {
+  process.exit(1);
+}
+NODE
+}
+
+assert_error_code() {
+  local url="$1"
+  local expected_status="$2"
+  local expected_code="$3"
+  capture_get "$url"
+  if [[ "$request_status" != "$expected_status" ]]; then
+    echo "Owner isolation request $url returned HTTP $request_status, want $expected_status." >&2
+    return 1
+  fi
+  node - "$request_response_file" "$expected_code" <<'NODE'
+const fs = require('fs');
+const file = process.argv[2];
+const expected = process.argv[3];
+const body = JSON.parse(fs.readFileSync(file, 'utf8'));
+if (!body || !body.error || body.error.code !== expected) {
+  process.exit(1);
+}
+NODE
+}
+
+assert_owner_isolation() {
+  local owner_a="$1"
+  local owner_b_id="$2"
+  local owner_a_counts="$3"
+  local owner_a_transaction_month="$4"
+  local owner_a_transaction_count="$5"
+
+  local expected_cards expected_recurrences expected_plans
+  IFS='|' read -r _ _ _ expected_recurrences _ _ _ expected_cards _ _ expected_plans _ _ _ <<<"$owner_a_counts"
+
+  local -a card_ids=()
+  local -a plan_ids=()
+  local card_ids_raw plan_ids_raw
+  local id
+  if ! card_ids_raw="$(read_owner_ids "$owner_a" credit_cards)"; then
+    echo "Owner isolation could not read owner A credit-card IDs." >&2
+    return 1
+  fi
+  if ! plan_ids_raw="$(read_owner_ids "$owner_a" installment_plans)"; then
+    echo "Owner isolation could not read owner A installment-plan IDs." >&2
+    return 1
+  fi
+  while IFS= read -r id; do
+    [[ -n "$id" ]] && card_ids+=("$id")
+  done <<<"$card_ids_raw"
+  while IFS= read -r id; do
+    [[ -n "$id" ]] && plan_ids+=("$id")
+  done <<<"$plan_ids_raw"
+
+  assert_list_count "$api_base_url/v1/cards" 0
+  assert_list_count "$api_base_url/v1/recurrences" 0
+  assert_list_count "$api_base_url/v1/installment-plans" 0
+  assert_list_count "$api_base_url/v1/recurrence-suggestions" 0
+  if [[ -n "$owner_a_transaction_month" ]]; then
+    assert_list_count "$api_base_url/v1/transactions?month=$owner_a_transaction_month" 0
+  fi
+
+  if ((${#card_ids[@]} > 0)); then
+    for id in "${card_ids[@]}"; do
+      assert_error_code "$api_base_url/v1/cards/$id" 404 CREDIT_CARD_NOT_FOUND
+    done
+  fi
+  if ((${#plan_ids[@]} > 0)); then
+    for id in "${plan_ids[@]}"; do
+      assert_error_code "$api_base_url/v1/installment-plans/$id" 404 INSTALLMENT_PLAN_NOT_FOUND
+    done
+  fi
+
+  local owner_b_counts
+  owner_b_counts="$(owner_counts "$owner_b_id")"
+  if [[ "$owner_b_counts" != "0|0|0|0|0|0|0|0|0|0|0|0|0|0" ]]; then
+    echo "Owner isolation SQL postcondition failed for $owner_b_id: $owner_b_counts" >&2
+    return 1
+  fi
+
+  stop_api
+  start_api "$owner_a"
+  assert_list_count "$api_base_url/v1/cards" "$expected_cards"
+  assert_list_count "$api_base_url/v1/recurrences" "$expected_recurrences"
+  assert_list_count "$api_base_url/v1/installment-plans" "$expected_plans"
+  if [[ -n "$owner_a_transaction_month" ]]; then
+    assert_list_count "$api_base_url/v1/transactions?month=$owner_a_transaction_month" "$owner_a_transaction_count"
+  fi
+  local owner_a_after_counts
+  owner_a_after_counts="$(owner_counts "$owner_a")"
+  if [[ "$owner_a_after_counts" != "$owner_a_counts" ]]; then
+    echo "Owner A SQL postcondition changed after owner switch: before=$owner_a_counts after=$owner_a_after_counts" >&2
+    return 1
+  fi
+  if ((${#card_ids[@]} > 0)); then
+    for id in "${card_ids[@]}"; do
+      capture_get "$api_base_url/v1/cards/$id"
+      [[ "$request_status" == 200 ]] || return 1
+    done
+  fi
+  if ((${#plan_ids[@]} > 0)); then
+    for id in "${plan_ids[@]}"; do
+      capture_get "$api_base_url/v1/installment-plans/$id"
+      [[ "$request_status" == 200 ]] || return 1
+    done
+  fi
+  echo "Owner isolation passed: owner A $owner_a remained intact while owner B $owner_b_id saw no owner A data or details."
 }
 
 cleanup() {
@@ -142,41 +412,11 @@ export JARVIS_DATABASE_URL="$JARVIS_TEST_DATABASE_URL"
 )
 
 "$migrate_binary" up
-docker compose \
-  --project-name "$project_name" \
-  --file "$compose_file" \
-  exec -T postgres \
-  psql --quiet --set=ON_ERROR_STOP=1 \
-  --username "$JARVIS_POSTGRES_USER" \
-  --dbname "$JARVIS_POSTGRES_DB" \
-  --command "INSERT INTO users (id, created_at, updated_at) VALUES ('usr_test_api_owner_001', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)"
-
-JARVIS_HTTP_ADDRESS="${api_host}:${api_port}" \
-JARVIS_SHUTDOWN_TIMEOUT="5s" \
-JARVIS_FINANCIAL_API_ENABLED="true" \
-JARVIS_OWNER_ID="$api_owner" \
-  "$api_binary" >"$api_log" 2>&1 &
-api_pid=$!
-
-ready=0
-for _ in {1..50}; do
-  if ! kill -0 "$api_pid" 2>/dev/null; then
-    echo "Financial API exited before readiness." >&2
-    exit 1
-  fi
-  if curl --fail --silent --show-error \
-    --connect-timeout 1 \
-    --max-time 2 \
-    "$api_base_url/healthz" >/dev/null 2>&1; then
-    ready=1
-    break
-  fi
-  sleep 0.1
-done
-if [[ "$ready" -ne 1 ]]; then
-  echo "Financial API readiness timed out." >&2
-  exit 1
+seed_user "$api_owner"
+if [[ "$owner_isolation_mode" == true ]]; then
+  seed_user "$owner_b"
 fi
+start_api "$api_owner"
 
 if ((${#client_command[@]} > 0)); then
   JARVIS_API_BASE_URL="$api_base_url" \
@@ -193,6 +433,37 @@ else
     JARVIS_FINANCIAL_API_TESTS="true" \
       "$npm_bin" test
   )
+fi
+
+if [[ "$owner_isolation_mode" == true ]]; then
+  owner_a_counts="$(owner_counts "$api_owner")"
+  owner_a_transaction_month="$(psql_test --set=owner_id="$api_owner" <<'SQL' | tr -d '[:space:]'
+SELECT COALESCE(to_char(max(occurred_at AT TIME ZONE 'America/Sao_Paulo'), 'YYYY-MM'), '')
+FROM transactions
+WHERE user_id = :'owner_id';
+SQL
+)"
+  owner_a_transaction_count="0"
+  if [[ -n "$owner_a_transaction_month" ]]; then
+    owner_a_transaction_count="$(psql_test \
+      --set=owner_id="$api_owner" \
+      --set=transaction_month="$owner_a_transaction_month" <<'SQL' | tr -d '[:space:]'
+SELECT count(*)
+FROM transactions
+WHERE user_id = :'owner_id'
+  AND to_char(occurred_at AT TIME ZONE 'America/Sao_Paulo', 'YYYY-MM') = :'transaction_month';
+SQL
+)"
+  fi
+
+  stop_api
+  start_api "$owner_b"
+  assert_owner_isolation \
+    "$api_owner" \
+    "$owner_b" \
+    "$owner_a_counts" \
+    "$owner_a_transaction_month" \
+    "$owner_a_transaction_count"
 fi
 
 echo "PostgreSQL and financial API integration tests passed; cleanup will be validated."

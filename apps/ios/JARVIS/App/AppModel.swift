@@ -115,6 +115,8 @@ final class AppModel {
     let recurrences: RecurrencesViewModel
     let recurrenceSuggestions: RecurrenceSuggestionsViewModel
     let creditCards: CreditCardsViewModel
+    let cardPurchases: CardPurchaseViewModel
+    let installmentPlans: InstallmentPlansViewModel
 
     init(api: any FinancialAPI, now: Date = Date()) {
         let categories = CategoryCatalogModel(api: api)
@@ -131,6 +133,12 @@ final class AppModel {
             }
         )
         creditCards = CreditCardsViewModel(api: api)
+        cardPurchases = CardPurchaseViewModel(
+            api: api,
+            now: now,
+            onPurchaseRecorded: { [weak history] in history?.transactionWasRecorded() }
+        )
+        installmentPlans = InstallmentPlansViewModel(api: api)
         registration = RegistrationViewModel(
             api: api,
             categories: categories,
