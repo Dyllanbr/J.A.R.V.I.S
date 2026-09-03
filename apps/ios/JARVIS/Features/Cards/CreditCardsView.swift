@@ -2,13 +2,19 @@ import SwiftUI
 
 struct CreditCardsView: View {
     @Bindable var model: CreditCardsViewModel
+    @Bindable var purchaseModel: CardPurchaseViewModel
+    @Bindable var plansModel: InstallmentPlansViewModel
 
     var body: some View {
         NavigationStack {
             content
                 .navigationTitle("Cartões")
                 .navigationDestination(for: String.self) { id in
-                    CreditCardDetailView(model: model, cardID: id)
+                    CreditCardDetailView(
+                        model: model,
+                        purchaseModel: purchaseModel,
+                        cardID: id
+                    )
                 }
                 .toolbar {
                     ToolbarItem(placement: .primaryAction) {
@@ -86,11 +92,21 @@ struct CreditCardsView: View {
             }
             .accessibilityIdentifier("card.empty")
         case let .loaded(items):
-            List(items) { card in
-                NavigationLink(value: card.id) {
-                    CreditCardRow(card: card)
+            List {
+                Section {
+                    NavigationLink {
+                        InstallmentPlansView(model: plansModel)
+                    } label: {
+                        Label("Planos de parcelas", systemImage: "calendar")
+                    }
+                    .accessibilityIdentifier("installmentPlans.open")
                 }
-                .accessibilityIdentifier("card.item.\(card.id)")
+                ForEach(items) { card in
+                    NavigationLink(value: card.id) {
+                        CreditCardRow(card: card)
+                    }
+                    .accessibilityIdentifier("card.item.\(card.id)")
+                }
             }
             .listStyle(.insetGrouped)
             .refreshable { await model.refresh() }
@@ -144,6 +160,7 @@ private struct CreditCardRow: View {
 
 private struct CreditCardDetailView: View {
     @Bindable var model: CreditCardsViewModel
+    @Bindable var purchaseModel: CardPurchaseViewModel
     let cardID: String
     private let money = BRLMoneyFormatter()
     private let dateTime = FinancialDisplayFormatter()
@@ -195,6 +212,15 @@ private struct CreditCardDetailView: View {
             }
             if card.status == .active {
                 Section {
+                    NavigationLink {
+                        CardPurchaseView(model: purchaseModel)
+                            .environment(\.locale, Locale(identifier: "pt_BR"))
+                            .onAppear { purchaseModel.begin(cardID: card.id) }
+                    } label: {
+                        Text("Registrar compra neste cartão")
+                    }
+                    .frame(minHeight: 44)
+                    .accessibilityIdentifier("card.purchase.\(card.id)")
                     Button("Arquivar cartão", role: .destructive) { model.requestArchive(card) }
                         .frame(minHeight: 44)
                         .disabled(model.archivingIDs.contains(card.id))

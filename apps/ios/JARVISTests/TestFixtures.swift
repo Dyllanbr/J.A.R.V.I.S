@@ -191,6 +191,15 @@ class FinancialAPISpy: FinancialAPI {
     var creditCardListRequestCount = 0
     var creditCardDetailRequests: [String] = []
     var creditCardArchiveRequests: [(id: String, key: String)] = []
+    var cardPurchasePreviewRequests: [CardPurchasePreviewRequest] = []
+    var cardPurchaseCreateRequests: [(request: CardPurchaseCreateRequest, key: String)] = []
+    var installmentPlanListRequestCount = 0
+    var installmentPlanDetailRequests: [String] = []
+    var installmentPlanCancellationPreviewRequests: [String] = []
+    var installmentPlanCancelRequests: [(id: String, expected: RecurrenceCivilDate, key: String)] = []
+    var blockInstallmentPlanCancellationPreview = false
+    private var cancellationPreviewStartWaiter: CheckedContinuation<Void, Never>?
+    private var cancellationPreviewRelease: CheckedContinuation<Void, Never>?
 
     var categoriesResult: Result<[CategoryDefinition], Error> = .success(syntheticCategories)
 
@@ -242,6 +251,12 @@ class FinancialAPISpy: FinancialAPI {
             )
         )
     ]
+    var cardPurchasePreviewResult: Result<CardPurchasePreview, Error> = .failure(FinancialAPIError.serviceUnavailable)
+    var cardPurchaseCreateResults: [Result<RecordedCardPurchase, Error>] = []
+    var installmentPlanListResult: Result<InstallmentPlanListResponse, Error> = .success(InstallmentPlanListResponse(items: []))
+    var installmentPlanDetailResults: [Result<InstallmentPlan, Error>] = []
+    var installmentPlanCancellationPreviewResults: [Result<InstallmentPlanCancellationPreview, Error>] = []
+    var installmentPlanCancelResults: [Result<RecordedInstallmentPlan, Error>] = []
 
     func categories() async throws -> [CategoryDefinition] {
         categoryRequestCount += 1
@@ -346,5 +361,58 @@ class FinancialAPISpy: FinancialAPI {
         creditCardArchiveRequests.append((id, idempotencyKey))
         guard !creditCardArchiveResults.isEmpty else { throw FinancialAPIError.serviceUnavailable }
         return try creditCardArchiveResults.removeFirst().get()
+    }
+
+    func previewCardPurchase(_ request: CardPurchasePreviewRequest) async throws -> CardPurchasePreview {
+        cardPurchasePreviewRequests.append(request)
+        return try cardPurchasePreviewResult.get()
+    }
+
+    func createCardPurchase(_ request: CardPurchaseCreateRequest, idempotencyKey: String) async throws -> RecordedCardPurchase {
+        cardPurchaseCreateRequests.append((request, idempotencyKey))
+        guard !cardPurchaseCreateResults.isEmpty else { throw FinancialAPIError.serviceUnavailable }
+        return try cardPurchaseCreateResults.removeFirst().get()
+    }
+
+    func installmentPlans() async throws -> InstallmentPlanListResponse {
+        installmentPlanListRequestCount += 1
+        return try installmentPlanListResult.get()
+    }
+
+    func installmentPlan(id: String) async throws -> InstallmentPlan {
+        installmentPlanDetailRequests.append(id)
+        guard !installmentPlanDetailResults.isEmpty else { throw FinancialAPIError.serviceUnavailable }
+        return try installmentPlanDetailResults.removeFirst().get()
+    }
+
+    func previewInstallmentPlanCancellation(id: String) async throws -> InstallmentPlanCancellationPreview {
+        installmentPlanCancellationPreviewRequests.append(id)
+        cancellationPreviewStartWaiter?.resume()
+        cancellationPreviewStartWaiter = nil
+        if blockInstallmentPlanCancellationPreview {
+            await withCheckedContinuation { continuation in
+                cancellationPreviewRelease = continuation
+            }
+        }
+        guard !installmentPlanCancellationPreviewResults.isEmpty else { throw FinancialAPIError.serviceUnavailable }
+        return try installmentPlanCancellationPreviewResults.removeFirst().get()
+    }
+
+    func cancelInstallmentPlan(id: String, expectedCancelledOn: RecurrenceCivilDate, idempotencyKey: String) async throws -> RecordedInstallmentPlan {
+        installmentPlanCancelRequests.append((id, expectedCancelledOn, idempotencyKey))
+        guard !installmentPlanCancelResults.isEmpty else { throw FinancialAPIError.serviceUnavailable }
+        return try installmentPlanCancelResults.removeFirst().get()
+    }
+
+    func waitForInstallmentPlanCancellationPreviewStart() async {
+        guard installmentPlanCancellationPreviewRequests.isEmpty else { return }
+        await withCheckedContinuation { continuation in
+            cancellationPreviewStartWaiter = continuation
+        }
+    }
+
+    func releaseInstallmentPlanCancellationPreview() {
+        cancellationPreviewRelease?.resume()
+        cancellationPreviewRelease = nil
     }
 }

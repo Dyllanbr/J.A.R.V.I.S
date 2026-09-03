@@ -792,6 +792,13 @@ private final class SuspendedPreviewAPI: FinancialAPI {
     func creditCard(id _: String) async throws -> CreditCard { throw FinancialAPIError.invalidResponse }
     func archiveCreditCard(id _: String, idempotencyKey _: String) async throws -> RecordedCreditCard { throw FinancialAPIError.invalidResponse }
 
+    func previewCardPurchase(_: CardPurchasePreviewRequest) async throws -> CardPurchasePreview { throw FinancialAPIError.invalidResponse }
+    func createCardPurchase(_: CardPurchaseCreateRequest, idempotencyKey _: String) async throws -> RecordedCardPurchase { throw FinancialAPIError.invalidResponse }
+    func installmentPlans() async throws -> InstallmentPlanListResponse { throw FinancialAPIError.invalidResponse }
+    func installmentPlan(id _: String) async throws -> InstallmentPlan { throw FinancialAPIError.invalidResponse }
+    func previewInstallmentPlanCancellation(id _: String) async throws -> InstallmentPlanCancellationPreview { throw FinancialAPIError.invalidResponse }
+    func cancelInstallmentPlan(id _: String, expectedCancelledOn _: RecurrenceCivilDate, idempotencyKey _: String) async throws -> RecordedInstallmentPlan { throw FinancialAPIError.invalidResponse }
+
     func waitForExpensePreviewCall() async {
         guard expensePreviewContinuation == nil else { return }
         await withCheckedContinuation { expensePreviewCallWaiter = $0 }
@@ -904,6 +911,13 @@ private final class SuspendedCategoryAPI: FinancialAPI {
     func creditCards() async throws -> CreditCardList { throw FinancialAPIError.invalidResponse }
     func creditCard(id _: String) async throws -> CreditCard { throw FinancialAPIError.invalidResponse }
     func archiveCreditCard(id _: String, idempotencyKey _: String) async throws -> RecordedCreditCard { throw FinancialAPIError.invalidResponse }
+
+    func previewCardPurchase(_: CardPurchasePreviewRequest) async throws -> CardPurchasePreview { throw FinancialAPIError.invalidResponse }
+    func createCardPurchase(_: CardPurchaseCreateRequest, idempotencyKey _: String) async throws -> RecordedCardPurchase { throw FinancialAPIError.invalidResponse }
+    func installmentPlans() async throws -> InstallmentPlanListResponse { throw FinancialAPIError.invalidResponse }
+    func installmentPlan(id _: String) async throws -> InstallmentPlan { throw FinancialAPIError.invalidResponse }
+    func previewInstallmentPlanCancellation(id _: String) async throws -> InstallmentPlanCancellationPreview { throw FinancialAPIError.invalidResponse }
+    func cancelInstallmentPlan(id _: String, expectedCancelledOn _: RecurrenceCivilDate, idempotencyKey _: String) async throws -> RecordedInstallmentPlan { throw FinancialAPIError.invalidResponse }
 
     func waitForCategoryRequest() async {
         guard categoryContinuation == nil else { return }

@@ -120,7 +120,13 @@ func TestMigration006FreshSchemaConstraintsSafeDownAndReapply(t *testing.T) {
 		if err := migrations.Up(ctx, connection); err != nil {
 			t.Fatalf("migration 006 reapply failed: %v", err)
 		}
-		assertMigrationVersion(t, ctx, connection, 7)
+		if err := migrations.Down(ctx, connection); err != nil {
+			t.Fatalf("migration 008 DOWN after migration 006 reapply failed: %v", err)
+		}
+		if err := migrations.Down(ctx, connection); err != nil {
+			t.Fatalf("migration 007 DOWN after migration 006 reapply failed: %v", err)
+		}
+		assertMigrationVersion(t, ctx, connection, 6)
 	})
 	assertTableExists(t, ctx, pool, "recurrence_suggestion_suppressions", true)
 }
@@ -143,7 +149,13 @@ func TestMigration006UpgradeFrom005PreservesExistingFinancialAndRecurrenceData(t
 		if err := migrations.Up(ctx, connection); err != nil {
 			t.Fatalf("migration 005 to 006 failed: %v", err)
 		}
-		assertMigrationVersion(t, ctx, connection, 7)
+		if err := migrations.Down(ctx, connection); err != nil {
+			t.Fatalf("migration 008 DOWN after migration 006 upgrade failed: %v", err)
+		}
+		if err := migrations.Down(ctx, connection); err != nil {
+			t.Fatalf("migration 007 DOWN after migration 006 upgrade failed: %v", err)
+		}
+		assertMigrationVersion(t, ctx, connection, 6)
 	})
 	var expenseCount, recurrenceCount, suppressionCount int
 	if err := pool.QueryRow(ctx, "SELECT count(*) FROM transactions WHERE id = 'exp-before-006'").Scan(&expenseCount); err != nil {

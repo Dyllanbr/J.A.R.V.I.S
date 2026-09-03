@@ -79,6 +79,11 @@ func New(
 		pool.Close()
 		return nil, err
 	}
+	legacyCreditGuard, err := application.NewLegacyExpenseCreditGuard(repository)
+	if err != nil {
+		pool.Close()
+		return nil, err
+	}
 	recordIncome, err := application.NewRecordIncomeWithCategoryCatalog(repository, randomid.Generator{}, systemClock{}, repository)
 	if err != nil {
 		pool.Close()
@@ -94,7 +99,7 @@ func New(
 		pool.Close()
 		return nil, err
 	}
-	financialRoutes := httpapi.New(
+	financialRoutes := httpapi.NewWithLegacyCreditGuard(
 		cfg.OwnerID,
 		previewExpense,
 		previewIncome,
@@ -102,6 +107,7 @@ func New(
 		recordIncome,
 		listTransactions,
 		listCategories,
+		legacyCreditGuard,
 	)
 	recurrenceRepository, err := transactionspostgres.NewRecurrenceRepository(pool, postgresConfig.OperationTimeout)
 	if err != nil {
@@ -214,6 +220,51 @@ func New(
 		getCreditCard,
 		archiveCreditCard,
 	)
+	cardPurchaseRepository, err := transactionspostgres.NewCardPurchaseRepository(pool, postgresConfig.OperationTimeout)
+	if err != nil {
+		pool.Close()
+		return nil, err
+	}
+	previewCardPurchase, err := application.NewPreviewCardPurchaseWithCategoryCatalog(creditCardRepository, repository)
+	if err != nil {
+		pool.Close()
+		return nil, err
+	}
+	recordCardPurchase, err := application.NewRecordCardPurchase(
+		cardPurchaseRepository,
+		cardPurchaseRepository,
+		creditCardRepository,
+		repository,
+		randomid.Generator{},
+		randomid.NewInstallmentPlanGenerator(),
+		systemClock{},
+	)
+	if err != nil {
+		pool.Close()
+		return nil, err
+	}
+	listInstallmentPlans, err := application.NewListInstallmentPlans(cardPurchaseRepository)
+	if err != nil {
+		pool.Close()
+		return nil, err
+	}
+	getInstallmentPlan, err := application.NewGetInstallmentPlan(cardPurchaseRepository)
+	if err != nil {
+		pool.Close()
+		return nil, err
+	}
+	previewInstallmentCancellation, err := application.NewPreviewInstallmentPlanCancellation(cardPurchaseRepository, financialDateProvider{})
+	if err != nil {
+		pool.Close()
+		return nil, err
+	}
+	cancelInstallmentPlan, err := application.NewCancelInstallmentPlan(cardPurchaseRepository, cardPurchaseRepository, cardPurchaseRepository, financialDateProvider{})
+	if err != nil {
+		pool.Close()
+		return nil, err
+	}
+	cardPurchaseRoutes := httpapi.NewCardPurchase(cfg.OwnerID, previewCardPurchase, recordCardPurchase)
+	installmentPlanRoutes := httpapi.NewInstallmentPlan(cfg.OwnerID, listInstallmentPlans, getInstallmentPlan, previewInstallmentCancellation, cancelInstallmentPlan)
 	applicationInstance.server = httpserver.New(
 		cfg.HTTPAddress,
 		logger,
@@ -221,6 +272,8 @@ func New(
 		recurrenceRoutes,
 		recurrenceSuggestionRoutes,
 		creditCardRoutes,
+		cardPurchaseRoutes,
+		installmentPlanRoutes,
 	)
 	return applicationInstance, nil
 }

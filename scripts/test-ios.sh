@@ -190,6 +190,7 @@ case "$mode" in
         "-only-testing:JARVISUITests/JARVISUITests/testRecurrencePreviewConfirmListAndCancel"
         "-only-testing:JARVISUITests/JARVISUITests/testRealAPIRecurrenceSuggestionRequiresExplicitConfirmation"
         "-only-testing:JARVISUITests/JARVISUITests/testCreditCardPreviewConfirmDetailAndArchive"
+        "-only-testing:JARVISUITests/JARVISUITests/testRealAPICardPurchaseAndInstallmentPlanLifecycle"
       )
     fi
     ;;

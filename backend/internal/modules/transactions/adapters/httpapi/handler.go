@@ -16,13 +16,14 @@ import (
 const maxRequestBodyBytes = 16 * 1024
 
 type Handler struct {
-	ownerID        string
-	previewExpense application.PreviewExpense
-	previewIncome  application.PreviewIncome
-	recordExpense  *application.RecordExpense
-	recordIncome   *application.RecordIncome
-	list           *application.ListTransactionsByMonth
-	listCategories *application.ListCategories
+	ownerID           string
+	previewExpense    application.PreviewExpense
+	previewIncome     application.PreviewIncome
+	recordExpense     *application.RecordExpense
+	recordIncome      *application.RecordIncome
+	list              *application.ListTransactionsByMonth
+	listCategories    *application.ListCategories
+	legacyCreditGuard *application.LegacyExpenseCreditGuard
 }
 
 // New composes the thin HTTP adapter with server-derived ownership and the
@@ -36,14 +37,30 @@ func New(
 	list *application.ListTransactionsByMonth,
 	listCategories *application.ListCategories,
 ) *Handler {
+	return NewWithLegacyCreditGuard(ownerID, previewExpense, previewIncome, recordExpense, recordIncome, list, listCategories, nil)
+}
+
+// NewWithLegacyCreditGuard protects the legacy transaction endpoint from
+// creating new unlinked CREDIT expenses while preserving historical replay.
+func NewWithLegacyCreditGuard(
+	ownerID string,
+	previewExpense application.PreviewExpense,
+	previewIncome application.PreviewIncome,
+	recordExpense *application.RecordExpense,
+	recordIncome *application.RecordIncome,
+	list *application.ListTransactionsByMonth,
+	listCategories *application.ListCategories,
+	legacyCreditGuard *application.LegacyExpenseCreditGuard,
+) *Handler {
 	return &Handler{
-		ownerID:        ownerID,
-		previewExpense: previewExpense,
-		previewIncome:  previewIncome,
-		recordExpense:  recordExpense,
-		recordIncome:   recordIncome,
-		list:           list,
-		listCategories: listCategories,
+		ownerID:           ownerID,
+		previewExpense:    previewExpense,
+		previewIncome:     previewIncome,
+		recordExpense:     recordExpense,
+		recordIncome:      recordIncome,
+		list:              list,
+		listCategories:    listCategories,
+		legacyCreditGuard: legacyCreditGuard,
 	}
 }
 
@@ -242,6 +259,18 @@ func (handler *Handler) recordTransaction(response http.ResponseWriter, request 
 
 	switch input.typeValue {
 	case domain.TransactionTypeExpense:
+		if input.expense.PaymentMethod == domain.PaymentMethodCredit && handler.legacyCreditGuard != nil {
+			replay, guardErr := handler.legacyCreditGuard.Check(request.Context(), application.RecordExpenseInput{Expense: input.expense, IdempotencyKey: key})
+			if guardErr != nil {
+				handler.writeApplicationError(response, guardErr)
+				return
+			}
+			if replay.Found {
+				response.Header().Set("Idempotency-Replayed", "true")
+				writeJSON(response, http.StatusCreated, newExpenseResponse(replay.Expense))
+				return
+			}
+		}
 		result, err := handler.recordExpense.Execute(request.Context(), application.RecordExpenseInput{
 			Expense: input.expense, IdempotencyKey: key,
 		})
@@ -413,6 +442,8 @@ func decodeIdempotencyKey(response http.ResponseWriter, request *http.Request) (
 
 func (handler *Handler) writeApplicationError(response http.ResponseWriter, err error) {
 	switch {
+	case errors.Is(err, application.ErrCreditCardRequired):
+		writeError(response, http.StatusBadRequest, "CREDIT_CARD_REQUIRED", "credit card is required for new CREDIT expenses")
 	case errors.Is(err, application.ErrIdempotencyKeyRequired),
 		errors.Is(err, application.ErrIncomeIdempotencyKeyRequired):
 		writeError(response, http.StatusBadRequest, "IDEMPOTENCY_KEY_REQUIRED", "idempotency key is required")

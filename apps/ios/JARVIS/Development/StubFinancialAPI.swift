@@ -35,6 +35,17 @@ final class StubFinancialAPI: FinancialAPI {
         let card: CreditCard
     }
 
+    private struct StoredInstallmentPlanCancel {
+        let planID: String
+        let expectedCancelledOn: RecurrenceCivilDate
+        let plan: InstallmentPlan
+    }
+
+    private struct StoredCardPurchase {
+        let request: CardPurchaseCreateRequest
+        let purchase: CardPurchase
+    }
+
     private var transactionsByID: [String: FinancialTransaction] = [:]
     private var idempotency: [String: String] = [:]
     private var recurrencesByID: [String: Recurrence] = [:]
@@ -45,6 +56,9 @@ final class StubFinancialAPI: FinancialAPI {
     private var cardsByID: [String: CreditCard] = [:]
     private var cardCreates: [String: StoredCardCreate] = [:]
     private var cardArchives: [String: StoredCardArchive] = [:]
+    private var cardPurchaseCreates: [String: StoredCardPurchase] = [:]
+    private var installmentPlansByID: [String: InstallmentPlan] = [:]
+    private var installmentPlanCancels: [String: StoredInstallmentPlanCancel] = [:]
     private var nextSequence = 1
     private let timestampCodec = RFC3339DateCodec()
     private let suggestionScenario: SuggestionScenario
@@ -404,8 +418,98 @@ final class StubFinancialAPI: FinancialAPI {
         return RecordedCreditCard(card: archived, replayed: false)
     }
 
+    func previewCardPurchase(_ request: CardPurchasePreviewRequest) async throws -> CardPurchasePreview {
+        try await Task.sleep(for: .milliseconds(80))
+        guard request.isValid(), let card = cardsByID[request.creditCardID] else { throw FinancialAPIError.creditCardNotFound }
+        guard card.status == .active else { throw FinancialAPIError.creditCardAlreadyArchived }
+        try validate(categoryID: request.categoryID, for: .expense)
+        let purchaseDate = try financialCivilDate(request.occurredAt)
+        let currentClosing = min(card.closingDay, Self.daysInMonth(purchaseDate.year, purchaseDate.month))
+        let closing = try Self.anchoredDate(purchaseDate, day: card.closingDay, offset: purchaseDate.day >= currentClosing ? 1 : 0)
+        let due = try Self.anchoredDate(closing, day: card.dueDay, offset: card.dueDay <= closing.day ? 1 : 0)
+        let mode: CardPurchaseMode = request.installmentCount == nil ? .oneTime : .installment
+        var summary: InstallmentSummary?
+        if let count = request.installmentCount {
+            let base = request.amount.minor / Int64(count)
+            let remainder = request.amount.minor % Int64(count)
+            let last = try Self.anchoredDate(due, day: due.day, offset: count - 1)
+            summary = try InstallmentSummary(installmentCount: count, firstDueDate: due, lastDueDate: last, dueDayAnchor: due.day, regularInstallmentAmount: FinancialMoney(minor: base, currency: .brl), lastInstallmentAmount: FinancialMoney(minor: base + remainder, currency: .brl))
+        }
+        return try CardPurchasePreview(description: request.description.trimmingCharacters(in: .whitespacesAndNewlines), amount: request.amount, occurredAt: canonicalTimestamp(request.occurredAt), categoryID: request.categoryID, creditCardID: card.id, purchaseMode: mode, statementClosingOn: closing, statementDueOn: due, installmentSummary: summary)
+    }
+
+    func createCardPurchase(_ request: CardPurchaseCreateRequest, idempotencyKey: String) async throws -> RecordedCardPurchase {
+        try await Task.sleep(for: .milliseconds(80))
+        if let stored = cardPurchaseCreates[idempotencyKey] {
+            guard stored.request == request else { throw FinancialAPIError.cardPurchaseConflict }
+            return RecordedCardPurchase(purchase: stored.purchase, replayed: true)
+        }
+        let previewRequest = CardPurchasePreviewRequest(description: request.description, amount: request.amount, occurredAt: request.occurredAt, categoryID: request.categoryID, creditCardID: request.creditCardID, installmentCount: request.installmentCount)
+        let preview = try await previewCardPurchase(previewRequest)
+        let now = timestampCodec.encode(Date())
+        let expense = try CardPurchaseExpense(id: nextID(prefix: "exp"), description: preview.description, amount: preview.amount, categoryID: preview.categoryID, creditCardID: preview.creditCardID, statementDueOn: preview.statementDueOn, occurredAt: preview.occurredAt, createdAt: now, updatedAt: now)
+        var plan: InstallmentPlan?
+        if let count = request.installmentCount, let summary = preview.installmentSummary {
+            var schedule: [Installment] = []
+            for number in 1...count {
+                let date = try Self.anchoredDate(summary.firstDueDate, day: summary.dueDayAnchor, offset: number - 1)
+                let amount = number == count ? summary.lastInstallmentAmount : summary.regularInstallmentAmount
+                schedule.append(try Installment(number: number, totalCount: count, dueDate: date, amount: amount))
+            }
+            plan = try InstallmentPlan(id: nextPlanID(), creditCardID: preview.creditCardID, expenseID: expense.id, totalAmount: request.amount, installmentCount: count, firstDueDate: summary.firstDueDate, dueDayAnchor: summary.dueDayAnchor, createdAt: now, schedule: schedule)
+            installmentPlansByID[plan!.id] = plan!
+        }
+        let purchase = try CardPurchase(expense: expense, installmentPlan: plan, purchaseMode: preview.purchaseMode)
+        cardPurchaseCreates[idempotencyKey] = StoredCardPurchase(request: request, purchase: purchase)
+        transactionsByID[expense.id] = .expense(Expense(id: expense.id, description: expense.description, amount: expense.amount, paymentMethod: .credit, categoryID: expense.categoryID, occurredAt: expense.occurredAt, financialTimezone: expense.financialTimezone, origin: expense.origin, status: .recorded, version: 1, createdAt: expense.createdAt, updatedAt: expense.updatedAt))
+        return RecordedCardPurchase(purchase: purchase, replayed: false)
+    }
+
+    func installmentPlans() async throws -> InstallmentPlanListResponse {
+        try await Task.sleep(for: .milliseconds(80))
+        return InstallmentPlanListResponse(items: installmentPlansByID.values.sorted { $0.firstDueDate < $1.firstDueDate })
+    }
+
+    func installmentPlan(id: String) async throws -> InstallmentPlan {
+        try await Task.sleep(for: .milliseconds(80))
+        guard let plan = installmentPlansByID[id] else { throw FinancialAPIError.installmentPlanNotFound }
+        return plan
+    }
+
+    func previewInstallmentPlanCancellation(id: String) async throws -> InstallmentPlanCancellationPreview {
+        try await Task.sleep(for: .milliseconds(80))
+        guard let plan = installmentPlansByID[id] else { throw FinancialAPIError.installmentPlanNotFound }
+        guard plan.status == .active else { throw FinancialAPIError.installmentPlanAlreadyCancelled }
+        return try InstallmentPlanCancellationPreview(installmentPlanID: id, expectedCancelledOn: try RecurrenceCivilDate(year: 2026, month: 9, day: 2), plan: plan)
+    }
+
+    func cancelInstallmentPlan(id: String, expectedCancelledOn: RecurrenceCivilDate, idempotencyKey: String) async throws -> RecordedInstallmentPlan {
+        try await Task.sleep(for: .milliseconds(80))
+        if let stored = installmentPlanCancels[idempotencyKey] {
+            guard stored.planID == id, stored.expectedCancelledOn == expectedCancelledOn else {
+                throw FinancialAPIError.conflict
+            }
+            return RecordedInstallmentPlan(plan: stored.plan, replayed: true)
+        }
+        guard let plan = installmentPlansByID[id] else { throw FinancialAPIError.installmentPlanNotFound }
+        guard plan.status == .active else { throw FinancialAPIError.installmentPlanAlreadyCancelled }
+        let cancelled = try InstallmentPlan(id: plan.id, creditCardID: plan.creditCardID, expenseID: plan.expenseID, totalAmount: plan.totalAmount, installmentCount: plan.installmentCount, firstDueDate: plan.firstDueDate, dueDayAnchor: plan.dueDayAnchor, status: .cancelled, createdAt: plan.createdAt, cancelledOn: expectedCancelledOn, schedule: plan.schedule)
+        installmentPlansByID[id] = cancelled
+        installmentPlanCancels[idempotencyKey] = StoredInstallmentPlanCancel(planID: id, expectedCancelledOn: expectedCancelledOn, plan: cancelled)
+        return RecordedInstallmentPlan(plan: cancelled, replayed: false)
+    }
+
     private func canonicalTimestamp(_ value: String) throws -> String {
         timestampCodec.encode(try timestampCodec.decode(value))
+    }
+
+    private func financialCivilDate(_ value: String) throws -> RecurrenceCivilDate {
+        let date = try timestampCodec.decode(value)
+        let components = Self.financialCalendar.dateComponents([.year, .month, .day], from: date)
+        guard let year = components.year, let month = components.month, let day = components.day else {
+            throw FinancialAPIError.invalidData
+        }
+        return try RecurrenceCivilDate(year: year, month: month, day: day)
     }
 
     private func nextID(prefix: String) -> String {
@@ -416,6 +520,30 @@ final class StubFinancialAPI: FinancialAPI {
     private func nextCardID() -> String {
         defer { nextSequence += 1 }
         return "card_\(String(format: "%032x", nextSequence))"
+    }
+
+    private func nextPlanID() -> String {
+        defer { nextSequence += 1 }
+        return "ipl_\(String(format: "%032x", nextSequence))"
+    }
+
+    private static func daysInMonth(_ year: Int, _ month: Int) -> Int {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        return calendar.range(of: .day, in: .month, for: calendar.date(from: DateComponents(year: year, month: month, day: 1))!)!.count
+    }
+
+    private static let financialCalendar: Calendar = {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "America/Sao_Paulo")!
+        return calendar
+    }()
+
+    private static func anchoredDate(_ base: RecurrenceCivilDate, day: Int, offset: Int) throws -> RecurrenceCivilDate {
+        let index = base.year * 12 + base.month - 1 + offset
+        let year = index / 12
+        let month = index % 12 + 1
+        return try RecurrenceCivilDate(year: year, month: month, day: min(day, daysInMonth(year, month)))
     }
 
     private func validate(categoryID: String?, for type: TransactionType) throws {

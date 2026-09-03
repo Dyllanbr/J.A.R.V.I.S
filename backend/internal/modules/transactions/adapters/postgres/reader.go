@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 
 	"jarvis/backend/internal/modules/transactions/application"
 	"jarvis/backend/internal/modules/transactions/domain"
@@ -30,7 +31,7 @@ func (repository *ExpenseRepository) ListByFinancialMonth(
 	rows, err := repository.pool.Query(operationContext, `
 		SELECT
 			id, user_id, type, description, amount_minor, currency,
-			payment_method, category_id, occurred_at, financial_timezone, origin,
+			payment_method, category_id, credit_card_id, statement_due_on, occurred_at, financial_timezone, origin,
 			status, version, created_at, updated_at
 		FROM transactions
 		WHERE user_id = $1
@@ -63,8 +64,12 @@ type rowScanner interface {
 	Scan(...any) error
 }
 
-func loadExpense(ctx context.Context, transaction pgx.Tx, id, userID string) (domain.Expense, error) {
-	return scanExpense(transaction.QueryRow(ctx, `
+type expenseRowQuerier interface {
+	QueryRow(context.Context, string, ...any) pgx.Row
+}
+
+func loadExpense(ctx context.Context, transaction expenseRowQuerier, id, userID string) (domain.Expense, error) {
+	return scanExpenseLegacy(transaction.QueryRow(ctx, `
 		SELECT
 			id, user_id, type, description, amount_minor, currency,
 			payment_method, category_id, occurred_at, financial_timezone, origin,
@@ -74,7 +79,10 @@ func loadExpense(ctx context.Context, transaction pgx.Tx, id, userID string) (do
 	`, id, userID))
 }
 
-func scanExpense(row rowScanner) (domain.Expense, error) {
+// scanExpenseLegacy deliberately reads only the pre-008 transaction columns.
+// Legacy idempotency replay is also exercised against historical migration
+// versions where the optional card columns do not yet exist.
+func scanExpenseLegacy(row rowScanner) (domain.Expense, error) {
 	var (
 		id, userID, transactionType, description string
 		currency, paymentMethod, timezone        string
@@ -86,6 +94,50 @@ func scanExpense(row rowScanner) (domain.Expense, error) {
 	if err := row.Scan(
 		&id, &userID, &transactionType, &description, &amountMinor, &currency,
 		&paymentMethod, &categoryID, &occurredAt, &timezone, &origin, &status, &version,
+		&createdAt, &updatedAt,
+	); err != nil {
+		return domain.Expense{}, newRepositoryError(ErrLoadExpense, err)
+	}
+	if transactionType != string(domain.TransactionTypeExpense) || status != string(domain.ExpenseStatusRecorded) || version != 1 || !updatedAt.Equal(createdAt) {
+		return domain.Expense{}, ErrLoadExpense
+	}
+	amount, err := domain.NewMoney(amountMinor, domain.Currency(currency))
+	if err != nil {
+		return domain.Expense{}, newRepositoryError(ErrLoadExpense, err)
+	}
+	storedCategoryID, err := categoryIDFromDatabase(categoryID)
+	if err != nil {
+		return domain.Expense{}, newRepositoryError(ErrLoadExpense, err)
+	}
+	expense, err := domain.NewExpense(domain.ExpenseParams{
+		ID: id,
+		Details: domain.ExpenseDetails{
+			UserID: userID, Description: description, Amount: amount,
+			PaymentMethod: domain.PaymentMethod(paymentMethod), CategoryID: storedCategoryID,
+			OccurredAt: occurredAt, FinancialTimezone: timezone, Origin: domain.Origin(origin),
+		},
+		CreatedAt: createdAt,
+	})
+	if err != nil {
+		return domain.Expense{}, newRepositoryError(ErrLoadExpense, err)
+	}
+	return expense, nil
+}
+
+func scanExpense(row rowScanner) (domain.Expense, error) {
+	var (
+		id, userID, transactionType, description string
+		currency, paymentMethod, timezone        string
+		origin, status                           string
+		categoryID                               *string
+		creditCardID                             *string
+		statementDueOn                           pgtype.Date
+		amountMinor, version                     int64
+		occurredAt, createdAt, updatedAt         time.Time
+	)
+	if err := row.Scan(
+		&id, &userID, &transactionType, &description, &amountMinor, &currency,
+		&paymentMethod, &categoryID, &creditCardID, &statementDueOn, &occurredAt, &timezone, &origin, &status, &version,
 		&createdAt, &updatedAt,
 	); err != nil {
 		return domain.Expense{}, newRepositoryError(ErrLoadExpense, err)
@@ -104,6 +156,17 @@ func scanExpense(row rowScanner) (domain.Expense, error) {
 	if err != nil {
 		return domain.Expense{}, newRepositoryError(ErrLoadExpense, err)
 	}
+	var storedStatementDueOn *domain.CivilDate
+	if statementDueOn.Valid || statementDueOn.InfinityModifier != pgtype.Finite {
+		dueOn, dateErr := civilDateFromPostgres(statementDueOn)
+		if dateErr != nil {
+			return domain.Expense{}, newRepositoryError(ErrLoadExpense, dateErr)
+		}
+		storedStatementDueOn = &dueOn
+	}
+	if (creditCardID == nil) != (storedStatementDueOn == nil) {
+		return domain.Expense{}, ErrLoadExpense
+	}
 	expense, err := domain.NewExpense(domain.ExpenseParams{
 		ID: id,
 		Details: domain.ExpenseDetails{
@@ -112,6 +175,8 @@ func scanExpense(row rowScanner) (domain.Expense, error) {
 			Amount:            amount,
 			PaymentMethod:     domain.PaymentMethod(paymentMethod),
 			CategoryID:        storedCategoryID,
+			CreditCardID:      creditCardID,
+			StatementDueOn:    storedStatementDueOn,
 			OccurredAt:        occurredAt,
 			FinancialTimezone: timezone,
 			Origin:            domain.Origin(origin),

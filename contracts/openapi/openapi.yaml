@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: J.A.R.V.I.S. API
-  version: 0.7.0
+  version: 0.8.0
   description: >-
     API da fundação e dos incrementos financeiros de despesas, receitas,
     categorias, recorrências manuais, sugestões determinísticas e referências organizacionais de cartões. Criar uma transaction registra no
@@ -538,6 +538,193 @@ paths:
           $ref: "#/components/responses/MethodNotAllowed"
         "500":
           $ref: "#/components/responses/InternalError"
+  /v1/card-purchases/preview:
+    post:
+      operationId: previewCardPurchase
+      summary: Prepara uma compra de cartão para revisão
+      tags: [Card Purchases]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CardPurchasePreviewRequest"
+      responses:
+        "200":
+          description: Compra canônica pronta para revisão, sem persistência
+          headers:
+            Cache-Control:
+              $ref: "#/components/headers/CacheControl"
+            X-Content-Type-Options:
+              $ref: "#/components/headers/ContentTypeOptions"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CardPurchasePreview"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "404":
+          $ref: "#/components/responses/CreditCardNotFound"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowed"
+        "409":
+          $ref: "#/components/responses/CreditCardArchived"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /v1/card-purchases:
+    post:
+      operationId: recordCardPurchase
+      summary: Registra uma compra de cartão confirmada
+      tags: [Card Purchases]
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CardPurchaseCreateRequest"
+      responses:
+        "201":
+          description: Compra registrada ou replay do snapshot histórico
+          headers:
+            Cache-Control:
+              $ref: "#/components/headers/CacheControl"
+            X-Content-Type-Options:
+              $ref: "#/components/headers/ContentTypeOptions"
+            Idempotency-Replayed:
+              $ref: "#/components/headers/IdempotencyReplayed"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CardPurchase"
+        "400":
+          $ref: "#/components/responses/CardPurchaseCreateBadRequest"
+        "404":
+          $ref: "#/components/responses/CreditCardNotFound"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowed"
+        "409":
+          $ref: "#/components/responses/CardPurchaseConflict"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /v1/installment-plans:
+    get:
+      operationId: listInstallmentPlans
+      summary: Lista compromissos parcelados do owner
+      tags: [Installment Plans]
+      responses:
+        "200":
+          description: Lista determinística de planos
+          headers:
+            Cache-Control:
+              $ref: "#/components/headers/CacheControl"
+            X-Content-Type-Options:
+              $ref: "#/components/headers/ContentTypeOptions"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InstallmentPlanListResponse"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowed"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /v1/installment-plans/{installmentPlanId}:
+    get:
+      operationId: getInstallmentPlan
+      summary: Consulta um plano de parcelas do owner
+      tags: [Installment Plans]
+      parameters:
+        - $ref: "#/components/parameters/InstallmentPlanId"
+      responses:
+        "200":
+          description: Plano de parcelas
+          headers:
+            Cache-Control:
+              $ref: "#/components/headers/CacheControl"
+            X-Content-Type-Options:
+              $ref: "#/components/headers/ContentTypeOptions"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InstallmentPlan"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "404":
+          $ref: "#/components/responses/InstallmentPlanNotFound"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowed"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /v1/installment-plans/{installmentPlanId}/cancellation-preview:
+    post:
+      operationId: previewInstallmentPlanCancellation
+      summary: Prepara o cancelamento de um plano para revisão
+      tags: [Installment Plans]
+      parameters:
+        - $ref: "#/components/parameters/InstallmentPlanId"
+      responses:
+        "200":
+          description: Cancelamento pronto para revisão, sem persistência
+          headers:
+            Cache-Control:
+              $ref: "#/components/headers/CacheControl"
+            X-Content-Type-Options:
+              $ref: "#/components/headers/ContentTypeOptions"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InstallmentPlanCancellationPreview"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "404":
+          $ref: "#/components/responses/InstallmentPlanNotFound"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowed"
+        "409":
+          $ref: "#/components/responses/InstallmentPlanAlreadyCancelled"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /v1/installment-plans/{installmentPlanId}/cancel:
+    post:
+      operationId: cancelInstallmentPlan
+      summary: Cancela um plano de parcelas confirmado
+      tags: [Installment Plans]
+      parameters:
+        - $ref: "#/components/parameters/InstallmentPlanId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InstallmentPlanCancelRequest"
+      responses:
+        "200":
+          description: Plano cancelado ou replay do cancelamento
+          headers:
+            Cache-Control:
+              $ref: "#/components/headers/CacheControl"
+            X-Content-Type-Options:
+              $ref: "#/components/headers/ContentTypeOptions"
+            Idempotency-Replayed:
+              $ref: "#/components/headers/IdempotencyReplayed"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InstallmentPlan"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "404":
+          $ref: "#/components/responses/InstallmentPlanNotFound"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowed"
+        "409":
+          $ref: "#/components/responses/InstallmentPlanConflict"
+        "500":
+          $ref: "#/components/responses/InternalError"
   /v1/transactions:
     post:
       operationId: recordTransaction
@@ -666,7 +853,8 @@ components:
       description: >-
         Chave opaca de 1 a 128 bytes ASCII visíveis, escopada por owner e pela
         operação lógica. CREATE_EXPENSE, CREATE_INCOME, CREATE_RECURRENCE,
-        CANCEL_RECURRENCE, CREATE_CREDIT_CARD e ARCHIVE_CREDIT_CARD possuem
+        CANCEL_RECURRENCE, CREATE_CREDIT_CARD, ARCHIVE_CREDIT_CARD,
+        CREATE_CARD_PURCHASE e CANCEL_INSTALLMENT_PLAN possuem
         namespaces independentes. A mesma string pode
         ser usada em operações ou owners diferentes sem colisão. O valor nunca é
         devolvido em erros ou responses.
@@ -676,6 +864,12 @@ components:
         maxLength: 128
         pattern: "^[!-~]+$"
       example: synthetic-create-20260814-001
+    InstallmentPlanId:
+      name: installmentPlanId
+      in: path
+      required: true
+      schema:
+        $ref: "#/components/schemas/InstallmentPlanId"
   responses:
     InvalidRequest:
       description: Request inválido
@@ -828,6 +1022,72 @@ components:
         application/json:
           schema:
             $ref: "#/components/schemas/CreditCardArchiveConflictError"
+    CreditCardArchived:
+      description: Cartão arquivado não aceita novas compras
+      headers:
+        Cache-Control:
+          $ref: "#/components/headers/CacheControl"
+        X-Content-Type-Options:
+          $ref: "#/components/headers/ContentTypeOptions"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/CreditCardArchivedError"
+    CardPurchaseCreateBadRequest:
+      description: Request ou chave de idempotência inválidos
+      headers:
+        Cache-Control:
+          $ref: "#/components/headers/CacheControl"
+        X-Content-Type-Options:
+          $ref: "#/components/headers/ContentTypeOptions"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/CardPurchaseCreateBadRequestError"
+    CardPurchaseConflict:
+      description: Chave reutilizada com semântica diferente ou cartão arquivado
+      headers:
+        Cache-Control:
+          $ref: "#/components/headers/CacheControl"
+        X-Content-Type-Options:
+          $ref: "#/components/headers/ContentTypeOptions"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/CardPurchaseConflictError"
+    InstallmentPlanNotFound:
+      description: Plano inexistente ou fora do escopo do owner
+      headers:
+        Cache-Control:
+          $ref: "#/components/headers/CacheControl"
+        X-Content-Type-Options:
+          $ref: "#/components/headers/ContentTypeOptions"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/InstallmentPlanNotFoundError"
+    InstallmentPlanAlreadyCancelled:
+      description: Plano já cancelado
+      headers:
+        Cache-Control:
+          $ref: "#/components/headers/CacheControl"
+        X-Content-Type-Options:
+          $ref: "#/components/headers/ContentTypeOptions"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/InstallmentPlanAlreadyCancelledError"
+    InstallmentPlanConflict:
+      description: Conflito de idempotência ou confirmação obsoleta
+      headers:
+        Cache-Control:
+          $ref: "#/components/headers/CacheControl"
+        X-Content-Type-Options:
+          $ref: "#/components/headers/ContentTypeOptions"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/InstallmentPlanConflictError"
     RecurrenceSuggestionNotFound:
       description: Sugestão inexistente, stale ou fora do escopo do owner
       headers:
@@ -1005,6 +1265,240 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/CreditCard"
+    InstallmentPlanId:
+      type: string
+      pattern: "^ipl_[0-9a-f]{32}$"
+      description: Identificador opaco de um plano de parcelas gerado pelo servidor.
+    CardPurchaseMode:
+      type: string
+      enum: [ONE_TIME, INSTALLMENT]
+    CardPurchasePreviewRequest:
+      type: object
+      additionalProperties: false
+      required: [description, amount, occurredAt, creditCardId]
+      properties:
+        description:
+          type: string
+          minLength: 1
+          maxLength: 200
+        amount:
+          $ref: "#/components/schemas/Money"
+        occurredAt:
+          type: string
+          format: date-time
+        categoryId:
+          $ref: "#/components/schemas/CategoryId"
+        creditCardId:
+          $ref: "#/components/schemas/CreditCardId"
+        installmentCount:
+          type: integer
+          minimum: 2
+          maximum: 120
+    CardPurchaseCreateRequest:
+      type: object
+      additionalProperties: false
+      required: [description, amount, occurredAt, creditCardId]
+      properties:
+        description:
+          type: string
+          minLength: 1
+          maxLength: 200
+        amount:
+          $ref: "#/components/schemas/Money"
+        occurredAt:
+          type: string
+          format: date-time
+        categoryId:
+          $ref: "#/components/schemas/CategoryId"
+        creditCardId:
+          $ref: "#/components/schemas/CreditCardId"
+        installmentCount:
+          type: integer
+          minimum: 2
+          maximum: 120
+    Installment:
+      type: object
+      additionalProperties: false
+      required: [number, totalCount, dueDate, amount]
+      properties:
+        number:
+          type: integer
+          minimum: 1
+        totalCount:
+          type: integer
+          minimum: 2
+          maximum: 120
+        dueDate:
+          $ref: "#/components/schemas/CivilDate"
+        amount:
+          $ref: "#/components/schemas/Money"
+    InstallmentSummary:
+      type: object
+      additionalProperties: false
+      required: [installmentCount, firstDueDate, lastDueDate, dueDayAnchor, regularInstallmentAmount, lastInstallmentAmount]
+      properties:
+        installmentCount:
+          type: integer
+          minimum: 2
+          maximum: 120
+        firstDueDate:
+          $ref: "#/components/schemas/CivilDate"
+        lastDueDate:
+          $ref: "#/components/schemas/CivilDate"
+        dueDayAnchor:
+          type: integer
+          minimum: 1
+          maximum: 31
+        regularInstallmentAmount:
+          $ref: "#/components/schemas/Money"
+        lastInstallmentAmount:
+          $ref: "#/components/schemas/Money"
+    CardPurchasePreview:
+      type: object
+      additionalProperties: false
+      required: [description, amount, occurredAt, creditCardId, purchaseMode, statementClosingOn, statementDueOn]
+      properties:
+        description:
+          type: string
+        amount:
+          $ref: "#/components/schemas/Money"
+        occurredAt:
+          type: string
+          format: date-time
+        categoryId:
+          $ref: "#/components/schemas/CategoryId"
+        creditCardId:
+          $ref: "#/components/schemas/CreditCardId"
+        purchaseMode:
+          $ref: "#/components/schemas/CardPurchaseMode"
+        statementClosingOn:
+          $ref: "#/components/schemas/CivilDate"
+        statementDueOn:
+          $ref: "#/components/schemas/CivilDate"
+        installmentSummary:
+          $ref: "#/components/schemas/InstallmentSummary"
+    CardPurchaseExpense:
+      type: object
+      additionalProperties: false
+      required: [id, type, description, amount, paymentMethod, creditCardId, statementDueOn, occurredAt, financialTimezone, origin, status, version, createdAt, updatedAt]
+      properties:
+        id:
+          type: string
+          minLength: 1
+          maxLength: 128
+        type:
+          type: string
+          const: EXPENSE
+        description:
+          type: string
+        amount:
+          $ref: "#/components/schemas/Money"
+        paymentMethod:
+          type: string
+          const: CREDIT
+        categoryId:
+          $ref: "#/components/schemas/CategoryId"
+        creditCardId:
+          $ref: "#/components/schemas/CreditCardId"
+        statementDueOn:
+          $ref: "#/components/schemas/CivilDate"
+        occurredAt:
+          type: string
+          format: date-time
+        financialTimezone:
+          type: string
+          const: America/Sao_Paulo
+        origin:
+          type: string
+          const: IOS
+        status:
+          type: string
+          const: RECORDED
+        version:
+          type: integer
+          format: int64
+          minimum: 1
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    InstallmentPlan:
+      type: object
+      additionalProperties: false
+      required: [id, creditCardId, expenseId, totalAmount, installmentCount, firstDueDate, dueDayAnchor, status, createdAt, schedule]
+      properties:
+        id:
+          $ref: "#/components/schemas/InstallmentPlanId"
+        creditCardId:
+          $ref: "#/components/schemas/CreditCardId"
+        expenseId:
+          type: string
+          minLength: 1
+          maxLength: 128
+        totalAmount:
+          $ref: "#/components/schemas/Money"
+        installmentCount:
+          type: integer
+          minimum: 2
+          maximum: 120
+        firstDueDate:
+          $ref: "#/components/schemas/CivilDate"
+        dueDayAnchor:
+          type: integer
+          minimum: 1
+          maximum: 31
+        status:
+          type: string
+          enum: [ACTIVE, CANCELLED]
+        createdAt:
+          type: string
+          format: date-time
+        cancelledOn:
+          $ref: "#/components/schemas/CivilDate"
+        schedule:
+          type: array
+          items:
+            $ref: "#/components/schemas/Installment"
+    InstallmentPlanListResponse:
+      type: object
+      additionalProperties: false
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/InstallmentPlan"
+    CardPurchase:
+      type: object
+      additionalProperties: false
+      required: [expense, purchaseMode]
+      properties:
+        expense:
+          $ref: "#/components/schemas/CardPurchaseExpense"
+        installmentPlan:
+          $ref: "#/components/schemas/InstallmentPlan"
+        purchaseMode:
+          $ref: "#/components/schemas/CardPurchaseMode"
+    InstallmentPlanCancellationPreview:
+      type: object
+      additionalProperties: false
+      required: [installmentPlanId, expectedCancelledOn, plan]
+      properties:
+        installmentPlanId:
+          $ref: "#/components/schemas/InstallmentPlanId"
+        expectedCancelledOn:
+          $ref: "#/components/schemas/CivilDate"
+        plan:
+          $ref: "#/components/schemas/InstallmentPlan"
+    InstallmentPlanCancelRequest:
+      type: object
+      additionalProperties: false
+      required: [expectedCancelledOn]
+      properties:
+        expectedCancelledOn:
+          $ref: "#/components/schemas/CivilDate"
     RecurrenceId:
       type: string
       minLength: 1
@@ -1491,6 +1985,7 @@ components:
                 - UNSUPPORTED_TRANSACTION_TYPE
                 - IDEMPOTENCY_KEY_REQUIRED
                 - IDEMPOTENCY_KEY_INVALID
+                - CREDIT_CARD_REQUIRED
             message:
               type: string
     RecurrencePreviewBadRequestError:
@@ -1677,6 +2172,96 @@ components:
               enum: [RECURRENCE_SUGGESTION_SUPPRESSED]
             message:
               type: string
+    CreditCardArchivedError:
+      type: object
+      additionalProperties: false
+      required: [error]
+      properties:
+        error:
+          type: object
+          additionalProperties: false
+          required: [code, message]
+          properties:
+            code:
+              type: string
+              enum: [CREDIT_CARD_ARCHIVED]
+            message:
+              type: string
+    CardPurchaseCreateBadRequestError:
+      type: object
+      additionalProperties: false
+      required: [error]
+      properties:
+        error:
+          type: object
+          additionalProperties: false
+          required: [code, message]
+          properties:
+            code:
+              type: string
+              enum: [INVALID_REQUEST, IDEMPOTENCY_KEY_REQUIRED, IDEMPOTENCY_KEY_INVALID]
+            message:
+              type: string
+    CardPurchaseConflictError:
+      type: object
+      additionalProperties: false
+      required: [error]
+      properties:
+        error:
+          type: object
+          additionalProperties: false
+          required: [code, message]
+          properties:
+            code:
+              type: string
+              enum: [IDEMPOTENCY_KEY_REUSED, CREDIT_CARD_ARCHIVED]
+            message:
+              type: string
+    InstallmentPlanNotFoundError:
+      type: object
+      additionalProperties: false
+      required: [error]
+      properties:
+        error:
+          type: object
+          additionalProperties: false
+          required: [code, message]
+          properties:
+            code:
+              type: string
+              enum: [INSTALLMENT_PLAN_NOT_FOUND]
+            message:
+              type: string
+    InstallmentPlanAlreadyCancelledError:
+      type: object
+      additionalProperties: false
+      required: [error]
+      properties:
+        error:
+          type: object
+          additionalProperties: false
+          required: [code, message]
+          properties:
+            code:
+              type: string
+              enum: [INSTALLMENT_PLAN_ALREADY_CANCELLED]
+            message:
+              type: string
+    InstallmentPlanConflictError:
+      type: object
+      additionalProperties: false
+      required: [error]
+      properties:
+        error:
+          type: object
+          additionalProperties: false
+          required: [code, message]
+          properties:
+            code:
+              type: string
+              enum: [IDEMPOTENCY_KEY_REUSED, INSTALLMENT_PLAN_ALREADY_CANCELLED, INSTALLMENT_CANCELLATION_DATE_STALE]
+            message:
+              type: string
     MethodNotAllowedError:
       type: object
       additionalProperties: false
@@ -1720,3 +2305,7 @@ tags:
     description: Inferências determinísticas efêmeras que somente o usuário pode levar ao fluxo de Recurrence.
   - name: Cards
     description: Metadados organizacionais de cartões; nunca credenciais, compras, faturas ou pagamentos.
+  - name: Card Purchases
+    description: Compras de cartão já ocorridas, registradas como Expense e opcionalmente um InstallmentPlan.
+  - name: Installment Plans
+    description: Compromissos parcelados derivados de uma compra confirmada; não são parcelas financeiras independentes.

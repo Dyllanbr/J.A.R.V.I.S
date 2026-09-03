@@ -376,7 +376,9 @@ final class RegistrationViewModel {
             true
         case .invalidData, .conflict, .notFound, .alreadyCancelled,
              .suggestionNotFound, .suggestionSuppressed, .creditCardNotFound,
-             .creditCardAlreadyArchived, .configuration:
+             .creditCardAlreadyArchived, .idempotencyKeyRequired, .idempotencyKeyInvalid,
+             .cardPurchaseConflict, .installmentPlanNotFound, .installmentPlanAlreadyCancelled,
+             .installmentCancellationDateStale, .configuration:
             false
         }
     }

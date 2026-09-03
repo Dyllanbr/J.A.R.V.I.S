@@ -34,7 +34,7 @@ func TestMigrationsUpDownAndReapply(t *testing.T) {
 		if err := migrations.Up(ctx, connection); err != nil {
 			t.Fatal("migration UP failed")
 		}
-		assertMigrationVersion(t, ctx, connection, 7)
+		assertMigrationVersion(t, ctx, connection, 8)
 	})
 	assertTablesExist(t, ctx, pool, true)
 	assertTableExists(t, ctx, pool, "idempotency_records", true)
@@ -46,6 +46,10 @@ func TestMigrationsUpDownAndReapply(t *testing.T) {
 	assertTableExists(t, ctx, pool, "credit_cards", true)
 	assertTableExists(t, ctx, pool, "credit_card_audit_events", true)
 	assertTableExists(t, ctx, pool, "credit_card_idempotency_records", true)
+	assertTableExists(t, ctx, pool, "installment_plans", true)
+	assertTableExists(t, ctx, pool, "installment_plan_audit_events", true)
+	assertTableExists(t, ctx, pool, "card_purchase_idempotency_records", true)
+	assertTableExists(t, ctx, pool, "installment_plan_idempotency_records", true)
 	assertSchemaTypes(t, ctx, pool)
 	assertAuditSchemaIsMinimal(t, ctx, pool)
 	assertIdempotencySchemaIsMinimal(t, ctx, pool)
@@ -55,6 +59,10 @@ func TestMigrationsUpDownAndReapply(t *testing.T) {
 	withConnection(t, ctx, pool, func(connection *pgx.Conn) {
 		if err := migrations.Up(ctx, connection); err != nil {
 			t.Fatal("reapplying migration UP failed")
+		}
+		assertMigrationVersion(t, ctx, connection, 8)
+		if err := migrations.Down(ctx, connection); err != nil {
+			t.Fatal("migration 008 DOWN failed")
 		}
 		assertMigrationVersion(t, ctx, connection, 7)
 		if err := migrations.Down(ctx, connection); err != nil {
@@ -96,7 +104,7 @@ func TestMigrationsUpDownAndReapply(t *testing.T) {
 		if err := migrations.Up(ctx, connection); err != nil {
 			t.Fatal("migration UP after DOWN failed")
 		}
-		assertMigrationVersion(t, ctx, connection, 7)
+		assertMigrationVersion(t, ctx, connection, 8)
 	})
 	assertTablesExist(t, ctx, pool, true)
 	assertTableExists(t, ctx, pool, "idempotency_records", true)
@@ -108,6 +116,10 @@ func TestMigrationsUpDownAndReapply(t *testing.T) {
 	assertTableExists(t, ctx, pool, "credit_cards", true)
 	assertTableExists(t, ctx, pool, "credit_card_audit_events", true)
 	assertTableExists(t, ctx, pool, "credit_card_idempotency_records", true)
+	assertTableExists(t, ctx, pool, "installment_plans", true)
+	assertTableExists(t, ctx, pool, "installment_plan_audit_events", true)
+	assertTableExists(t, ctx, pool, "card_purchase_idempotency_records", true)
+	assertTableExists(t, ctx, pool, "installment_plan_idempotency_records", true)
 	assertSchemaTypes(t, ctx, pool)
 	assertAuditSchemaIsMinimal(t, ctx, pool)
 	assertIdempotencySchemaIsMinimal(t, ctx, pool)

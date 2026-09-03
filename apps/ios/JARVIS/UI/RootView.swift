@@ -84,7 +84,7 @@ private struct NativeTabContainer: UIViewControllerRepresentable {
 
         private static func registerView(model: AppModel) -> AnyView {
             AnyView(
-                RegisterView(model: model.registration)
+                RegisterView(model: model.registration, purchaseModel: model.cardPurchases)
                     .environment(\.locale, Locale(identifier: "pt_BR"))
             )
         }
@@ -108,7 +108,11 @@ private struct NativeTabContainer: UIViewControllerRepresentable {
 
         private static func cardsView(model: AppModel) -> AnyView {
             AnyView(
-                CreditCardsView(model: model.creditCards)
+                CreditCardsView(
+                    model: model.creditCards,
+                    purchaseModel: model.cardPurchases,
+                    plansModel: model.installmentPlans
+                )
                     .environment(\.locale, Locale(identifier: "pt_BR"))
             )
         }

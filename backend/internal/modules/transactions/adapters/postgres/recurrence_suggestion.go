@@ -74,7 +74,7 @@ func (repository *RecurrenceSuggestionRepository) ListRecurrenceSuggestionExpens
 	rows, err := repository.pool.Query(operationContext, `
 		SELECT
 			id, user_id, type, description, amount_minor, currency,
-			payment_method, category_id, occurred_at, financial_timezone, origin,
+			payment_method, category_id, credit_card_id, statement_due_on, occurred_at, financial_timezone, origin,
 			status, version, created_at, updated_at
 		FROM transactions
 		WHERE user_id = $1

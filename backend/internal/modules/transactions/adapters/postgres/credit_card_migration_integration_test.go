@@ -22,6 +22,7 @@ func TestMigration007FreshSchemaConstraintsSafeDownAndReapply(t *testing.T) {
 	pool := newMigratedTestDatabase(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
+	moveToMigrationVersion(t, ctx, pool, 7)
 	const ownerA = "usr_credit_card_migration_a"
 	const ownerB = "usr_credit_card_migration_b"
 	insertSyntheticUser(t, ctx, pool, ownerA)
@@ -237,7 +238,7 @@ func TestMigration007FreshSchemaConstraintsSafeDownAndReapply(t *testing.T) {
 		if err := migrations.Up(ctx, connection); err != nil {
 			t.Fatalf("migration 007 reapply failed: %v", err)
 		}
-		assertMigrationVersion(t, ctx, connection, 7)
+		assertMigrationVersion(t, ctx, connection, 8)
 	})
 
 	repository := newCreditCardRepository(t, pool)
@@ -328,7 +329,7 @@ func TestMigration007UpgradeFrom006PreservesLegacyDataWithoutBackfill(t *testing
 		if err := migrations.Up(ctx, connection); err != nil {
 			t.Fatalf("migration 006 to 007 failed: %v", err)
 		}
-		assertMigrationVersion(t, ctx, connection, 7)
+		assertMigrationVersion(t, ctx, connection, 8)
 	})
 	for table, want := range map[string]int{
 		"transactions":                       1,
@@ -343,7 +344,7 @@ func TestMigration007UpgradeFrom006PreservesLegacyDataWithoutBackfill(t *testing
 			t.Fatalf("table %s count = %d error=%v, want %d", table, count, err, want)
 		}
 	}
-	assertColumnExists(t, ctx, pool, "transactions", "credit_card_id", false)
+	assertColumnExists(t, ctx, pool, "transactions", "credit_card_id", true)
 }
 
 func TestMigration007DownRefusesAnySubsystemData(t *testing.T) {
@@ -388,6 +389,7 @@ func TestMigration007DownRefusesAnySubsystemData(t *testing.T) {
 			pool := newMigratedTestDatabase(t)
 			ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 			defer cancel()
+			moveToMigrationVersion(t, ctx, pool, 7)
 			owner := "usr_credit_card_down_guard"
 			insertSyntheticUser(t, ctx, pool, owner)
 			test.setup(t, ctx, pool, owner, creditCardCreatedAt())
@@ -407,6 +409,7 @@ func TestMigration007DownWaitsForWriterBeforeLockAndRefuses(t *testing.T) {
 	pool := newMigratedTestDatabase(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
+	moveToMigrationVersion(t, ctx, pool, 7)
 	owner := "usr_credit_card_down_writer_before"
 	insertSyntheticUser(t, ctx, pool, owner)
 	writer, err := pool.Acquire(ctx)
@@ -451,6 +454,7 @@ func TestMigration007DownWaitsForWriterRollbackThenSucceeds(t *testing.T) {
 	pool := newMigratedTestDatabase(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
+	moveToMigrationVersion(t, ctx, pool, 7)
 	owner := "usr_credit_card_down_writer_rollback"
 	insertSyntheticUser(t, ctx, pool, owner)
 	writer, err := pool.Acquire(ctx)
@@ -499,6 +503,7 @@ func TestMigration007DownBlocksWriterQueuedAfterLockWithoutSilentLoss(t *testing
 	pool := newMigratedTestDatabase(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
+	moveToMigrationVersion(t, ctx, pool, 7)
 	owner := "usr_credit_card_down_writer_after"
 	insertSyntheticUser(t, ctx, pool, owner)
 	blocker, err := pool.Acquire(ctx)
