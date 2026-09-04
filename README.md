@@ -1,6 +1,6 @@
 # J.A.R.V.I.S.
 
-Monorepo do J.A.R.V.I.S., um assessor financeiro pessoal em construção. O Incremento 1 — Despesas está verificado. O Incremento 2 — Receitas está implementado e pronto para auditoria global independente, sem ainda ser classificado como verificado. O Incremento 3A — Categorias e filtros do histórico está implementado e aguarda auditoria final independente.
+Monorepo do J.A.R.V.I.S., um assessor financeiro pessoal em construção. Os Incrementos 1, 2, 3A, 3B, 3C, 4A e 4B estão verificados dentro de seus escopos e possuem evidências de auditoria e CI correspondentes.
 
 > “O J.A.R.V.I.S. é uma plataforma de organização, acompanhamento, análise e aconselhamento financeiro pessoal. Ele não inicia, autoriza ou executa transações financeiras ou pagamentos.”
 
@@ -17,7 +17,9 @@ Implementado:
 - migrations versionadas e adapter PostgreSQL com `EXPENSE_RECORDED`/`INCOME_RECORDED`, idempotência e auditoria atômicas;
 - API financeira opt-in com descoberta de categorias, preview sem escrita, registro idempotente por tipo e histórico mensal misto, discriminado por `EXPENSE`/`INCOME`;
 - projeto iOS 17/SwiftUI com seletor Despesa/Receita, Category opcional, preview/revisão/confirmação, sucesso e histórico misto com filtros locais;
-- XCTest/XCUITest e integração automatizada Simulator → API → PostgreSQL para Expense e Income;
+- CreditCard e CardPurchase no backend, com compra à vista ou parcelada, InstallmentPlan, schedule derivado, replay e idempotência;
+- fluxos iOS de compra no cartão e consulta/cancelamento de InstallmentPlan, com preview, revisão, confirmação explícita e E2E real;
+- XCTest/XCUITest e integração automatizada Simulator → API → PostgreSQL para os fluxos verificados de Expense, Income, CreditCard, CardPurchase e InstallmentPlan;
 - health check operacional, configuração e shutdown gracioso;
 - testes nativos Go e smoke de API com Playwright/TypeScript;
 - contrato OpenAPI 3.1 validado semanticamente;
@@ -152,4 +154,4 @@ As regras permanentes estão em [AGENTS.md](AGENTS.md). A [Definition of Done](d
 
 ## Limitações atuais
 
-A API financeira é um contexto local single-owner temporário, sem autenticação, autorização multiusuário, rate limiting distribuído ou uso real aprovado. O app iOS não persiste dados localmente, e o retry idempotente pendente não sobrevive a restart. O histórico retorna apenas itens Expense/Income e seus `categoryId` opcionais: filtros de tipo/Category são locais no iOS, sem totais, saldo, orçamento ou Disponível Seguro. O catálogo atual contém somente categorias do sistema; não há categorias customizadas, CRUD ou reclassificação após o registro. Também não há dados reais, banco de produção, parcelamentos, cartões, recorrências, orçamento, metas, Face ID, passkeys, PIN, WhatsApp funcional, Open Finance, OpenAI, IA, MCP, agentes de produto, cloud ou Terraform funcional. Dispositivo físico/LAN permanece planejado até existir proteção apropriada. Audit events existem apenas junto ao novo registro; preview, replay e leitura não geram eventos. A retenção de metadata de idempotência e outcomes de commit indeterminado exigem política operacional antes de uso real. As baselines LGPD e WCAG não são alegações de conformidade.
+A API financeira é um contexto local single-owner temporário, sem autenticação, autorização multiusuário, rate limiting distribuído ou uso real aprovado. O app iOS não persiste dados localmente, e o retry idempotente pendente não sobrevive a restart. O histórico retorna itens Expense/Income e seus `categoryId` opcionais: filtros de tipo/Category são locais no iOS, sem totais, saldo, orçamento ou Disponível Seguro. O catálogo atual contém somente categorias do sistema; não há categorias customizadas, CRUD ou reclassificação após o registro. O Incremento 4 ainda não cobre Statement/faturas completas, projeções gerais, orçamento, Disponível Seguro, metas, Face ID, passkeys, PIN, WhatsApp funcional, Open Finance, OpenAI, IA, MCP, agentes de produto, cloud ou Terraform funcional. Compras no cartão registram fatos ocorridos e compromissos de parcelas, mas não executam pagamentos nem criam Expenses futuras. Dispositivo físico/LAN permanece planejado até existir proteção apropriada. Audit events existem apenas junto ao novo registro; preview, replay e leitura não geram eventos. A retenção de metadata de idempotência e outcomes de commit indeterminado exigem política operacional antes de uso real. As baselines LGPD e WCAG não são alegações de conformidade.

@@ -18,6 +18,8 @@
 | Cliente iOS para Income e histórico misto | IMPLEMENTADO | Incremento 2 com XCTest/XCUITest/E2E; auditoria global pendente |
 | Category opcional, catálogo de sistema e migration 004 | IMPLEMENTADO | Incremento 3A com stages auditadas; auditoria final pendente |
 | API de catálogo e filtros locais no histórico iOS | IMPLEMENTADO | Incremento 3A com OpenAPI 0.4.0, Playwright, XCTest/XCUITest e E2E real; auditoria final pendente |
+| `CreditCard`, migration 007 e operações owner-scoped | VERIFICADO | Incremento 4A mergeado e aprovado após auditoria independente |
+| `CardPurchase`, `InstallmentPlan`, migration 008 e cancelamento | VERIFICADO | Incremento 4B mergeado no PR #75, com auditoria Stage 4 aprovada |
 | Demais canais | PLANEJADO | não implementados |
 
 O estado **VERIFICADO** depende de quality gate e revisão independente conforme a Definition of Done; não é atribuído autonomamente por esta implementação.
@@ -34,6 +36,8 @@ As formas aceitas são `PIX`, `DEBIT`, `CREDIT` e `CASH`. As origens aceitas sã
 
 O instante é normalizado para UTC e o timezone financeiro permanece explícito. `America/Sao_Paulo` é a baseline planejada do produto, mas UTC-3 não é hard-coded pelo domínio. `Local` é rejeitado porque depende do ambiente do processo. Ambientes futuros que executem a validação IANA deverão fornecer tzdata; isso será validado antes de containerização ou deploy, sem embutir `time/tzdata` nesta etapa.
 
+`CreditCard` é um aggregate owner-scoped com lifecycle `ACTIVE → ARCHIVED`; seu limite é metadado e não autoriza compras nem calcula disponibilidade. `InstallmentPlan` é uma obrigação confirmada vinculada a uma Expense total e a um CreditCard. Compra à vista não cria plano; compra parcelada cria um plano com schedule mensal derivado. O schedule preserva o anchor civil original, e parcelas futuras nunca são materializadas como novas Expenses.
+
 ## Aplicação e portas
 
 `application.CreateExpense` permanece como caso de uso verificado do Incremento 1. Os fluxos HTTP atuais usam `PreviewExpense`/`RecordExpense` e `PreviewIncome`/`RecordIncome`; não existe `confirmed=true`. Cada interface é responsável por não registrar antes da confirmação e o cliente iOS cumpre preview → revisão congelada → confirmação explícita para ambos os tipos.
@@ -41,6 +45,8 @@ O instante é normalizado para UTC e o timezone financeiro permanece explícito.
 Os dois Previews reutilizam normalização/canonicalização sem ID, Clock ou persistência. Instantes financeiros são convertidos para UTC e truncados para microssegundos antes de preview, fingerprint, criação persistível e resposta; o Clock passa pela mesma canonicalização para `createdAt`/`updatedAt`. `RecordExpense` e `RecordIncome` delegam atomicidade às portas pequenas `ExpenseCommandStore` e `IncomeCommandStore`. `ListTransactionsByMonth` calcula `[start,end)` em `America/Sao_Paulo` e retorna `MonthlyTransaction`, uma projeção discriminada de leitura; ela não é agregado nem comando de escrita. As portas continuam específicas; não há UnitOfWork, repository genérico ou dependência de pgx/HTTP na aplicação.
 
 `CategoryCatalog` é uma port pequena para lookup/listagem. Preview e Record consultam o catálogo somente quando `CategoryID` está presente e falham fechados para ID desconhecido, tipo incompatível ou catálogo indisponível. `ListCategories` apenas projeta o catálogo read-only. `MonthlyTransaction` carrega `CategoryID` opcional sem display name, totais, agrupamento ou lógica de escrita.
+
+`CardPurchase` é um comando de orquestração da aplicação, não um aggregate persistido. `PreviewCardPurchase` calcula ciclo do cartão e parcelas sem ID, Clock ou persistência; `RecordCardPurchase` exige confirmação explícita, mantém replay/idempotência e delega a escrita atômica à port específica. `ListInstallmentPlans`, detalhe, cancellation preview e `CancelInstallmentPlan` permanecem owner-scoped; o cancelamento não altera a Expense.
 
 ## Adapter PostgreSQL
 
@@ -51,6 +57,8 @@ O schema também protege invariantes essenciais com PK, FK, `UNIQUE` e `CHECK`, 
 Instantes usam `TIMESTAMPTZ`, enquanto `financial_timezone` preserva o identificador IANA. A migration 003 permite apenas `EXPENSE` e `INCOME`: Expense exige um payment method permitido e Income exige `payment_method IS NULL`; `amount_minor` permanece estritamente positivo para ambos. A tabela `users` contém somente ID e timestamps para ownership/referential integrity; ela não implementa autenticação e as migrations não contêm usuários.
 
 A migration 004 cria `categories` como catálogo global de sistema e adiciona `transactions.category_id` nullable. A FK composta `(type, category_id)` referencia a applicability declarada no catálogo; o adapter runtime não contém CRUD nem lista hardcoded como source of truth. O DOWN usa lock exclusivo antes do guard e recusa remover Category quando uma classificação persistida seria perdida.
+
+A migration 007 cria `credit_cards`, seus eventos e sua idempotência. A migration 008 cria `installment_plans`, seus eventos/idempotência e `card_purchase_idempotency_records`. Esses adapters executam ownership, replay, auditoria e atomicidade no PostgreSQL; não existe tabela persistida de CardPurchase nem geração automática de Expense futura.
 
 ## API e idempotência
 
@@ -64,4 +72,4 @@ O fingerprint inclui tipo, descrição normalizada, Money, instante já canonica
 
 Retenção de metadata idempotente, autenticação real, rate limiting distribuído e tratamento de outcomes operacionais indeterminados permanecem decisões anteriores ao uso real. Idempotência não faz parte de `Money`, `Expense` ou `Income`, e logs não substituem audit events nem recebem conteúdo financeiro.
 
-Não existem autenticação, armazenamento financeiro local, categorias customizadas, CRUD/reclassificação de Category, recorrências, orçamento, saldo calculado, Disponível Seguro, IA, WhatsApp funcional, Open Finance, infraestrutura de nuvem ou banco de produção nesta etapa. A UI iOS usa dados sintéticos em desenvolvimento. A API registra que uma despesa ou receita já ocorreu; nunca executa recebimento, Pix, pagamento, compra ou transferência.
+Não existem autenticação, armazenamento financeiro local, categorias customizadas, CRUD/reclassificação de Category, Statement/faturas completas, projeções gerais, orçamento, saldo calculado, Disponível Seguro, IA, WhatsApp funcional, Open Finance, infraestrutura de nuvem ou banco de produção nesta etapa. A UI iOS usa dados sintéticos em desenvolvimento. A API registra despesas e receitas ocorridas e compromissos parcelados confirmados, mas nunca executa recebimento, Pix, pagamento, compra ou transferência.
