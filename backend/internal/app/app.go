@@ -225,6 +225,16 @@ func New(
 		pool.Close()
 		return nil, err
 	}
+	cardStatementRepository, err := transactionspostgres.NewCardStatementRepository(pool, postgresConfig.OperationTimeout)
+	if err != nil {
+		pool.Close()
+		return nil, err
+	}
+	getCardStatement, err := application.NewGetCardStatement(cardStatementRepository)
+	if err != nil {
+		pool.Close()
+		return nil, err
+	}
 	previewCardPurchase, err := application.NewPreviewCardPurchaseWithCategoryCatalog(creditCardRepository, repository)
 	if err != nil {
 		pool.Close()
@@ -274,6 +284,7 @@ func New(
 		return nil, err
 	}
 	cardPurchaseRoutes := httpapi.NewCardPurchase(cfg.OwnerID, previewCardPurchase, recordCardPurchase)
+	cardStatementRoutes := httpapi.NewCardStatement(cfg.OwnerID, getCardStatement)
 	installmentPlanRoutes := httpapi.NewInstallmentPlan(cfg.OwnerID, listInstallmentPlans, getInstallmentPlan, previewInstallmentCancellation, cancelInstallmentPlan)
 	scheduledCommitmentRoutes := httpapi.NewScheduledCommitments(cfg.OwnerID, listScheduledCommitments)
 	applicationInstance.server = httpserver.New(
@@ -284,6 +295,7 @@ func New(
 		recurrenceSuggestionRoutes,
 		creditCardRoutes,
 		cardPurchaseRoutes,
+		cardStatementRoutes,
 		installmentPlanRoutes,
 		scheduledCommitmentRoutes,
 	)

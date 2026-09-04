@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: J.A.R.V.I.S. API
-  version: 0.9.0
+  version: 0.10.0
   description: >-
     API da fundação e dos incrementos financeiros de despesas, receitas,
     categorias, recorrências manuais, sugestões determinísticas e referências organizacionais de cartões. Criar uma transaction registra no
@@ -282,6 +282,49 @@ paths:
           $ref: "#/components/responses/MethodNotAllowed"
         "409":
           $ref: "#/components/responses/CreditCardArchiveConflict"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /v1/credit-cards/{creditCardId}/statements/{statementDueOn}:
+    get:
+      operationId: getCreditCardStatement
+      summary: Consulta o statement mínimo de um cartão em uma data de vencimento
+      description: >-
+        Retorna uma projeção somente leitura do ciclo do cartão para a data civil
+        informada. Inclui compras à vista e somente a parcela correspondente de
+        compras parceladas. Não inclui recorrências, não cria Expenses futuras e
+        não executa pagamentos ou baixa financeira.
+      tags: [Cards]
+      parameters:
+        - name: creditCardId
+          in: path
+          required: true
+          description: Identificador opaco do cartão.
+          schema:
+            $ref: "#/components/schemas/CreditCardId"
+        - name: statementDueOn
+          in: path
+          required: true
+          description: Data civil de vencimento do ciclo consultado.
+          schema:
+            $ref: "#/components/schemas/CivilDate"
+      responses:
+        "200":
+          description: Statement do ciclo, que pode estar vazio.
+          headers:
+            Cache-Control:
+              $ref: "#/components/headers/CacheControl"
+            X-Content-Type-Options:
+              $ref: "#/components/headers/ContentTypeOptions"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CardStatement"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "404":
+          $ref: "#/components/responses/CreditCardNotFound"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowed"
         "500":
           $ref: "#/components/responses/InternalError"
   /v1/recurrences/preview:
@@ -1300,6 +1343,59 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/CreditCard"
+    CardStatement:
+      type: object
+      additionalProperties: false
+      required: [creditCardId, statementDueOn, totalAmount, lines]
+      properties:
+        creditCardId:
+          $ref: "#/components/schemas/CreditCardId"
+        statementDueOn:
+          $ref: "#/components/schemas/CivilDate"
+        totalAmount:
+          $ref: "#/components/schemas/CardStatementTotalAmount"
+        lines:
+          type: array
+          items:
+            $ref: "#/components/schemas/CardStatementLine"
+    CardStatementTotalAmount:
+      type: object
+      additionalProperties: false
+      required: [minor, currency]
+      properties:
+        minor:
+          type: integer
+          format: int64
+          minimum: 0
+        currency:
+          type: string
+          const: BRL
+    CardStatementLine:
+      type: object
+      additionalProperties: false
+      required: [expenseId, description, amount, occurredAt, purchaseMode]
+      properties:
+        expenseId:
+          type: string
+          minLength: 1
+          maxLength: 128
+        description:
+          type: string
+          minLength: 1
+          maxLength: 200
+        amount:
+          $ref: "#/components/schemas/Money"
+        occurredAt:
+          $ref: "#/components/schemas/CivilDate"
+        purchaseMode:
+          $ref: "#/components/schemas/CardPurchaseMode"
+        installmentNumber:
+          type: integer
+          minimum: 1
+        installmentCount:
+          type: integer
+          minimum: 2
+          maximum: 120
     InstallmentPlanId:
       type: string
       pattern: "^ipl_[0-9a-f]{32}$"
