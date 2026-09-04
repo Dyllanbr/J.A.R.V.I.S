@@ -21,6 +21,12 @@ final class StubFinancialAPI: FinancialAPI {
         case listError
     }
 
+    private enum CardStatementScenario: String {
+        case mixed
+        case empty
+        case error
+    }
+
     private struct StoredRecurrenceCreate {
         let request: RecurrenceRequest
         let recurrence: Recurrence
@@ -70,6 +76,8 @@ final class StubFinancialAPI: FinancialAPI {
     private let suggestionScenario: SuggestionScenario
     private let cardScenario: CardScenario
     private let scheduledCommitmentsScenario: ScheduledCommitmentsScenario
+    private let cardStatementScenario: CardStatementScenario
+    private var cardStatementErrorDelivered = false
 
     init(environment: [String: String] = ProcessInfo.processInfo.environment) {
         suggestionScenario = SuggestionScenario(
@@ -79,6 +87,9 @@ final class StubFinancialAPI: FinancialAPI {
         scheduledCommitmentsScenario = ScheduledCommitmentsScenario(
             rawValue: environment["JARVIS_IOS_SCHEDULED_COMMITMENTS_SCENARIO"] ?? "normal"
         ) ?? .normal
+        cardStatementScenario = CardStatementScenario(
+            rawValue: environment["JARVIS_IOS_CARD_STATEMENT_SCENARIO"] ?? "mixed"
+        ) ?? .mixed
         let active = Recurrence(
             id: "rec_ui_synthetic_active",
             description: "Academia sintética",
@@ -507,6 +518,55 @@ final class StubFinancialAPI: FinancialAPI {
                 amount: FinancialMoney(minor: 2_990, currency: .brl)
             )
         ])
+    }
+
+    func cardStatement(creditCardID: String, statementDueOn: RecurrenceCivilDate) async throws -> CardStatement {
+        guard CreditCard.isValidID(creditCardID) else { throw FinancialAPIError.invalidData }
+        switch cardStatementScenario {
+        case .error:
+            if !cardStatementErrorDelivered {
+                cardStatementErrorDelivered = true
+                throw FinancialAPIError.serviceUnavailable
+            }
+            return try mixedCardStatement(creditCardID: creditCardID, statementDueOn: statementDueOn)
+        case .empty:
+            return try CardStatement(
+                creditCardID: creditCardID,
+                statementDueOn: statementDueOn,
+                totalAmount: try CardStatementTotalAmount(minor: 0),
+                lines: []
+            )
+        case .mixed:
+            return try mixedCardStatement(creditCardID: creditCardID, statementDueOn: statementDueOn)
+        }
+    }
+
+    private func mixedCardStatement(
+        creditCardID: String,
+        statementDueOn: RecurrenceCivilDate
+    ) throws -> CardStatement {
+        let oneTime = try CardStatementLine(
+            expenseID: "exp_ui_statement_one_time",
+            description: "Compra à vista sintética",
+            amount: FinancialMoney(minor: 5_000, currency: .brl),
+            occurredAt: try RecurrenceCivilDate("2026-08-12"),
+            purchaseMode: .oneTime
+        )
+        let installment = try CardStatementLine(
+            expenseID: "exp_ui_statement_installment",
+            description: "Compra parcelada sintética",
+            amount: FinancialMoney(minor: 3_333, currency: .brl),
+            occurredAt: try RecurrenceCivilDate("2026-08-13"),
+            purchaseMode: .installment,
+            installmentNumber: 2,
+            installmentCount: 3
+        )
+        return try CardStatement(
+            creditCardID: creditCardID,
+            statementDueOn: statementDueOn,
+            totalAmount: try CardStatementTotalAmount(minor: 8_333),
+            lines: [oneTime, installment]
+        )
     }
 
     func installmentPlan(id: String) async throws -> InstallmentPlan {

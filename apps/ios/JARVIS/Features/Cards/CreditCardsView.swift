@@ -4,6 +4,18 @@ struct CreditCardsView: View {
     @Bindable var model: CreditCardsViewModel
     @Bindable var purchaseModel: CardPurchaseViewModel
     @Bindable var plansModel: InstallmentPlansViewModel
+    private let statementAPI: any FinancialAPI
+
+    init(
+        model: CreditCardsViewModel,
+        purchaseModel: CardPurchaseViewModel,
+        plansModel: InstallmentPlansViewModel
+    ) {
+        self.model = model
+        self.purchaseModel = purchaseModel
+        self.plansModel = plansModel
+        statementAPI = AppConfiguration.financialAPI()
+    }
 
     var body: some View {
         NavigationStack {
@@ -13,7 +25,8 @@ struct CreditCardsView: View {
                     CreditCardDetailView(
                         model: model,
                         purchaseModel: purchaseModel,
-                        cardID: id
+                        cardID: id,
+                        statementAPI: statementAPI
                     )
                 }
                 .toolbar {
@@ -162,8 +175,31 @@ private struct CreditCardDetailView: View {
     @Bindable var model: CreditCardsViewModel
     @Bindable var purchaseModel: CardPurchaseViewModel
     let cardID: String
+    let statementAPI: any FinancialAPI
+    @State private var statementModel: CardStatementViewModel
     private let money = BRLMoneyFormatter()
     private let dateTime = FinancialDisplayFormatter()
+
+    init(
+        model: CreditCardsViewModel,
+        purchaseModel: CardPurchaseViewModel,
+        cardID: String,
+        statementAPI: any FinancialAPI
+    ) {
+        self.model = model
+        self.purchaseModel = purchaseModel
+        self.cardID = cardID
+        self.statementAPI = statementAPI
+        let defaultDate = (try? RecurrenceCivilDate(year: 2026, month: 10, day: 10))
+            ?? (try! RecurrenceCivilDate(year: 2026, month: 1, day: 1))
+        _statementModel = State(
+            initialValue: CardStatementViewModel(
+                cardID: cardID,
+                statementDueOn: defaultDate,
+                api: statementAPI
+            )
+        )
+    }
 
     var body: some View {
         Group {
@@ -241,6 +277,16 @@ private struct CreditCardDetailView: View {
             }
         }
         .accessibilityIdentifier("card.detail")
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                NavigationLink {
+                    CardStatementView(model: statementModel, card: card)
+                } label: {
+                    Label("Consultar fatura", systemImage: "doc.text")
+                }
+                .accessibilityIdentifier("card.statement.\(card.id)")
+            }
+        }
     }
 
     private func row(_ title: String, _ value: String) -> some View {
