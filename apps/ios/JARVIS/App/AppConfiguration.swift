@@ -164,4 +164,8 @@ private struct UnavailableFinancialAPI: FinancialAPI {
     func cancelInstallmentPlan(id _: String, expectedCancelledOn _: RecurrenceCivilDate, idempotencyKey _: String) async throws -> RecordedInstallmentPlan {
         throw FinancialAPIError.configuration
     }
+
+    func scheduledCommitments(evaluationDate _: RecurrenceCivilDate) async throws -> ScheduledCommitmentListResponse {
+        throw FinancialAPIError.configuration
+    }
 }

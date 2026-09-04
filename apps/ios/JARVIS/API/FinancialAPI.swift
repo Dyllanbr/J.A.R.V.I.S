@@ -26,6 +26,13 @@ protocol FinancialAPI {
     func installmentPlan(id: String) async throws -> InstallmentPlan
     func previewInstallmentPlanCancellation(id: String) async throws -> InstallmentPlanCancellationPreview
     func cancelInstallmentPlan(id: String, expectedCancelledOn: RecurrenceCivilDate, idempotencyKey: String) async throws -> RecordedInstallmentPlan
+    func scheduledCommitments(evaluationDate: RecurrenceCivilDate) async throws -> ScheduledCommitmentListResponse
+}
+
+extension FinancialAPI {
+    func scheduledCommitments(evaluationDate _: RecurrenceCivilDate) async throws -> ScheduledCommitmentListResponse {
+        throw FinancialAPIError.configuration
+    }
 }
 
 enum FinancialAPIError: Error, Equatable {
@@ -400,6 +407,25 @@ final class URLSessionFinancialAPIClient: FinancialAPI {
         return RecordedInstallmentPlan(plan: plan, replayed: try replayedValue(response))
     }
 
+    func scheduledCommitments(evaluationDate: RecurrenceCivilDate) async throws -> ScheduledCommitmentListResponse {
+        guard var components = URLComponents(
+            url: baseURL.appendingPathComponent("v1/scheduled-commitments"),
+            resolvingAgainstBaseURL: false
+        ) else {
+            throw FinancialAPIError.configuration
+        }
+        components.queryItems = [
+            URLQueryItem(name: "evaluationDate", value: evaluationDate.canonicalValue)
+        ]
+        guard let url = components.url else { throw FinancialAPIError.configuration }
+
+        var request = baseRequest(url: url, method: "GET")
+        request.cachePolicy = .reloadIgnoringLocalCacheData
+        let (data, response) = try await perform(request)
+        try requireScheduledCommitmentStatus(response, expected: 200, data: data)
+        return try decode(data)
+    }
+
     private func makeRequest<Body: Encodable>(path: String, method: String, body: Body) throws -> URLRequest {
         var request = baseRequest(url: baseURL.appendingPathComponent(path), method: method)
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -571,6 +597,20 @@ final class URLSessionFinancialAPIClient: FinancialAPI {
                 throw FinancialAPIError.installmentCancellationDateStale
             case (409, "IDEMPOTENCY_KEY_REUSED"):
                 throw FinancialAPIError.conflict
+            case (500...599, _):
+                throw FinancialAPIError.serviceUnavailable
+            default:
+                throw FinancialAPIError.invalidResponse
+            }
+        }
+    }
+
+    private func requireScheduledCommitmentStatus(_ response: HTTPURLResponse, expected: Int, data: Data) throws {
+        guard response.statusCode == expected else {
+            let code = try? JSONDecoder().decode(APIErrorEnvelope.self, from: data).error.code
+            switch (response.statusCode, code) {
+            case (400, "INVALID_REQUEST"):
+                throw FinancialAPIError.invalidData
             case (500...599, _):
                 throw FinancialAPIError.serviceUnavailable
             default:

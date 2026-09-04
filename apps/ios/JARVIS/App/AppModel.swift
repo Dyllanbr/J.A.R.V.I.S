@@ -117,6 +117,7 @@ final class AppModel {
     let creditCards: CreditCardsViewModel
     let cardPurchases: CardPurchaseViewModel
     let installmentPlans: InstallmentPlansViewModel
+    let scheduledCommitments: ScheduledCommitmentsViewModel
 
     init(api: any FinancialAPI, now: Date = Date()) {
         let categories = CategoryCatalogModel(api: api)
@@ -139,6 +140,7 @@ final class AppModel {
             onPurchaseRecorded: { [weak history] in history?.transactionWasRecorded() }
         )
         installmentPlans = InstallmentPlansViewModel(api: api)
+        scheduledCommitments = ScheduledCommitmentsViewModel(api: api)
         registration = RegistrationViewModel(
             api: api,
             categories: categories,

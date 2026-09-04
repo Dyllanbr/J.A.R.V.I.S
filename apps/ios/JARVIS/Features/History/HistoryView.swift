@@ -2,6 +2,7 @@ import SwiftUI
 
 struct HistoryView: View {
     @Bindable var model: HistoryViewModel
+    let scheduledCommitments: ScheduledCommitmentsViewModel
 
     private let moneyFormatter = BRLMoneyFormatter()
     private let displayFormatter = FinancialDisplayFormatter()
@@ -10,6 +11,7 @@ struct HistoryView: View {
         NavigationStack {
             VStack(spacing: 0) {
                 monthNavigation
+                scheduledCommitmentsEntry
                 filters
                 categoryCatalogStatus
                 content
@@ -22,6 +24,18 @@ struct HistoryView: View {
         .task {
             await model.loadCategoriesIfNeeded()
         }
+    }
+
+    private var scheduledCommitmentsEntry: some View {
+        NavigationLink {
+            ScheduledCommitmentsView(model: scheduledCommitments)
+        } label: {
+            Label("Compromissos futuros", systemImage: "calendar.badge.clock")
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .frame(minHeight: 44)
+        .padding(.horizontal)
+        .accessibilityIdentifier("history.scheduledCommitments.entry")
     }
 
     private var filters: some View {

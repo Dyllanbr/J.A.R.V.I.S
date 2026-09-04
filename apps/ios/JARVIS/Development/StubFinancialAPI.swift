@@ -15,6 +15,12 @@ final class StubFinancialAPI: FinancialAPI {
         case listError
     }
 
+    private enum ScheduledCommitmentsScenario: String {
+        case normal
+        case empty
+        case listError
+    }
+
     private struct StoredRecurrenceCreate {
         let request: RecurrenceRequest
         let recurrence: Recurrence
@@ -63,12 +69,16 @@ final class StubFinancialAPI: FinancialAPI {
     private let timestampCodec = RFC3339DateCodec()
     private let suggestionScenario: SuggestionScenario
     private let cardScenario: CardScenario
+    private let scheduledCommitmentsScenario: ScheduledCommitmentsScenario
 
     init(environment: [String: String] = ProcessInfo.processInfo.environment) {
         suggestionScenario = SuggestionScenario(
             rawValue: environment["JARVIS_IOS_SUGGESTION_SCENARIO"] ?? "normal"
         ) ?? .normal
         cardScenario = CardScenario(rawValue: environment["JARVIS_IOS_CARD_SCENARIO"] ?? "normal") ?? .normal
+        scheduledCommitmentsScenario = ScheduledCommitmentsScenario(
+            rawValue: environment["JARVIS_IOS_SCHEDULED_COMMITMENTS_SCENARIO"] ?? "normal"
+        ) ?? .normal
         let active = Recurrence(
             id: "rec_ui_synthetic_active",
             description: "Academia sintética",
@@ -468,6 +478,35 @@ final class StubFinancialAPI: FinancialAPI {
     func installmentPlans() async throws -> InstallmentPlanListResponse {
         try await Task.sleep(for: .milliseconds(80))
         return InstallmentPlanListResponse(items: installmentPlansByID.values.sorted { $0.firstDueDate < $1.firstDueDate })
+    }
+
+    func scheduledCommitments(evaluationDate: RecurrenceCivilDate) async throws -> ScheduledCommitmentListResponse {
+        switch scheduledCommitmentsScenario {
+        case .empty:
+            return try ScheduledCommitmentListResponse(items: [])
+        case .listError:
+            throw FinancialAPIError.serviceUnavailable
+        case .normal:
+            break
+        }
+        let installmentDueOn = try Self.anchoredDate(evaluationDate, day: 10, offset: 1)
+        let recurrenceDueOn = try Self.anchoredDate(evaluationDate, day: 15, offset: 2)
+        return try ScheduledCommitmentListResponse(items: [
+            try ScheduledCommitment(
+                source: .installmentPlan,
+                sourceID: "ipl_ui_synthetic_00000000000000000000000000000001",
+                sequence: 1,
+                dueOn: installmentDueOn,
+                amount: FinancialMoney(minor: 10_000, currency: .brl)
+            ),
+            try ScheduledCommitment(
+                source: .recurrence,
+                sourceID: "rec_ui_synthetic_active",
+                sequence: 1,
+                dueOn: recurrenceDueOn,
+                amount: FinancialMoney(minor: 2_990, currency: .brl)
+            )
+        ])
     }
 
     func installmentPlan(id: String) async throws -> InstallmentPlan {
