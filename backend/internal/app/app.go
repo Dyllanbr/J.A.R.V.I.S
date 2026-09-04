@@ -263,8 +263,19 @@ func New(
 		pool.Close()
 		return nil, err
 	}
+	scheduledCommitmentRepository, err := transactionspostgres.NewScheduledCommitmentRepository(pool, postgresConfig.OperationTimeout)
+	if err != nil {
+		pool.Close()
+		return nil, err
+	}
+	listScheduledCommitments, err := application.NewListScheduledCommitments(scheduledCommitmentRepository)
+	if err != nil {
+		pool.Close()
+		return nil, err
+	}
 	cardPurchaseRoutes := httpapi.NewCardPurchase(cfg.OwnerID, previewCardPurchase, recordCardPurchase)
 	installmentPlanRoutes := httpapi.NewInstallmentPlan(cfg.OwnerID, listInstallmentPlans, getInstallmentPlan, previewInstallmentCancellation, cancelInstallmentPlan)
+	scheduledCommitmentRoutes := httpapi.NewScheduledCommitments(cfg.OwnerID, listScheduledCommitments)
 	applicationInstance.server = httpserver.New(
 		cfg.HTTPAddress,
 		logger,
@@ -274,6 +285,7 @@ func New(
 		creditCardRoutes,
 		cardPurchaseRoutes,
 		installmentPlanRoutes,
+		scheduledCommitmentRoutes,
 	)
 	return applicationInstance, nil
 }
