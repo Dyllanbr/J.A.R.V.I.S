@@ -150,58 +150,29 @@ func (repository *CardPurchaseRepository) FindInstallmentPlan(ctx context.Contex
 	if domain.ValidateUserID(ownerID) != nil || domain.ValidateInstallmentPlanID(planID) != nil {
 		return application.InstallmentPlanLookup{}, ErrInvalidStoredInstallmentPlan
 	}
-	opCtx, cancel := context.WithTimeout(ctx, repository.operationTimeout)
-	defer cancel()
-	snapshot, err := queryInstallmentPlan(opCtx, repository.pool, ownerID, planID, false)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return application.InstallmentPlanLookup{}, nil
-	}
+	var lookup application.InstallmentPlanLookup
+	err := withReadOnlySnapshot(ctx, repository.pool, repository.operationTimeout, func(operationContext context.Context, transaction pgx.Tx) error {
+		var err error
+		lookup, err = readInstallmentPlan(operationContext, transaction, ownerID, planID)
+		return err
+	})
 	if err != nil {
 		return application.InstallmentPlanLookup{}, newRepositoryError(ErrReadInstallmentPlan, err)
 	}
-	plan, err := snapshot.rehydrate(ownerID)
-	if err != nil || plan.OwnerID() != ownerID || plan.ID() != planID {
-		if err == nil {
-			err = ErrInvalidStoredInstallmentPlan
-		}
-		return application.InstallmentPlanLookup{}, newRepositoryError(ErrInvalidStoredInstallmentPlan, err)
-	}
-	return application.InstallmentPlanLookup{InstallmentPlan: plan, Found: true}, nil
+	return lookup, nil
 }
 
 func (repository *CardPurchaseRepository) ListInstallmentPlans(ctx context.Context, ownerID string) ([]domain.InstallmentPlan, error) {
 	if domain.ValidateUserID(ownerID) != nil {
 		return nil, ErrInvalidStoredInstallmentPlan
 	}
-	opCtx, cancel := context.WithTimeout(ctx, repository.operationTimeout)
-	defer cancel()
-	rows, err := repository.pool.Query(opCtx, `
-		SELECT id, user_id, credit_card_id, expense_id, total_minor, total_currency,
-		       installment_count, first_due_on, due_day, status, created_at, cancelled_on
-		FROM installment_plans
-		WHERE user_id = $1
-		ORDER BY first_due_on ASC, created_at ASC, id ASC
-	`, ownerID)
+	var plans []domain.InstallmentPlan
+	err := withReadOnlySnapshot(ctx, repository.pool, repository.operationTimeout, func(operationContext context.Context, transaction pgx.Tx) error {
+		var err error
+		plans, err = readInstallmentPlans(operationContext, transaction, ownerID)
+		return err
+	})
 	if err != nil {
-		return nil, newRepositoryError(ErrListInstallmentPlans, err)
-	}
-	defer rows.Close()
-	plans := make([]domain.InstallmentPlan, 0)
-	for rows.Next() {
-		snapshot, scanErr := scanInstallmentPlanSnapshot(rows)
-		if scanErr != nil {
-			return nil, newRepositoryError(ErrInvalidStoredInstallmentPlan, scanErr)
-		}
-		plan, hydrateErr := snapshot.rehydrate(ownerID)
-		if hydrateErr != nil || plan.OwnerID() != ownerID {
-			if hydrateErr == nil {
-				hydrateErr = ErrInvalidStoredInstallmentPlan
-			}
-			return nil, newRepositoryError(ErrInvalidStoredInstallmentPlan, hydrateErr)
-		}
-		plans = append(plans, plan)
-	}
-	if err := rows.Err(); err != nil {
 		return nil, newRepositoryError(ErrListInstallmentPlans, err)
 	}
 	return plans, nil

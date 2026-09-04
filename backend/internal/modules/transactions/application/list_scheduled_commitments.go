@@ -11,11 +11,13 @@ import (
 const ScheduledCommitmentsHorizonMonths = 12
 
 var (
+	ErrMissingScheduledCommitmentSnapshotReader   = errors.New("list scheduled commitments: snapshot reader is required")
 	ErrMissingScheduledCommitmentPlanReader       = errors.New("list scheduled commitments: installment plan reader is required")
 	ErrMissingScheduledCommitmentRecurrenceReader = errors.New("list scheduled commitments: recurrence reader is required")
 	ErrScheduledCommitmentEvaluationDate          = errors.New("list scheduled commitments: evaluation date is invalid")
 	ErrScheduledCommitmentPlanQuery               = errors.New("list scheduled commitments: installment plan query failed")
 	ErrScheduledCommitmentRecurrenceQuery         = errors.New("list scheduled commitments: recurrence query failed")
+	ErrScheduledCommitmentSnapshotQuery           = errors.New("list scheduled commitments: snapshot query failed")
 	ErrScheduledCommitmentDependency              = errors.New("list scheduled commitments: invalid dependency result")
 	ErrScheduledCommitmentDuplicate               = errors.New("list scheduled commitments: duplicate source")
 	ErrScheduledCommitmentHorizon                 = errors.New("list scheduled commitments: horizon is invalid")
@@ -58,22 +60,32 @@ type ListScheduledCommitmentsResult struct {
 	Items []ScheduledCommitmentLine
 }
 
+// ScheduledCommitmentSnapshot is the owner-scoped pair of persisted sources
+// read for one projection. It is not a persisted projection or aggregate.
+type ScheduledCommitmentSnapshot struct {
+	InstallmentPlans []domain.InstallmentPlan
+	Recurrences      []domain.Recurrence
+}
+
+// ScheduledCommitmentSnapshotReader is the single read boundary required by
+// the projection. Implementations must read both sources from one consistent
+// snapshot and must not perform writes.
+type ScheduledCommitmentSnapshotReader interface {
+	Read(context.Context, string) (ScheduledCommitmentSnapshot, error)
+}
+
 // ListScheduledCommitments combines only the two commitment sources already
 // supported by the domain. It computes the result in memory and performs no
 // writes, idempotency operations or clock reads.
 type ListScheduledCommitments struct {
-	planReader       InstallmentPlanReader
-	recurrenceReader RecurrenceReader
+	reader ScheduledCommitmentSnapshotReader
 }
 
-func NewListScheduledCommitments(planReader InstallmentPlanReader, recurrenceReader RecurrenceReader) (*ListScheduledCommitments, error) {
-	if planReader == nil {
-		return nil, ErrMissingScheduledCommitmentPlanReader
+func NewListScheduledCommitments(reader ScheduledCommitmentSnapshotReader) (*ListScheduledCommitments, error) {
+	if reader == nil {
+		return nil, ErrMissingScheduledCommitmentSnapshotReader
 	}
-	if recurrenceReader == nil {
-		return nil, ErrMissingScheduledCommitmentRecurrenceReader
-	}
-	return &ListScheduledCommitments{planReader: planReader, recurrenceReader: recurrenceReader}, nil
+	return &ListScheduledCommitments{reader: reader}, nil
 }
 
 func (useCase *ListScheduledCommitments) Execute(ctx context.Context, input ListScheduledCommitmentsInput) (ListScheduledCommitmentsResult, error) {
@@ -91,11 +103,21 @@ func (useCase *ListScheduledCommitments) Execute(ctx context.Context, input List
 	if err != nil {
 		return ListScheduledCommitmentsResult{}, err
 	}
-	items := make([]ScheduledCommitmentLine, 0)
-	if err := useCase.appendInstallmentPlans(ctx, input.OwnerID, input.EvaluationDate, horizonEnd, &items); err != nil {
+	snapshot, err := useCase.reader.Read(ctx, input.OwnerID)
+	if err != nil {
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			return ListScheduledCommitmentsResult{}, err
+		}
+		return ListScheduledCommitmentsResult{}, newSafeOperationError(ErrScheduledCommitmentSnapshotQuery, err)
+	}
+	if err := ctx.Err(); err != nil {
 		return ListScheduledCommitmentsResult{}, err
 	}
-	if err := useCase.appendRecurrences(ctx, input.OwnerID, input.EvaluationDate, horizonEnd, &items); err != nil {
+	items := make([]ScheduledCommitmentLine, 0)
+	if err := useCase.appendInstallmentPlans(ctx, input.OwnerID, input.EvaluationDate, horizonEnd, snapshot.InstallmentPlans, &items); err != nil {
+		return ListScheduledCommitmentsResult{}, err
+	}
+	if err := useCase.appendRecurrences(ctx, input.OwnerID, input.EvaluationDate, horizonEnd, snapshot.Recurrences, &items); err != nil {
 		return ListScheduledCommitmentsResult{}, err
 	}
 	sort.Slice(items, func(left, right int) bool {
@@ -104,17 +126,7 @@ func (useCase *ListScheduledCommitments) Execute(ctx context.Context, input List
 	return ListScheduledCommitmentsResult{Items: items}, nil
 }
 
-func (useCase *ListScheduledCommitments) appendInstallmentPlans(ctx context.Context, ownerID string, evaluationDate, horizonEnd domain.CivilDate, items *[]ScheduledCommitmentLine) error {
-	if err := ctx.Err(); err != nil {
-		return err
-	}
-	plans, err := useCase.planReader.ListInstallmentPlans(ctx, ownerID)
-	if err != nil {
-		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-			return err
-		}
-		return newSafeOperationError(ErrScheduledCommitmentPlanQuery, err)
-	}
+func (useCase *ListScheduledCommitments) appendInstallmentPlans(ctx context.Context, ownerID string, evaluationDate, horizonEnd domain.CivilDate, plans []domain.InstallmentPlan, items *[]ScheduledCommitmentLine) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -144,17 +156,7 @@ func (useCase *ListScheduledCommitments) appendInstallmentPlans(ctx context.Cont
 	return nil
 }
 
-func (useCase *ListScheduledCommitments) appendRecurrences(ctx context.Context, ownerID string, evaluationDate, horizonEnd domain.CivilDate, items *[]ScheduledCommitmentLine) error {
-	if err := ctx.Err(); err != nil {
-		return err
-	}
-	recurrences, err := useCase.recurrenceReader.ListRecurrences(ctx, ownerID)
-	if err != nil {
-		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-			return err
-		}
-		return newSafeOperationError(ErrScheduledCommitmentRecurrenceQuery, err)
-	}
+func (useCase *ListScheduledCommitments) appendRecurrences(ctx context.Context, ownerID string, evaluationDate, horizonEnd domain.CivilDate, recurrences []domain.Recurrence, items *[]ScheduledCommitmentLine) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}

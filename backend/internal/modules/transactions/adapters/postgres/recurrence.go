@@ -287,46 +287,16 @@ func (repository *RecurrenceRepository) ListRecurrences(
 	ctx context.Context,
 	userID string,
 ) ([]domain.Recurrence, error) {
-	operationContext, cancel := context.WithTimeout(ctx, repository.operationTimeout)
-	defer cancel()
-
-	rows, err := repository.pool.Query(operationContext, `
-		SELECT
-			id,
-			user_id,
-			transaction_type,
-			description,
-			expected_amount_minor,
-			currency,
-			frequency,
-			starts_on,
-			status,
-			created_at,
-			cancelled_at
-		FROM recurrences
-		WHERE user_id = $1
-	`, userID)
+	if domain.ValidateRecurrenceUserID(userID) != nil {
+		return nil, ErrInvalidStoredRecurrence
+	}
+	var items []domain.Recurrence
+	err := withReadOnlySnapshot(ctx, repository.pool, repository.operationTimeout, func(operationContext context.Context, transaction pgx.Tx) error {
+		var err error
+		items, err = readRecurrences(operationContext, transaction, userID)
+		return err
+	})
 	if err != nil {
-		return nil, newRepositoryError(ErrListRecurrences, err)
-	}
-	defer rows.Close()
-
-	items := make([]domain.Recurrence, 0)
-	for rows.Next() {
-		snapshot, scanErr := scanRecurrenceSnapshot(rows)
-		if scanErr != nil {
-			return nil, newRepositoryError(ErrListRecurrences, scanErr)
-		}
-		recurrence, hydrateErr := snapshot.rehydrate()
-		if hydrateErr != nil || recurrence.UserID() != userID {
-			if hydrateErr == nil {
-				hydrateErr = ErrInvalidStoredRecurrence
-			}
-			return nil, newRepositoryError(ErrInvalidStoredRecurrence, hydrateErr)
-		}
-		items = append(items, recurrence)
-	}
-	if err := rows.Err(); err != nil {
 		return nil, newRepositoryError(ErrListRecurrences, err)
 	}
 	return items, nil
