@@ -52,6 +52,8 @@ Essa progressão não transforma o J.A.R.V.I.S. em banco nem em executor de tran
 | Incremento 3B — Recorrências confirmadas e assinaturas | **Verified** | Compromissos recorrentes manuais, separados de Expense, Income e Category |
 | Incremento 3C — Detecção e sugestão de recorrências | **Verified** | Observar padrões, sugerir recorrências e exigir confirmação antes de promovê-las |
 | Incremento 4 — Cartões, parcelas e compromissos futuros | **Planned** | Compreensão do dinheiro já comprometido |
+| Incremento 4A — CreditCard | **Verified** | Cartões owner-scoped, com ciclo de vida e operações explícitas |
+| Incremento 4B — CardPurchase + InstallmentPlan | **Verified** | Compras no cartão à vista ou parceladas e compromissos derivados |
 | Incremento 5 — Orçamento e Disponível Seguro | **Planned** | Resposta explicável sobre quanto pode ser gasto |
 | Incremento 6 — Metas e “Posso comprar?” | **Planned** | Apoio estruturado a decisões financeiras |
 | Incremento 7 — Identidade, autenticação e Trust Center | **Planned** | Base de confiança para uso pessoal real e multiusuário |
@@ -181,7 +183,30 @@ Projeções, orçamento, Disponível Seguro, alertas, Personal Financial Model, 
 
 **Estado: Planned.**
 
-O objetivo é compreender dinheiro já comprometido. A direção inclui:
+O objetivo é compreender dinheiro já comprometido. As subcapacidades 4A — CreditCard e 4B — CardPurchase + InstallmentPlan estão **Verified** dentro de seus escopos. Permanecem planejados o restante desta etapa, incluindo Statement/faturas completas e compromissos futuros além dos InstallmentPlans implementados.
+
+### Incremento 4A — CreditCard
+
+**Estado: Verified.**
+
+A subcapacidade 4A representa cartões de crédito como agregado próprio, com operações explícitas de preview, criação, listagem, consulta e arquivamento. O cartão possui lifecycle `ACTIVE → ARCHIVED`, isolamento por owner, idempotência e auditoria dedicadas. CreditLimit é metadado: não autoriza compra, não calcula disponibilidade e não movimenta dinheiro.
+
+### Incremento 4B — CardPurchase + InstallmentPlan
+
+**Estado: Verified.**
+
+A subcapacidade 4B representa compras feitas em um CreditCard ativo:
+
+- compra à vista registra uma `Expense` total e não cria `InstallmentPlan`;
+- compra parcelada registra uma `Expense` total e cria um `InstallmentPlan` confirmado;
+- o plano deriva um schedule mensal de parcelas sem criar `Expense` futuras;
+- preview, revisão e confirmação são explícitos;
+- há listagem, detalhe, cancellation preview, cancelamento, replay e idempotência;
+- o cancelamento altera somente o plano e seu cronograma efetivo, nunca a Expense original.
+
+CardPurchase é uma orquestração de aplicação, não um aggregate persistido. A confirmação continua sendo a única transição para registrar a compra; nenhuma operação executa pagamento ou movimenta dinheiro.
+
+A direção mais ampla do Incremento 4 continua incluindo:
 
 - cartões e faturas;
 - parcelas;

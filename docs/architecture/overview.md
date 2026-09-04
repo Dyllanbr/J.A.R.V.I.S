@@ -2,7 +2,7 @@
 
 ## Estado
 
-O backend é um único processo Go organizado como monólito modular. Por padrão ele permanece health-only e não exige banco. Os Incrementos 1 — Despesas, 2 — Receitas, 3A — Categorias e filtros do histórico, 3B — Recorrências confirmadas e assinaturas e 3C — Detecção e sugestão de recorrências estão verificados.
+O backend é um único processo Go organizado como monólito modular. Por padrão ele permanece health-only e não exige banco. Os Incrementos 1 — Despesas, 2 — Receitas, 3A — Categorias e filtros do histórico, 3B — Recorrências confirmadas e assinaturas e 3C — Detecção e sugestão de recorrências estão verificados. As subcapacidades 4A — CreditCard e 4B — CardPurchase + InstallmentPlan também estão verificadas dentro de seus escopos; Statement/faturas completas e compromissos futuros adicionais permanecem planejados.
 
 | Elemento | Estado |
 | --- | --- |
@@ -29,6 +29,9 @@ O backend é um único processo Go organizado como monólito modular. Por padrã
 | Detector determinístico e `RecurrenceSuggestion` efêmera | Verificados pelo Incremento 3C |
 | Suppression owner-scoped, migration 006 e idempotência de dismiss | Verificadas pelo Incremento 3C |
 | API/OpenAPI, UX iOS e E2E real de sugestões | Verificados pelo Incremento 3C |
+| `CreditCard`, migration 007 e persistência/auditoria/idempotência dedicadas | Verificados pela subcapacidade 4A |
+| `CardPurchase`, `InstallmentPlan`, migration 008 e persistência atômica | Verificados pela subcapacidade 4B |
+| API REST/OpenAPI, cliente iOS e E2E real de cartões/parcelas | Verificados pelas subcapacidades 4A/4B |
 | Terraform/nuvem | Planejado, sem configuração |
 
 ## Direção de dependências
@@ -62,11 +65,19 @@ A migration 005 adiciona persistência dedicada de recorrências em `recurrences
 
 A migration 006 persiste somente suppressions de sugestões dispensadas pelo usuário; não existe tabela de `RecurrenceSuggestion`. A suppression associa owner, identidade e fingerprint da evidência ao instante lógico de dismiss, com integridade, replay e concorrência resolvidos no PostgreSQL. A mesma evidência permanece suprimida, mas evidência materialmente nova produz outra identidade. Seu DOWN segue o padrão lock → guard → DDL e recusa perda silenciosa.
 
+A migration 007 adiciona `CreditCard`, suas auditorias e sua idempotência dedicada. O aggregate possui lifecycle `ACTIVE → ARCHIVED`; o limite de crédito é metadado e não autoriza compras, calcula disponibilidade ou movimenta dinheiro. A API mantém owner server-side e operações explícitas de preview, criação, listagem, detalhe e arquivamento.
+
+A migration 008 adiciona persistência para `InstallmentPlan`, seus eventos e idempotência, além de `card_purchase_idempotency_records`. `CardPurchase` é um comando de orquestração da aplicação: uma compra à vista cria uma `Expense` total, enquanto uma compra parcelada cria uma `Expense` total e um `InstallmentPlan`. O schedule do plano é derivado por calendário civil e não materializa parcelas futuras como novas `Expense`. Preview, review e confirm permanecem distintos; replay usa snapshots históricos e o cancelamento do plano não altera a Expense.
+
+Os adapters HTTP e PostgreSQL expõem somente os contratos aprovados para cartões e planos. As camadas permanecem separadas: Domain define as invariantes de CreditCard, CardPurchase e InstallmentPlan; Application orquestra preview, registro, replay e cancelamento por ports mínimas; HTTP traduz requests/responses; PostgreSQL executa persistência owner-scoped e atômica; `randomid` gera identificadores opacos. A composição conecta essas camadas sem dependências invertidas.
+
 O cliente iOS segue uma direção igualmente curta:
 
 ```text
 SwiftUI Views -> View Models -> FinancialAPI -> URLSession -> backend
 ```
+
+Para as subcapacidades 4A/4B, a composição real segue `SwiftUI → FinancialAPI → API Go → PostgreSQL`. O cliente suporta CreditCard, compra à vista, compra parcelada e InstallmentPlan, incluindo preview, revisão, confirmação, listagem, detalhe e cancelamento. O owner permanece definido no servidor; o app não executa pagamentos e não persiste parcelas futuras como Expenses.
 
 Views não montam JSON; features dependem da abstração pequena `FinancialAPI`, e o cliente concreto concentra DTOs/HTTP discriminados por `EXPENSE`/`INCOME` e os contratos próprios de `Recurrence` e `RecurrenceSuggestion`. A composição fica em `JARVISApp`/`AppModel`, sem singleton ou container de DI. `CategoryCatalogModel` pertence ao `AppModel`, mantém uma única Task compartilhada de catálogo e não transfere ownership do fetch para as Tasks efêmeras das Views. Parsing BRL inteiro, codec temporal e data civil de Recurrence têm responsabilidades nomeadas. O preview devolvido pelo servidor congela a semântica revisada antes da confirmação; alterações no draft invalidam respostas antigas por geração. A mesma chave idempotente permanece em memória durante retries transitórios; edição ou troca de tipo inicia nova tentativa, e erros determinísticos `400`/`409` retornam à edição em vez de oferecer retry infinito.
 

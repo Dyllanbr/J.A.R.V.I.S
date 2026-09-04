@@ -189,13 +189,32 @@ Projeções, orçamento, Disponível Seguro, alertas, Personal Financial Model e
 
 Detalhes e evidências permanecem nas fontes especializadas de [arquitetura](../architecture/overview.md), [ADRs](../adr/README.md), [segurança](../security/baseline.md), [privacidade](../privacy/README.md), [acessibilidade](../accessibility/baseline.md), [QA](../qa/testing-strategy.md) e [performance](../performance/baseline.md).
 
+## Estado atual — Incremento 4A e Incremento 4B
+
+As subcapacidades 4A — CreditCard e 4B — CardPurchase + InstallmentPlan estão **Verified**, após implementação mergeada, auditoria independente e quality gates correspondentes.
+
+O Incremento 4A representa cartões de crédito owner-scoped como aggregate separado, com criação, listagem, consulta e arquivamento explícitos. `ACTIVE → ARCHIVED` é o lifecycle implementado; o limite de crédito é metadado e não autoriza compras nem calcula disponibilidade.
+
+O Incremento 4B representa compras vinculadas a um cartão ativo:
+
+- uma compra à vista cria uma `Expense` total sem `InstallmentPlan`;
+- uma compra parcelada cria uma `Expense` total e um `InstallmentPlan` confirmado;
+- o plano possui schedule derivado, parcelas mensais e cancelamento explícito;
+- preview, review e confirm permanecem separados da persistência;
+- listagem, detalhe, cancellation preview, cancelamento, replay e idempotência são suportados pelos contratos existentes;
+- parcelas futuras nunca são materializadas como novas `Expense`.
+
+`CardPurchase` é um comando de orquestração da aplicação, não um aggregate persistido. `InstallmentPlan` é uma obrigação confirmada derivada da compra. Nenhuma dessas capacidades executa pagamento, cria movimentação financeira ou conclui automaticamente uma compra sem confirmação explícita.
+
+O restante do horizonte de cartões e compromissos continua planejado. Statement/faturas completas, projeções gerais, orçamento, Disponível Seguro e outros compromissos futuros não estão incluídos nestas subcapacidades.
+
 ## Visão futura
 
 As capacidades a seguir estão **Planned**. A presença nesta visão não define ordem, prazo, escopo técnico nem compromisso de entrega:
 
 - categorias customizadas e reclassificação;
-- cartões e parcelas;
-- compromissos futuros;
+- Statement/faturas completas;
+- compromissos futuros além dos InstallmentPlans implementados;
 - orçamento;
 - Disponível Seguro;
 - metas;
