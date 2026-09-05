@@ -283,10 +283,21 @@ func New(
 		pool.Close()
 		return nil, err
 	}
+	safeAvailableRepository, err := transactionspostgres.NewSafeAvailableRepository(pool, postgresConfig.OperationTimeout)
+	if err != nil {
+		pool.Close()
+		return nil, err
+	}
+	calculateSafeAvailable, err := application.NewCalculateSafeAvailable(safeAvailableRepository)
+	if err != nil {
+		pool.Close()
+		return nil, err
+	}
 	cardPurchaseRoutes := httpapi.NewCardPurchase(cfg.OwnerID, previewCardPurchase, recordCardPurchase)
 	cardStatementRoutes := httpapi.NewCardStatement(cfg.OwnerID, getCardStatement)
 	installmentPlanRoutes := httpapi.NewInstallmentPlan(cfg.OwnerID, listInstallmentPlans, getInstallmentPlan, previewInstallmentCancellation, cancelInstallmentPlan)
 	scheduledCommitmentRoutes := httpapi.NewScheduledCommitments(cfg.OwnerID, listScheduledCommitments)
+	safeAvailableRoutes := httpapi.NewSafeAvailable(cfg.OwnerID, calculateSafeAvailable)
 	applicationInstance.server = httpserver.New(
 		cfg.HTTPAddress,
 		logger,
@@ -298,6 +309,7 @@ func New(
 		cardStatementRoutes,
 		installmentPlanRoutes,
 		scheduledCommitmentRoutes,
+		safeAvailableRoutes,
 	)
 	return applicationInstance, nil
 }
