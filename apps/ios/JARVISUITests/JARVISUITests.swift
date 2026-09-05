@@ -526,6 +526,25 @@ final class JARVISUITests: XCTestCase {
         element("card.purchase.\(cardID)", in: secondApp).tap()
         createPurchase(in: secondApp, description: installmentPurchaseDescription, amount: "120,00", installments: "2")
 
+        let cardAfterInstallment = secondApp.buttons["card.item.\(cardID)"].firstMatch
+        XCTAssertTrue(cardAfterInstallment.waitForExistence(timeout: 12), secondApp.debugDescription)
+        cardAfterInstallment.tap()
+        XCTAssertTrue(element("card.detail", in: secondApp).waitForExistence(timeout: 10), secondApp.debugDescription)
+        let statementLink = element("card.statement.\(cardID)", in: secondApp)
+        XCTAssertTrue(statementLink.waitForExistence(timeout: 8), secondApp.debugDescription)
+        statementLink.tap()
+        XCTAssertTrue(element("cardStatement.screen", in: secondApp).waitForExistence(timeout: 12), secondApp.debugDescription)
+        XCTAssertTrue(element("cardStatement.total", in: secondApp).waitForExistence(timeout: 12), secondApp.debugDescription)
+        XCTAssertTrue(element("cardStatement.total", in: secondApp).label.contains("R$ 140,00"), secondApp.debugDescription)
+        XCTAssertTrue(
+            secondApp.descendants(matching: .any)
+                .matching(NSPredicate(format: "identifier BEGINSWITH %@", "cardStatement.line."))
+                .count >= 2,
+            secondApp.debugDescription
+        )
+        secondApp.navigationBars.buttons.firstMatch.tap()
+        XCTAssertTrue(element("card.detail", in: secondApp).waitForExistence(timeout: 8), secondApp.debugDescription)
+
         element("installmentPlans.open", in: secondApp).tap()
         XCTAssertTrue(element("installmentPlans.list", in: secondApp).waitForExistence(timeout: 12))
         let plan = secondApp.descendants(matching: .any)
@@ -976,6 +995,123 @@ final class JARVISUITests: XCTestCase {
         XCTAssertTrue(element("scheduledCommitments.retry", in: app).waitForExistence(timeout: 8))
         XCTAssertFalse(app.staticTexts.matching(NSPredicate(format: "label CONTAINS[c] 'sql' OR label CONTAINS[c] 'pgx'"))
             .firstMatch.exists)
+    }
+
+    @MainActor
+    func testCardStatementMixedFlowExposesLineAndTotalIdentifiers() throws {
+        continueAfterFailure = false
+        let launched = try launchApp()
+        let app = launched.app
+        defer { app.terminate() }
+
+        element("tab.cards", in: app).tap()
+        XCTAssertTrue(element("card.empty", in: app).waitForExistence(timeout: 10), app.debugDescription)
+        element("card.create", in: app).tap()
+        fillCreditCardForm(in: app, name: creditCardName(from: launched.description))
+        element("card.review", in: app).tap()
+        XCTAssertTrue(element("card.review.screen", in: app).waitForExistence(timeout: 10))
+        element("card.confirm", in: app).tap()
+        XCTAssertTrue(element("card.success", in: app).waitForExistence(timeout: 12))
+        element("card.new", in: app).tap()
+        XCTAssertTrue(element("card.list", in: app).waitForExistence(timeout: 12))
+
+        let item = app.descendants(matching: .any)
+            .matching(NSPredicate(format: "identifier BEGINSWITH %@", "card.item.card_"))
+            .firstMatch
+        XCTAssertTrue(item.waitForExistence(timeout: 10), app.debugDescription)
+        let cardID = String(item.identifier.dropFirst("card.item.".count))
+        item.tap()
+        XCTAssertTrue(element("card.detail", in: app).waitForExistence(timeout: 10))
+        let statementLink = element("card.statement.\(cardID)", in: app)
+        XCTAssertTrue(statementLink.waitForExistence(timeout: 8), app.debugDescription)
+        statementLink.tap()
+
+        XCTAssertTrue(element("cardStatement.screen", in: app).waitForExistence(timeout: 10), app.debugDescription)
+        XCTAssertTrue(element("cardStatement.statementDueOn", in: app).exists)
+        XCTAssertTrue(element("cardStatement.load", in: app).exists)
+        XCTAssertTrue(element("cardStatement.total", in: app).waitForExistence(timeout: 10), app.debugDescription)
+        XCTAssertTrue(element("cardStatement.list", in: app).waitForExistence(timeout: 10), app.debugDescription)
+        XCTAssertTrue(
+            app.descendants(matching: .any)
+                .matching(NSPredicate(format: "identifier BEGINSWITH %@", "cardStatement.line."))
+                .firstMatch
+                .waitForExistence(timeout: 10),
+            app.debugDescription
+        )
+    }
+
+    @MainActor
+    func testCardStatementEmptyStateIsAccessible() throws {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchEnvironment["JARVIS_IOS_API_MODE"] = "stub"
+        app.launchEnvironment["JARVIS_IOS_CARD_STATEMENT_SCENARIO"] = "empty"
+        app.launch()
+        defer { app.terminate() }
+
+        element("tab.cards", in: app).tap()
+        XCTAssertTrue(element("card.empty", in: app).waitForExistence(timeout: 10), app.debugDescription)
+        element("card.create", in: app).tap()
+        fillCreditCardForm(in: app, name: "Cartão statement vazio")
+        element("card.review", in: app).tap()
+        XCTAssertTrue(element("card.review.screen", in: app).waitForExistence(timeout: 10))
+        element("card.confirm", in: app).tap()
+        XCTAssertTrue(element("card.success", in: app).waitForExistence(timeout: 12))
+        element("card.new", in: app).tap()
+        XCTAssertTrue(element("card.list", in: app).waitForExistence(timeout: 12))
+
+        let item = app.descendants(matching: .any)
+            .matching(NSPredicate(format: "identifier BEGINSWITH %@", "card.item.card_"))
+            .firstMatch
+        XCTAssertTrue(item.waitForExistence(timeout: 10), app.debugDescription)
+        let cardID = String(item.identifier.dropFirst("card.item.".count))
+        item.tap()
+        XCTAssertTrue(element("card.detail", in: app).waitForExistence(timeout: 10))
+        XCTAssertTrue(element("card.statement.\(cardID)", in: app).waitForExistence(timeout: 8), app.debugDescription)
+        element("card.statement.\(cardID)", in: app).tap()
+
+        XCTAssertTrue(element("cardStatement.empty", in: app).waitForExistence(timeout: 10), app.debugDescription)
+        XCTAssertTrue(element("cardStatement.total", in: app).exists)
+        XCTAssertTrue(element("cardStatement.total", in: app).label.contains("R$ 0,00"))
+    }
+
+    @MainActor
+    func testCardStatementFailureExposesRetryAndRecovers() throws {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchEnvironment["JARVIS_IOS_API_MODE"] = "stub"
+        app.launchEnvironment["JARVIS_IOS_CARD_STATEMENT_SCENARIO"] = "error"
+        app.launch()
+        defer { app.terminate() }
+
+        element("tab.cards", in: app).tap()
+        XCTAssertTrue(element("card.empty", in: app).waitForExistence(timeout: 10), app.debugDescription)
+        element("card.create", in: app).tap()
+        fillCreditCardForm(in: app, name: "Cartão statement retry")
+        element("card.review", in: app).tap()
+        XCTAssertTrue(element("card.review.screen", in: app).waitForExistence(timeout: 10))
+        element("card.confirm", in: app).tap()
+        XCTAssertTrue(element("card.success", in: app).waitForExistence(timeout: 12))
+        element("card.new", in: app).tap()
+        XCTAssertTrue(element("card.list", in: app).waitForExistence(timeout: 12))
+
+        let item = app.descendants(matching: .any)
+            .matching(NSPredicate(format: "identifier BEGINSWITH %@", "card.item.card_"))
+            .firstMatch
+        XCTAssertTrue(item.waitForExistence(timeout: 10), app.debugDescription)
+        let cardID = String(item.identifier.dropFirst("card.item.".count))
+        item.tap()
+        XCTAssertTrue(element("card.detail", in: app).waitForExistence(timeout: 10), app.debugDescription)
+        XCTAssertTrue(element("card.statement.\(cardID)", in: app).waitForExistence(timeout: 8), app.debugDescription)
+        element("card.statement.\(cardID)", in: app).tap()
+
+        XCTAssertTrue(element("cardStatement.errorState", in: app).waitForExistence(timeout: 12), app.debugDescription)
+        XCTAssertTrue(element("cardStatement.retry", in: app).exists, app.debugDescription)
+        XCTAssertFalse(app.staticTexts.matching(NSPredicate(format: "label CONTAINS[c] 'sql' OR label CONTAINS[c] 'pgx'"))
+            .firstMatch.exists)
+        element("cardStatement.retry", in: app).tap()
+        XCTAssertTrue(element("cardStatement.total", in: app).waitForExistence(timeout: 12), app.debugDescription)
+        XCTAssertTrue(element("cardStatement.list", in: app).waitForExistence(timeout: 12), app.debugDescription)
     }
 
     @MainActor
