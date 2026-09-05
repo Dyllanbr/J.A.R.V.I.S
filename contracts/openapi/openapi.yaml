@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: J.A.R.V.I.S. API
-  version: 0.8.0
+  version: 0.9.0
   description: >-
     API da fundação e dos incrementos financeiros de despesas, receitas,
     categorias, recorrências manuais, sugestões determinísticas e referências organizacionais de cartões. Criar uma transaction registra no
@@ -725,6 +725,41 @@ paths:
           $ref: "#/components/responses/InstallmentPlanConflict"
         "500":
           $ref: "#/components/responses/InternalError"
+  /v1/scheduled-commitments:
+    get:
+      operationId: listScheduledCommitments
+      summary: Lista compromissos futuros derivados de fontes confirmadas
+      description: >-
+        Retorna uma projeção somente leitura e determinística de parcelas de
+        InstallmentPlan e ocorrências mensais de Recurrence dentro do horizonte
+        civil aprovado. A operação não cria Expenses futuras, não persiste a
+        projeção e não executa pagamentos.
+      tags: [Installment Plans]
+      parameters:
+        - name: evaluationDate
+          in: query
+          required: true
+          description: Data civil usada como início exclusivo da projeção.
+          schema:
+            $ref: "#/components/schemas/CivilDate"
+      responses:
+        "200":
+          description: Linhas projetadas em ordem determinística; a lista pode ser vazia.
+          headers:
+            Cache-Control:
+              $ref: "#/components/headers/CacheControl"
+            X-Content-Type-Options:
+              $ref: "#/components/headers/ContentTypeOptions"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ScheduledCommitmentListResponse"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowed"
+        "500":
+          $ref: "#/components/responses/InternalError"
   /v1/transactions:
     post:
       operationId: recordTransaction
@@ -1332,6 +1367,38 @@ components:
           $ref: "#/components/schemas/CivilDate"
         amount:
           $ref: "#/components/schemas/Money"
+    ScheduledCommitmentSource:
+      type: string
+      enum: [INSTALLMENT_PLAN, RECURRENCE]
+    ScheduledCommitment:
+      type: object
+      additionalProperties: false
+      required: [source, sourceId, sequence, dueOn, amount]
+      properties:
+        source:
+          $ref: "#/components/schemas/ScheduledCommitmentSource"
+        sourceId:
+          type: string
+          minLength: 1
+          maxLength: 128
+          pattern: "^[!-~]+$"
+          description: Identificador opaco da fonte confirmada.
+        sequence:
+          type: integer
+          minimum: 1
+        dueOn:
+          $ref: "#/components/schemas/CivilDate"
+        amount:
+          $ref: "#/components/schemas/Money"
+    ScheduledCommitmentListResponse:
+      type: object
+      additionalProperties: false
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/ScheduledCommitment"
     InstallmentSummary:
       type: object
       additionalProperties: false

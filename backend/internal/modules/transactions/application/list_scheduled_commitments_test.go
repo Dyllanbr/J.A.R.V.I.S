@@ -11,54 +11,31 @@ import (
 	"jarvis/backend/internal/modules/transactions/domain"
 )
 
-type scheduledPlanReaderFake struct {
-	items    []domain.InstallmentPlan
+type scheduledSnapshotReaderFake struct {
+	snapshot application.ScheduledCommitmentSnapshot
 	ownerID  string
-	listCall int
+	readCall int
 	err      error
 }
 
-func (reader *scheduledPlanReaderFake) FindInstallmentPlan(context.Context, string, string) (application.InstallmentPlanLookup, error) {
-	return application.InstallmentPlanLookup{}, nil
-}
-
-func (reader *scheduledPlanReaderFake) ListInstallmentPlans(_ context.Context, ownerID string) ([]domain.InstallmentPlan, error) {
-	reader.listCall++
+func (reader *scheduledSnapshotReaderFake) Read(_ context.Context, ownerID string) (application.ScheduledCommitmentSnapshot, error) {
+	reader.readCall++
 	reader.ownerID = ownerID
-	return reader.items, reader.err
+	return reader.snapshot, reader.err
 }
 
-type scheduledRecurrenceReaderFake struct {
-	items    []domain.Recurrence
-	ownerID  string
-	listCall int
-	err      error
-}
-
-func TestNewListScheduledCommitmentsRequiresBothOwnerScopedReaders(t *testing.T) {
-	recurrences := &scheduledRecurrenceReaderFake{}
-	plans := &scheduledPlanReaderFake{}
-	if _, err := application.NewListScheduledCommitments(nil, recurrences); !errors.Is(err, application.ErrMissingScheduledCommitmentPlanReader) {
-		t.Fatalf("nil plan reader error = %v", err)
+func TestNewListScheduledCommitmentsRequiresCombinedSnapshotReader(t *testing.T) {
+	if _, err := application.NewListScheduledCommitments(nil); !errors.Is(err, application.ErrMissingScheduledCommitmentSnapshotReader) {
+		t.Fatalf("nil snapshot reader error = %v", err)
 	}
-	if _, err := application.NewListScheduledCommitments(plans, nil); !errors.Is(err, application.ErrMissingScheduledCommitmentRecurrenceReader) {
-		t.Fatalf("nil recurrence reader error = %v", err)
-	}
-}
-
-func (reader *scheduledRecurrenceReaderFake) ListRecurrences(_ context.Context, ownerID string) ([]domain.Recurrence, error) {
-	reader.listCall++
-	reader.ownerID = ownerID
-	return reader.items, reader.err
 }
 
 func TestListScheduledCommitmentsUsesActivePlansAndRecurrencesWithinCivilHorizon(t *testing.T) {
 	owner := "owner-scheduled"
 	plan := scheduledPlan(t, owner, "ipl_0123456789abcdef0123456789abcdef", 2026, time.January, 31, 13, 1300)
 	recurrence := scheduledRecurrence(t, owner, "recurrence-scheduled-001", 2025, time.September, 3, 250)
-	planReader := &scheduledPlanReaderFake{items: []domain.InstallmentPlan{plan}}
-	recurrenceReader := &scheduledRecurrenceReaderFake{items: []domain.Recurrence{recurrence}}
-	useCase := mustListScheduledCommitments(t, planReader, recurrenceReader)
+	reader := scheduledSnapshotReader([]domain.InstallmentPlan{plan}, []domain.Recurrence{recurrence})
+	useCase := mustListScheduledCommitments(t, reader)
 
 	result, err := useCase.Execute(context.Background(), application.ListScheduledCommitmentsInput{
 		OwnerID: owner, EvaluationDate: scheduledDate(t, 2026, time.January, 31),
@@ -66,8 +43,8 @@ func TestListScheduledCommitmentsUsesActivePlansAndRecurrencesWithinCivilHorizon
 	if err != nil {
 		t.Fatalf("Execute() error = %v", err)
 	}
-	if planReader.ownerID != owner || recurrenceReader.ownerID != owner || planReader.listCall != 1 || recurrenceReader.listCall != 1 {
-		t.Fatalf("readers owner/calls = %q/%q %d/%d", planReader.ownerID, recurrenceReader.ownerID, planReader.listCall, recurrenceReader.listCall)
+	if reader.ownerID != owner || reader.readCall != 1 {
+		t.Fatalf("snapshot reader owner/calls = %q/%d", reader.ownerID, reader.readCall)
 	}
 	if len(result.Items) != 24 {
 		t.Fatalf("items = %d, want 24 (12 plan dates after evaluation plus 12 recurrence dates)", len(result.Items))
@@ -92,7 +69,7 @@ func TestListScheduledCommitmentsUsesEffectiveScheduleForCancelledPlan(t *testin
 	if err != nil {
 		t.Fatal(err)
 	}
-	useCase := mustListScheduledCommitments(t, &scheduledPlanReaderFake{items: []domain.InstallmentPlan{cancelled}}, &scheduledRecurrenceReaderFake{})
+	useCase := mustListScheduledCommitments(t, scheduledSnapshotReader([]domain.InstallmentPlan{cancelled}, nil))
 	result, err := useCase.Execute(context.Background(), application.ListScheduledCommitmentsInput{OwnerID: owner, EvaluationDate: scheduledDate(t, 2026, time.January, 1)})
 	if err != nil {
 		t.Fatalf("Execute() error = %v", err)
@@ -109,7 +86,7 @@ func TestListScheduledCommitmentsFiltersCancelledRecurrence(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	useCase := mustListScheduledCommitments(t, &scheduledPlanReaderFake{}, &scheduledRecurrenceReaderFake{items: []domain.Recurrence{cancelled}})
+	useCase := mustListScheduledCommitments(t, scheduledSnapshotReader(nil, []domain.Recurrence{cancelled}))
 	result, err := useCase.Execute(context.Background(), application.ListScheduledCommitmentsInput{OwnerID: owner, EvaluationDate: scheduledDate(t, 2026, time.January, 1)})
 	if err != nil {
 		t.Fatalf("Execute() error = %v", err)
@@ -126,12 +103,12 @@ func TestListScheduledCommitmentsOrderingIsStableAcrossReaderOrder(t *testing.T)
 	recurrence := scheduledRecurrence(t, owner, "recurrence-order-001", 2026, time.March, 10, 200)
 	otherRecurrence := scheduledRecurrence(t, owner, "recurrence-order-000", 2026, time.March, 10, 200)
 	input := application.ListScheduledCommitmentsInput{OwnerID: owner, EvaluationDate: scheduledDate(t, 2026, time.February, 1)}
-	first := mustListScheduledCommitments(t, &scheduledPlanReaderFake{items: []domain.InstallmentPlan{plan, otherPlan}}, &scheduledRecurrenceReaderFake{items: []domain.Recurrence{recurrence, otherRecurrence}})
+	first := mustListScheduledCommitments(t, scheduledSnapshotReader([]domain.InstallmentPlan{plan, otherPlan}, []domain.Recurrence{recurrence, otherRecurrence}))
 	firstResult, err := first.Execute(context.Background(), input)
 	if err != nil {
 		t.Fatal(err)
 	}
-	second := mustListScheduledCommitments(t, &scheduledPlanReaderFake{items: []domain.InstallmentPlan{otherPlan, plan}}, &scheduledRecurrenceReaderFake{items: []domain.Recurrence{otherRecurrence, recurrence}})
+	second := mustListScheduledCommitments(t, scheduledSnapshotReader([]domain.InstallmentPlan{otherPlan, plan}, []domain.Recurrence{otherRecurrence, recurrence}))
 	secondResult, err := second.Execute(context.Background(), input)
 	if err != nil {
 		t.Fatal(err)
@@ -156,13 +133,13 @@ func TestListScheduledCommitmentsOrderingIsStableAcrossReaderOrder(t *testing.T)
 func TestListScheduledCommitmentsRejectsDuplicateSourcesAndDependencyOwnerMismatch(t *testing.T) {
 	owner := "owner-validation"
 	plan := scheduledPlan(t, owner, "ipl_22222222222222222222222222222222", 2026, time.April, 10, 2, 200)
-	useCase := mustListScheduledCommitments(t, &scheduledPlanReaderFake{items: []domain.InstallmentPlan{plan, plan}}, &scheduledRecurrenceReaderFake{})
+	useCase := mustListScheduledCommitments(t, scheduledSnapshotReader([]domain.InstallmentPlan{plan, plan}, nil))
 	if _, err := useCase.Execute(context.Background(), application.ListScheduledCommitmentsInput{OwnerID: owner, EvaluationDate: scheduledDate(t, 2026, time.January, 1)}); !errors.Is(err, application.ErrScheduledCommitmentDuplicate) {
 		t.Fatalf("duplicate plan error = %v", err)
 	}
 
 	otherPlan := scheduledPlan(t, "owner-other", "ipl_33333333333333333333333333333333", 2026, time.April, 10, 2, 200)
-	useCase = mustListScheduledCommitments(t, &scheduledPlanReaderFake{items: []domain.InstallmentPlan{otherPlan}}, &scheduledRecurrenceReaderFake{})
+	useCase = mustListScheduledCommitments(t, scheduledSnapshotReader([]domain.InstallmentPlan{otherPlan}, nil))
 	if _, err := useCase.Execute(context.Background(), application.ListScheduledCommitmentsInput{OwnerID: owner, EvaluationDate: scheduledDate(t, 2026, time.January, 1)}); !errors.Is(err, application.ErrScheduledCommitmentDependency) {
 		t.Fatalf("owner mismatch error = %v", err)
 	}
@@ -171,22 +148,21 @@ func TestListScheduledCommitmentsRejectsDuplicateSourcesAndDependencyOwnerMismat
 func TestListScheduledCommitmentsRejectsDuplicateRecurrencesAndOwnerMismatch(t *testing.T) {
 	owner := "owner-recurrence-validation"
 	recurrence := scheduledRecurrence(t, owner, "recurrence-duplicate-001", 2026, time.April, 10, 200)
-	useCase := mustListScheduledCommitments(t, &scheduledPlanReaderFake{}, &scheduledRecurrenceReaderFake{items: []domain.Recurrence{recurrence, recurrence}})
+	useCase := mustListScheduledCommitments(t, scheduledSnapshotReader(nil, []domain.Recurrence{recurrence, recurrence}))
 	if _, err := useCase.Execute(context.Background(), application.ListScheduledCommitmentsInput{OwnerID: owner, EvaluationDate: scheduledDate(t, 2026, time.January, 1)}); !errors.Is(err, application.ErrScheduledCommitmentDuplicate) {
 		t.Fatalf("duplicate recurrence error = %v", err)
 	}
 
 	other := scheduledRecurrence(t, "owner-other", "recurrence-owner-other", 2026, time.April, 10, 200)
-	useCase = mustListScheduledCommitments(t, &scheduledPlanReaderFake{}, &scheduledRecurrenceReaderFake{items: []domain.Recurrence{other}})
+	useCase = mustListScheduledCommitments(t, scheduledSnapshotReader(nil, []domain.Recurrence{other}))
 	if _, err := useCase.Execute(context.Background(), application.ListScheduledCommitmentsInput{OwnerID: owner, EvaluationDate: scheduledDate(t, 2026, time.January, 1)}); !errors.Is(err, application.ErrScheduledCommitmentDependency) {
 		t.Fatalf("recurrence owner mismatch error = %v", err)
 	}
 }
 
 func TestListScheduledCommitmentsRejectsInvalidInputBeforeReadersAndKeepsEmptyResultStable(t *testing.T) {
-	plans := &scheduledPlanReaderFake{}
-	recurrences := &scheduledRecurrenceReaderFake{}
-	useCase := mustListScheduledCommitments(t, plans, recurrences)
+	reader := scheduledSnapshotReader(nil, nil)
+	useCase := mustListScheduledCommitments(t, reader)
 	for _, input := range []application.ListScheduledCommitmentsInput{
 		{OwnerID: "", EvaluationDate: scheduledDate(t, 2026, time.January, 1)},
 		{OwnerID: "owner-valid", EvaluationDate: domain.CivilDate{}},
@@ -195,8 +171,8 @@ func TestListScheduledCommitmentsRejectsInvalidInputBeforeReadersAndKeepsEmptyRe
 			t.Fatal("invalid input unexpectedly succeeded")
 		}
 	}
-	if plans.listCall != 0 || recurrences.listCall != 0 {
-		t.Fatalf("invalid input reached readers: %d/%d", plans.listCall, recurrences.listCall)
+	if reader.readCall != 0 {
+		t.Fatalf("invalid input reached snapshot reader: %d", reader.readCall)
 	}
 
 	result, err := useCase.Execute(context.Background(), application.ListScheduledCommitmentsInput{OwnerID: "owner-valid", EvaluationDate: scheduledDate(t, 2026, time.January, 1)})
@@ -210,39 +186,45 @@ func TestListScheduledCommitmentsRejectsInvalidInputBeforeReadersAndKeepsEmptyRe
 	if _, err := useCase.Execute(context.Background(), application.ListScheduledCommitmentsInput{OwnerID: "owner-valid", EvaluationDate: scheduledDate(t, 9999, time.December, 31)}); !errors.Is(err, application.ErrScheduledCommitmentHorizon) {
 		t.Fatalf("horizon overflow error = %v", err)
 	}
-	if plans.listCall != 1 || recurrences.listCall != 1 {
+	if reader.readCall != 1 {
 		t.Fatal("horizon overflow reached a reader")
 	}
 }
 
 func TestListScheduledCommitmentsSafelyWrapsReaderFailuresAndPreservesCancellation(t *testing.T) {
 	marker := "SQL_SECRET_SCHEDULE"
-	useCase := mustListScheduledCommitments(t, &scheduledPlanReaderFake{err: errors.New(marker)}, &scheduledRecurrenceReaderFake{})
+	useCase := mustListScheduledCommitments(t, &scheduledSnapshotReaderFake{err: errors.New(marker)})
 	_, err := useCase.Execute(context.Background(), application.ListScheduledCommitmentsInput{OwnerID: "owner-errors", EvaluationDate: scheduledDate(t, 2026, time.January, 1)})
-	if !errors.Is(err, application.ErrScheduledCommitmentPlanQuery) || strings.Contains(err.Error(), marker) {
+	if !errors.Is(err, application.ErrScheduledCommitmentSnapshotQuery) || strings.Contains(err.Error(), marker) {
 		t.Fatalf("reader error = %v", err)
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	plans := &scheduledPlanReaderFake{}
-	recurrences := &scheduledRecurrenceReaderFake{}
-	useCase = mustListScheduledCommitments(t, plans, recurrences)
+	reader := scheduledSnapshotReader(nil, nil)
+	useCase = mustListScheduledCommitments(t, reader)
 	if _, err := useCase.Execute(ctx, application.ListScheduledCommitmentsInput{OwnerID: "owner-errors", EvaluationDate: scheduledDate(t, 2026, time.January, 1)}); !errors.Is(err, context.Canceled) {
 		t.Fatalf("cancelled context error = %v", err)
 	}
-	if plans.listCall != 0 || recurrences.listCall != 0 {
+	if reader.readCall != 0 {
 		t.Fatal("cancelled request reached readers")
 	}
 }
 
-func mustListScheduledCommitments(t *testing.T, planReader application.InstallmentPlanReader, recurrenceReader application.RecurrenceReader) *application.ListScheduledCommitments {
+func mustListScheduledCommitments(t *testing.T, reader application.ScheduledCommitmentSnapshotReader) *application.ListScheduledCommitments {
 	t.Helper()
-	useCase, err := application.NewListScheduledCommitments(planReader, recurrenceReader)
+	useCase, err := application.NewListScheduledCommitments(reader)
 	if err != nil {
 		t.Fatal(err)
 	}
 	return useCase
+}
+
+func scheduledSnapshotReader(plans []domain.InstallmentPlan, recurrences []domain.Recurrence) *scheduledSnapshotReaderFake {
+	return &scheduledSnapshotReaderFake{snapshot: application.ScheduledCommitmentSnapshot{
+		InstallmentPlans: plans,
+		Recurrences:      recurrences,
+	}}
 }
 
 func scheduledPlan(t *testing.T, owner, id string, year int, month time.Month, day, count int, totalMinor int64) domain.InstallmentPlan {

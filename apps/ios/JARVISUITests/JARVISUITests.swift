@@ -141,6 +141,32 @@ final class JARVISUITests: XCTestCase {
         XCTAssertTrue(recurrence.label.localizedCaseInsensitiveContains("mensal"))
         XCTAssertTrue(recurrence.label.contains("Ativa"))
 
+        if try testConfiguration().mode == .real {
+            element("tab.history", in: app).tap()
+            element("history.scheduledCommitments.entry", in: app).tap()
+            XCTAssertTrue(
+                element("scheduledCommitments.screen", in: app).waitForExistence(timeout: 10),
+                app.debugDescription
+            )
+            XCTAssertTrue(
+                element("scheduledCommitments.list", in: app).waitForExistence(timeout: 10),
+                app.debugDescription
+            )
+            let scheduledRecurrence = app.descendants(matching: .any)
+                .matching(
+                    NSPredicate(
+                        format: "identifier BEGINSWITH %@ AND label CONTAINS %@",
+                        "scheduledCommitment.RECURRENCE.",
+                        "R$ 42,50"
+                    )
+                )
+                .firstMatch
+            XCTAssertTrue(scheduledRecurrence.waitForExistence(timeout: 10), app.debugDescription)
+            XCTAssertTrue(scheduledRecurrence.label.contains("R$ 42,50"), app.debugDescription)
+            element("tab.recurrences", in: app).tap()
+            XCTAssertTrue(element("recurrence.list", in: app).waitForExistence(timeout: 10), app.debugDescription)
+        }
+
         let recurrenceID = String(recurrence.identifier.dropFirst("recurrence.item.".count))
         let cancel = element("recurrence.cancel.\(recurrenceID)", in: app)
         XCTAssertTrue(cancel.waitForExistence(timeout: 5))
@@ -506,8 +532,33 @@ final class JARVISUITests: XCTestCase {
             .matching(NSPredicate(format: "identifier BEGINSWITH %@", "installmentPlan.item.ipl_"))
             .firstMatch
         XCTAssertTrue(plan.waitForExistence(timeout: 12), secondApp.debugDescription)
+        let planID = String(plan.identifier.dropFirst("installmentPlan.item.".count))
         plan.tap()
         XCTAssertTrue(element("installmentPlan.detail", in: secondApp).waitForExistence(timeout: 12))
+
+        element("tab.history", in: secondApp).tap()
+        element("history.scheduledCommitments.entry", in: secondApp).tap()
+        XCTAssertTrue(
+            element("scheduledCommitments.screen", in: secondApp).waitForExistence(timeout: 10),
+            secondApp.debugDescription
+        )
+        XCTAssertTrue(
+            element("scheduledCommitments.list", in: secondApp).waitForExistence(timeout: 10),
+            secondApp.debugDescription
+        )
+        let scheduledPlan = secondApp.descendants(matching: .any)
+            .matching(
+                NSPredicate(
+                    format: "identifier BEGINSWITH %@",
+                    "scheduledCommitment.INSTALLMENT_PLAN.\(planID)."
+                )
+            )
+            .firstMatch
+        XCTAssertTrue(scheduledPlan.waitForExistence(timeout: 10), secondApp.debugDescription)
+        XCTAssertTrue(scheduledPlan.label.contains("Parcela"), secondApp.debugDescription)
+
+        element("tab.cards", in: secondApp).tap()
+        XCTAssertTrue(element("installmentPlan.detail", in: secondApp).waitForExistence(timeout: 10))
         element("installmentPlan.cancel.preview", in: secondApp).tap()
         let cancel = secondApp.alerts.firstMatch.buttons.matching(identifier: "installmentPlan.cancel.confirm").firstMatch
         XCTAssertTrue(cancel.waitForExistence(timeout: 8), secondApp.debugDescription)
@@ -862,6 +913,69 @@ final class JARVISUITests: XCTestCase {
 
         selectHistoryCategoryFilter("none", in: app)
         XCTAssertTrue(element("history.filteredEmpty", in: app).waitForExistence(timeout: 5))
+    }
+
+    @MainActor
+    func testScheduledCommitmentsListShowsInstallmentAndRecurrenceSources() throws {
+        continueAfterFailure = false
+        let launched = try launchApp()
+        let app = launched.app
+        defer { app.terminate() }
+
+        XCTAssertTrue(element("tab.history", in: app).waitForExistence(timeout: 8))
+        element("tab.history", in: app).tap()
+        let entry = element("history.scheduledCommitments.entry", in: app)
+        XCTAssertTrue(entry.waitForExistence(timeout: 8), app.debugDescription)
+        entry.tap()
+
+        XCTAssertTrue(element("scheduledCommitments.screen", in: app).waitForExistence(timeout: 8), app.debugDescription)
+        let installment = app.descendants(matching: .any)
+            .matching(NSPredicate(format: "identifier BEGINSWITH %@", "scheduledCommitment.INSTALLMENT_PLAN."))
+            .firstMatch
+        let recurrence = app.descendants(matching: .any)
+            .matching(NSPredicate(format: "identifier BEGINSWITH %@", "scheduledCommitment.RECURRENCE."))
+            .firstMatch
+        XCTAssertTrue(installment.waitForExistence(timeout: 8), app.debugDescription)
+        XCTAssertTrue(recurrence.waitForExistence(timeout: 8), app.debugDescription)
+        XCTAssertTrue(installment.label.contains("Parcela"))
+        XCTAssertTrue(recurrence.label.contains("Recorrência"))
+        XCTAssertTrue(installment.label.contains("R$"))
+        XCTAssertTrue(recurrence.label.contains("R$"))
+    }
+
+    @MainActor
+    func testScheduledCommitmentsEmptyStateIsAccessible() {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchEnvironment["JARVIS_IOS_API_MODE"] = "stub"
+        app.launchEnvironment["JARVIS_IOS_SCHEDULED_COMMITMENTS_SCENARIO"] = "empty"
+        app.launch()
+        defer { app.terminate() }
+
+        XCTAssertTrue(element("tab.history", in: app).waitForExistence(timeout: 8))
+        element("tab.history", in: app).tap()
+        element("history.scheduledCommitments.entry", in: app).tap()
+        XCTAssertTrue(element("scheduledCommitments.screen", in: app).waitForExistence(timeout: 8))
+        XCTAssertTrue(element("scheduledCommitments.empty", in: app).waitForExistence(timeout: 8), app.debugDescription)
+        XCTAssertFalse(element("scheduledCommitments.list", in: app).exists)
+    }
+
+    @MainActor
+    func testScheduledCommitmentsFailureExposesSafeRetry() {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchEnvironment["JARVIS_IOS_API_MODE"] = "stub"
+        app.launchEnvironment["JARVIS_IOS_SCHEDULED_COMMITMENTS_SCENARIO"] = "listError"
+        app.launch()
+        defer { app.terminate() }
+
+        XCTAssertTrue(element("tab.history", in: app).waitForExistence(timeout: 8))
+        element("tab.history", in: app).tap()
+        element("history.scheduledCommitments.entry", in: app).tap()
+        XCTAssertTrue(element("scheduledCommitments.error", in: app).waitForExistence(timeout: 8), app.debugDescription)
+        XCTAssertTrue(element("scheduledCommitments.retry", in: app).waitForExistence(timeout: 8))
+        XCTAssertFalse(app.staticTexts.matching(NSPredicate(format: "label CONTAINS[c] 'sql' OR label CONTAINS[c] 'pgx'"))
+            .firstMatch.exists)
     }
 
     @MainActor
