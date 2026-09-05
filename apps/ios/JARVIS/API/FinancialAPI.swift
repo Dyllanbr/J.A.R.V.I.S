@@ -28,6 +28,7 @@ protocol FinancialAPI {
     func cancelInstallmentPlan(id: String, expectedCancelledOn: RecurrenceCivilDate, idempotencyKey: String) async throws -> RecordedInstallmentPlan
     func scheduledCommitments(evaluationDate: RecurrenceCivilDate) async throws -> ScheduledCommitmentListResponse
     func cardStatement(creditCardID: String, statementDueOn: RecurrenceCivilDate) async throws -> CardStatement
+    func safeAvailable(periodStart: RecurrenceCivilDate, periodEnd: RecurrenceCivilDate) async throws -> SafeAvailableResponse
 }
 
 extension FinancialAPI {
@@ -36,6 +37,10 @@ extension FinancialAPI {
     }
 
     func cardStatement(creditCardID _: String, statementDueOn _: RecurrenceCivilDate) async throws -> CardStatement {
+        throw FinancialAPIError.configuration
+    }
+
+    func safeAvailable(periodStart _: RecurrenceCivilDate, periodEnd _: RecurrenceCivilDate) async throws -> SafeAvailableResponse {
         throw FinancialAPIError.configuration
     }
 }
@@ -449,6 +454,30 @@ final class URLSessionFinancialAPIClient: FinancialAPI {
         return try decode(data)
     }
 
+    func safeAvailable(
+        periodStart: RecurrenceCivilDate,
+        periodEnd: RecurrenceCivilDate
+    ) async throws -> SafeAvailableResponse {
+        guard !(periodEnd < periodStart) else { throw FinancialAPIError.invalidData }
+        guard var components = URLComponents(
+            url: baseURL.appendingPathComponent("v1/safe-available"),
+            resolvingAgainstBaseURL: false
+        ) else {
+            throw FinancialAPIError.configuration
+        }
+        components.queryItems = [
+            URLQueryItem(name: "periodStart", value: periodStart.canonicalValue),
+            URLQueryItem(name: "periodEnd", value: periodEnd.canonicalValue)
+        ]
+        guard let url = components.url else { throw FinancialAPIError.configuration }
+
+        var request = baseRequest(url: url, method: "GET")
+        request.cachePolicy = .reloadIgnoringLocalCacheData
+        let (data, response) = try await perform(request)
+        try requireSafeAvailableStatus(response, expected: 200, data: data)
+        return try decode(data)
+    }
+
     private func makeRequest<Body: Encodable>(path: String, method: String, body: Body) throws -> URLRequest {
         var request = baseRequest(url: baseURL.appendingPathComponent(path), method: method)
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -652,6 +681,20 @@ final class URLSessionFinancialAPIClient: FinancialAPI {
                 throw FinancialAPIError.creditCardNotFound
             case (405, _):
                 throw FinancialAPIError.invalidResponse
+            case (500...599, _):
+                throw FinancialAPIError.serviceUnavailable
+            default:
+                throw FinancialAPIError.invalidResponse
+            }
+        }
+    }
+
+    private func requireSafeAvailableStatus(_ response: HTTPURLResponse, expected: Int, data: Data) throws {
+        guard response.statusCode == expected else {
+            let code = try? JSONDecoder().decode(APIErrorEnvelope.self, from: data).error.code
+            switch (response.statusCode, code) {
+            case (400, "INVALID_REQUEST"), (400, _):
+                throw FinancialAPIError.invalidData
             case (500...599, _):
                 throw FinancialAPIError.serviceUnavailable
             default:

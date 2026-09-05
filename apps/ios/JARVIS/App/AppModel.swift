@@ -118,6 +118,7 @@ final class AppModel {
     let cardPurchases: CardPurchaseViewModel
     let installmentPlans: InstallmentPlansViewModel
     let scheduledCommitments: ScheduledCommitmentsViewModel
+    let safeAvailable: SafeAvailableViewModel
 
     init(api: any FinancialAPI, now: Date = Date()) {
         let categories = CategoryCatalogModel(api: api)
@@ -141,6 +142,7 @@ final class AppModel {
         )
         installmentPlans = InstallmentPlansViewModel(api: api)
         scheduledCommitments = ScheduledCommitmentsViewModel(api: api)
+        safeAvailable = SafeAvailableViewModel(api: api)
         registration = RegistrationViewModel(
             api: api,
             categories: categories,

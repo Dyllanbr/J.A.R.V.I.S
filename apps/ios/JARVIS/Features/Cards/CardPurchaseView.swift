@@ -3,11 +3,37 @@ import SwiftUI
 struct CardPurchaseView: View {
     @Bindable var model: CardPurchaseViewModel
     @Environment(\.dismiss) private var dismiss
+    private let onFinished: (() -> Void)?
+    private let embedsNavigationStack: Bool
     private let money = BRLMoneyFormatter()
     private let dateFormatter = FinancialDisplayFormatter()
 
+    init(
+        model: CardPurchaseViewModel,
+        onFinished: (() -> Void)? = nil,
+        embedsNavigationStack: Bool = true
+    ) {
+        self.model = model
+        self.onFinished = onFinished
+        self.embedsNavigationStack = embedsNavigationStack
+    }
+
+    @ViewBuilder
     var body: some View {
-        NavigationStack {
+        if embedsNavigationStack {
+            NavigationStack {
+                content.navigationTitle(title)
+                    .toolbar {
+                        if !model.isBusy {
+                            ToolbarItem(placement: .cancellationAction) {
+                                Button("Fechar") { model.dismiss(); dismiss() }
+                                    .frame(minHeight: 44)
+                                    .accessibilityIdentifier("cardPurchase.close")
+                            }
+                        }
+                    }
+            }
+        } else {
             content.navigationTitle(title)
                 .toolbar {
                     if !model.isBusy {
@@ -127,7 +153,14 @@ struct CardPurchaseView: View {
         } description: {
             Text("\(purchase.expense.description) foi adicionada ao histórico.")
         } actions: {
-            Button("Voltar para cartões") { model.finish(); dismiss() }
+            Button("Voltar para cartões") {
+                model.finish()
+                if let onFinished {
+                    onFinished()
+                } else {
+                    dismiss()
+                }
+            }
                 .buttonStyle(.borderedProminent).frame(minHeight: 44)
                 .accessibilityIdentifier("cardPurchase.done")
         }

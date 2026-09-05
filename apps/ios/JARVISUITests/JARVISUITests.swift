@@ -998,6 +998,89 @@ final class JARVISUITests: XCTestCase {
     }
 
     @MainActor
+    func testSafeAvailablePositiveBreakdownAndBudgetMarker() throws {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchEnvironment["JARVIS_IOS_API_MODE"] = "stub"
+        app.launch()
+        defer { app.terminate() }
+
+        XCTAssertTrue(element("tab.history", in: app).waitForExistence(timeout: 8))
+        element("tab.history", in: app).tap()
+        let entry = element("history.safeAvailable.entry", in: app)
+        XCTAssertTrue(entry.waitForExistence(timeout: 8), app.debugDescription)
+        entry.tap()
+
+        XCTAssertTrue(element("safeAvailable.screen", in: app).waitForExistence(timeout: 8), app.debugDescription)
+        XCTAssertTrue(element("safeAvailable.periodStart", in: app).exists)
+        XCTAssertTrue(element("safeAvailable.periodEnd", in: app).exists)
+        XCTAssertTrue(element("safeAvailable.finalAmount", in: app).waitForExistence(timeout: 8), app.debugDescription)
+        XCTAssertTrue(element("safeAvailable.finalAmount", in: app).label.contains("R$ 95,00"), app.debugDescription)
+        XCTAssertTrue(element("safeAvailable.breakdown", in: app).exists)
+        XCTAssertTrue(element("safeAvailable.missingData", in: app).label.localizedCaseInsensitiveContains("orçamento"), app.debugDescription)
+    }
+
+    @MainActor
+    func testSafeAvailableNegativeAmountAndRetry() throws {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchEnvironment["JARVIS_IOS_API_MODE"] = "stub"
+        app.launchEnvironment["JARVIS_IOS_SAFE_AVAILABLE_SCENARIO"] = "negative"
+        app.launch()
+        defer { app.terminate() }
+
+        element("tab.history", in: app).tap()
+        element("history.safeAvailable.entry", in: app).tap()
+        XCTAssertTrue(element("safeAvailable.finalAmount", in: app).waitForExistence(timeout: 8), app.debugDescription)
+        XCTAssertTrue(element("safeAvailable.finalAmount", in: app).label.contains("R$ -25,00"), app.debugDescription)
+
+        app.terminate()
+        let retryApp = XCUIApplication()
+        retryApp.launchEnvironment["JARVIS_IOS_API_MODE"] = "stub"
+        retryApp.launchEnvironment["JARVIS_IOS_SAFE_AVAILABLE_SCENARIO"] = "error"
+        retryApp.launch()
+        defer { retryApp.terminate() }
+        retryApp.buttons["tab.history"].tap()
+        retryApp.buttons["history.safeAvailable.entry"].tap()
+        XCTAssertTrue(element("safeAvailable.error", in: retryApp).waitForExistence(timeout: 8), retryApp.debugDescription)
+        element("safeAvailable.retry", in: retryApp).tap()
+        XCTAssertTrue(element("safeAvailable.finalAmount", in: retryApp).waitForExistence(timeout: 8), retryApp.debugDescription)
+    }
+
+    @MainActor
+    func testSafeAvailableExplicitPeriodFlow() throws {
+        continueAfterFailure = false
+        let launched = try launchApp()
+        let app = launched.app
+        defer { app.terminate() }
+
+        XCTAssertTrue(element("tab.history", in: app).waitForExistence(timeout: 8), app.debugDescription)
+        element("tab.history", in: app).tap()
+        let entry = element("history.safeAvailable.entry", in: app)
+        XCTAssertTrue(entry.waitForExistence(timeout: 8), app.debugDescription)
+        entry.tap()
+
+        XCTAssertTrue(element("safeAvailable.screen", in: app).waitForExistence(timeout: 8), app.debugDescription)
+        XCTAssertTrue(element("safeAvailable.periodStart", in: app).exists)
+        XCTAssertTrue(element("safeAvailable.periodEnd", in: app).exists)
+        XCTAssertTrue(element("safeAvailable.load", in: app).exists)
+        XCTAssertTrue(element("safeAvailable.finalAmount", in: app).waitForExistence(timeout: 12), app.debugDescription)
+        XCTAssertTrue(element("safeAvailable.finalAmount", in: app).label.contains("R$"), app.debugDescription)
+        XCTAssertTrue(element("safeAvailable.breakdown", in: app).exists, app.debugDescription)
+        XCTAssertTrue(element("safeAvailable.missingData", in: app).exists, app.debugDescription)
+        XCTAssertTrue(
+            app.staticTexts.matching(NSPredicate(format: "label CONTAINS[c] %@", "Receita confirmada"))
+                .firstMatch.waitForExistence(timeout: 8),
+            app.debugDescription
+        )
+        XCTAssertTrue(
+            app.staticTexts.matching(NSPredicate(format: "label CONTAINS[c] %@", "Despesa confirmada"))
+                .firstMatch.waitForExistence(timeout: 8),
+            app.debugDescription
+        )
+    }
+
+    @MainActor
     func testCardStatementMixedFlowExposesLineAndTotalIdentifiers() throws {
         continueAfterFailure = false
         let launched = try launchApp()
