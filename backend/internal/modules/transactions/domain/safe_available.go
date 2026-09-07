@@ -45,6 +45,8 @@ var (
 	ErrSafeAvailableEntryOutsidePeriod   = errors.New("safe available: entry outside period")
 	ErrSafeAvailableOverflow             = errors.New("safe available: amount overflow")
 	ErrInvalidSafeAvailableSnapshot      = errors.New("safe available: invalid snapshot")
+	ErrInvalidSafeAvailableBudget        = errors.New("safe available: invalid budget")
+	ErrSafeAvailableBudgetPeriodMismatch = errors.New("safe available: budget does not cover period")
 )
 
 // SafeAvailablePeriod is an explicit inclusive civil period. No timezone,
@@ -127,6 +129,7 @@ type SafeAvailableSnapshot struct {
 	ownerID          string
 	period           SafeAvailablePeriod
 	availableBalance Money
+	budget           *MonthlyBudget
 	incomes          []SafeAvailableEntry
 	expenses         []SafeAvailableEntry
 	commitments      []SafeAvailableEntry
@@ -137,6 +140,7 @@ type SafeAvailableSnapshotParams struct {
 	OwnerID          string
 	Period           SafeAvailablePeriod
 	AvailableBalance Money
+	Budget           *MonthlyBudget
 	Incomes          []SafeAvailableEntry
 	Expenses         []SafeAvailableEntry
 	Commitments      []SafeAvailableEntry
@@ -144,8 +148,9 @@ type SafeAvailableSnapshotParams struct {
 }
 
 // NewSafeAvailableSnapshot validates and defensively copies a reader result.
-// This Stage 1 has no confirmed budget source, so BUDGET is always carried as
-// an explicit missing-data marker unless a future stage supplies one.
+// A nil Budget preserves the no-budget contract by carrying BUDGET as an
+// explicit missing-data marker. A supplied budget must cover the complete
+// requested period and therefore removes that marker.
 func NewSafeAvailableSnapshot(params SafeAvailableSnapshotParams) (SafeAvailableSnapshot, error) {
 	if err := ValidateUserID(params.OwnerID); err != nil {
 		return SafeAvailableSnapshot{}, ErrInvalidSafeAvailableOwnerID
@@ -161,7 +166,23 @@ func NewSafeAvailableSnapshot(params SafeAvailableSnapshotParams) (SafeAvailable
 	if err != nil {
 		return SafeAvailableSnapshot{}, err
 	}
-	if !containsSafeAvailableMissingData(missingData, SafeAvailableMissingBudget) {
+	var budget *MonthlyBudget
+	if params.Budget != nil {
+		if !params.Budget.valid() {
+			return SafeAvailableSnapshot{}, ErrInvalidSafeAvailableBudget
+		}
+		if params.Budget.OwnerID() != params.OwnerID {
+			return SafeAvailableSnapshot{}, ErrInvalidSafeAvailableBudget
+		}
+		if !params.Budget.Month().Contains(params.Period.StartOn()) || !params.Budget.Month().Contains(params.Period.EndOn()) {
+			return SafeAvailableSnapshot{}, ErrSafeAvailableBudgetPeriodMismatch
+		}
+		if containsSafeAvailableMissingData(missingData, SafeAvailableMissingBudget) {
+			return SafeAvailableSnapshot{}, ErrInvalidSafeAvailableSnapshot
+		}
+		budgetValue := *params.Budget
+		budget = &budgetValue
+	} else if !containsSafeAvailableMissingData(missingData, SafeAvailableMissingBudget) {
 		missingData = append(missingData, SafeAvailableMissingBudget)
 		sort.Slice(missingData, func(left, right int) bool { return missingData[left] < missingData[right] })
 	}
@@ -192,6 +213,7 @@ func NewSafeAvailableSnapshot(params SafeAvailableSnapshotParams) (SafeAvailable
 
 	return SafeAvailableSnapshot{
 		ownerID: params.OwnerID, period: params.Period, availableBalance: params.AvailableBalance,
+		budget:      budget,
 		incomes:     append([]SafeAvailableEntry(nil), params.Incomes...),
 		expenses:    append([]SafeAvailableEntry(nil), params.Expenses...),
 		commitments: append([]SafeAvailableEntry(nil), params.Commitments...),
@@ -202,6 +224,12 @@ func NewSafeAvailableSnapshot(params SafeAvailableSnapshotParams) (SafeAvailable
 func (snapshot SafeAvailableSnapshot) OwnerID() string             { return snapshot.ownerID }
 func (snapshot SafeAvailableSnapshot) Period() SafeAvailablePeriod { return snapshot.period }
 func (snapshot SafeAvailableSnapshot) AvailableBalance() Money     { return snapshot.availableBalance }
+func (snapshot SafeAvailableSnapshot) Budget() (MonthlyBudget, bool) {
+	if snapshot.budget == nil {
+		return MonthlyBudget{}, false
+	}
+	return *snapshot.budget, true
+}
 func (snapshot SafeAvailableSnapshot) Incomes() []SafeAvailableEntry {
 	return append([]SafeAvailableEntry(nil), snapshot.incomes...)
 }
@@ -232,11 +260,15 @@ func (line SafeAvailableBreakdownLine) DueOn() CivilDate             { return li
 func (line SafeAvailableBreakdownLine) Amount() Money                { return line.amount }
 
 // SafeAvailableResult is the deterministic, decomposable read model returned
-// by CalculateSafeAvailable.
+// by CalculateSafeAvailable. When a monthly budget is supplied, BudgetRemaining
+// exposes the explicit cap and FinalAmount is the smaller of the financial
+// amount and that cap.
 type SafeAvailableResult struct {
 	ownerID               string
 	period                SafeAvailablePeriod
 	availableBalance      Money
+	budget                *MonthlyBudget
+	budgetRemaining       *Money
 	totalConfirmedIncome  Money
 	totalConfirmedExpense Money
 	totalCommitment       Money
@@ -245,9 +277,21 @@ type SafeAvailableResult struct {
 	missingData           []SafeAvailableMissingData
 }
 
-func (result SafeAvailableResult) OwnerID() string                  { return result.ownerID }
-func (result SafeAvailableResult) Period() SafeAvailablePeriod      { return result.period }
-func (result SafeAvailableResult) AvailableBalance() Money          { return result.availableBalance }
+func (result SafeAvailableResult) OwnerID() string             { return result.ownerID }
+func (result SafeAvailableResult) Period() SafeAvailablePeriod { return result.period }
+func (result SafeAvailableResult) AvailableBalance() Money     { return result.availableBalance }
+func (result SafeAvailableResult) Budget() (MonthlyBudget, bool) {
+	if result.budget == nil {
+		return MonthlyBudget{}, false
+	}
+	return *result.budget, true
+}
+func (result SafeAvailableResult) BudgetRemaining() (Money, bool) {
+	if result.budgetRemaining == nil {
+		return Money{}, false
+	}
+	return *result.budgetRemaining, true
+}
 func (result SafeAvailableResult) TotalConfirmedIncome() Money      { return result.totalConfirmedIncome }
 func (result SafeAvailableResult) TotalConfirmedExpense() Money     { return result.totalConfirmedExpense }
 func (result SafeAvailableResult) TotalConfirmedCommitments() Money { return result.totalCommitment }
@@ -291,9 +335,33 @@ func CalculateSafeAvailable(snapshot SafeAvailableSnapshot) (SafeAvailableResult
 	if err != nil {
 		return SafeAvailableResult{}, err
 	}
-	finalMoney, err := NewMoney(finalAmount, CurrencyBRL)
+	financialMoney, err := NewMoney(finalAmount, CurrencyBRL)
 	if err != nil {
 		return SafeAvailableResult{}, ErrSafeAvailableOverflow
+	}
+	budget := snapshot.budget
+	var budgetRemaining *Money
+	if budget != nil {
+		remaining, subtractErr := subtractSafeAvailable(budget.Amount().MinorUnits(), expenseTotal.MinorUnits())
+		if subtractErr != nil {
+			return SafeAvailableResult{}, subtractErr
+		}
+		remaining, subtractErr = subtractSafeAvailable(remaining, commitmentTotal.MinorUnits())
+		if subtractErr != nil {
+			return SafeAvailableResult{}, subtractErr
+		}
+		remainingMoney, moneyErr := NewMoney(remaining, CurrencyBRL)
+		if moneyErr != nil {
+			return SafeAvailableResult{}, ErrSafeAvailableOverflow
+		}
+		budgetRemaining = &remainingMoney
+		if remaining < financialMoney.MinorUnits() {
+			finalAmount = remaining
+			financialMoney, err = NewMoney(finalAmount, CurrencyBRL)
+			if err != nil {
+				return SafeAvailableResult{}, ErrSafeAvailableOverflow
+			}
+		}
 	}
 
 	breakdown := make([]SafeAvailableBreakdownLine, 0, 1+len(snapshot.incomes)+len(snapshot.expenses)+len(snapshot.commitments))
@@ -314,8 +382,9 @@ func CalculateSafeAvailable(snapshot SafeAvailableSnapshot) (SafeAvailableResult
 
 	return SafeAvailableResult{
 		ownerID: snapshot.ownerID, period: snapshot.period, availableBalance: snapshot.availableBalance,
+		budget: budget, budgetRemaining: budgetRemaining,
 		totalConfirmedIncome: incomeTotal, totalConfirmedExpense: expenseTotal, totalCommitment: commitmentTotal,
-		finalAmount: finalMoney, breakdown: breakdown, missingData: append([]SafeAvailableMissingData(nil), snapshot.missingData...),
+		finalAmount: financialMoney, breakdown: breakdown, missingData: append([]SafeAvailableMissingData(nil), snapshot.missingData...),
 	}, nil
 }
 
@@ -361,8 +430,20 @@ func validateSafeAvailableSnapshotState(snapshot SafeAvailableSnapshot) error {
 	if err != nil {
 		return err
 	}
-	if !containsSafeAvailableMissingData(normalizedMissingData, SafeAvailableMissingBudget) {
-		return ErrInvalidSafeAvailableSnapshot
+	if snapshot.budget == nil {
+		if !containsSafeAvailableMissingData(normalizedMissingData, SafeAvailableMissingBudget) {
+			return ErrInvalidSafeAvailableSnapshot
+		}
+	} else {
+		if !snapshot.budget.valid() || snapshot.budget.OwnerID() != snapshot.ownerID {
+			return ErrInvalidSafeAvailableBudget
+		}
+		if !snapshot.budget.Month().Contains(snapshot.period.StartOn()) || !snapshot.budget.Month().Contains(snapshot.period.EndOn()) {
+			return ErrSafeAvailableBudgetPeriodMismatch
+		}
+		if containsSafeAvailableMissingData(normalizedMissingData, SafeAvailableMissingBudget) {
+			return ErrInvalidSafeAvailableSnapshot
+		}
 	}
 	seen := make(map[string]struct{}, len(snapshot.incomes)+len(snapshot.expenses)+len(snapshot.commitments))
 	groups := []struct {
