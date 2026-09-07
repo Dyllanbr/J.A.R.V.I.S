@@ -1081,6 +1081,200 @@ final class JARVISUITests: XCTestCase {
     }
 
     @MainActor
+    func testRealAPISafeAvailableLifecycle() throws {
+        continueAfterFailure = false
+        let launched = try launchApp()
+        guard try testConfiguration().mode == .real else {
+            throw XCTSkip("This scenario requires the official real API/PostgreSQL harness")
+        }
+        let app = launched.app
+        defer { app.terminate() }
+
+        let configuredSafeAvailablePhase = Bundle(for: Self.self)
+            .infoDictionary?["JARVIS_IOS_E2E_SUGGESTION_DESCRIPTION"] as? String
+        let safeAvailablePhase: String
+        switch configuredSafeAvailablePhase {
+        case "__safe_available_setup__":
+            safeAvailablePhase = "setup"
+        case "__safe_available_read__":
+            safeAvailablePhase = "read"
+        default:
+            safeAvailablePhase = "full"
+        }
+        guard ["full", "setup", "read"].contains(safeAvailablePhase) else {
+            XCTFail("Unsupported SafeAvailable phase: \(safeAvailablePhase)")
+            return
+        }
+        let safeAvailableReadOnly = safeAvailablePhase == "read"
+        let safeAvailableSetupOnly = safeAvailablePhase == "setup"
+
+        if !safeAvailableReadOnly {
+        let incomeDescription = "\(launched.description)_safe_income"
+        let expenseDescription = "\(launched.description)_safe_expense"
+        let recurrenceDescription = "\(launched.description)_safe_recurrence"
+        let cardName = "\(launched.description)_safe_card"
+        let installmentDescription = "\(launched.description)_safe_installment"
+
+        XCTAssertTrue(element("tab.register", in: app).waitForExistence(timeout: 8), app.debugDescription)
+        selectRegisterCategory("expense.food", in: app)
+        fillForm(in: app, description: expenseDescription)
+        element("register.review", in: app).tap()
+        XCTAssertTrue(element("review.confirm", in: app).waitForExistence(timeout: 8), app.debugDescription)
+        element("review.confirm", in: app).tap()
+        XCTAssertTrue(element("register.success", in: app).waitForExistence(timeout: 10), app.debugDescription)
+        element("register.newExpense", in: app).tap()
+
+        selectIncome(in: app)
+        selectRegisterCategory("income.salary", in: app)
+        fillForm(in: app, description: incomeDescription)
+        element("register.review", in: app).tap()
+        XCTAssertTrue(element("review.confirm", in: app).waitForExistence(timeout: 8), app.debugDescription)
+        element("review.confirm", in: app).tap()
+        XCTAssertTrue(element("register.success", in: app).waitForExistence(timeout: 10), app.debugDescription)
+
+        element("tab.recurrences", in: app).tap()
+        XCTAssertTrue(element("recurrence.create", in: app).waitForExistence(timeout: 10), app.debugDescription)
+        element("recurrence.create", in: app).tap()
+        fillRecurrenceForm(in: app, description: recurrenceDescription)
+        element("recurrence.review", in: app).tap()
+        XCTAssertTrue(element("recurrence.review.screen", in: app).waitForExistence(timeout: 10), app.debugDescription)
+        element("recurrence.confirm", in: app).tap()
+        XCTAssertTrue(element("recurrence.success", in: app).waitForExistence(timeout: 12), app.debugDescription)
+        element("recurrence.success.return", in: app).tap()
+        XCTAssertTrue(
+            app.descendants(matching: .any)
+                .matching(NSPredicate(format: "identifier BEGINSWITH %@ AND label CONTAINS %@", "recurrence.item.", recurrenceDescription))
+                .firstMatch
+                .waitForExistence(timeout: 10),
+            app.debugDescription
+        )
+
+        element("tab.cards", in: app).tap()
+        XCTAssertTrue(
+            element("card.list", in: app).waitForExistence(timeout: 12)
+                || element("card.empty", in: app).waitForExistence(timeout: 2),
+            app.debugDescription
+        )
+        element("card.create", in: app).tap()
+        fillCreditCardForm(in: app, name: cardName)
+        element("card.review", in: app).tap()
+        XCTAssertTrue(element("card.review.screen", in: app).waitForExistence(timeout: 10), app.debugDescription)
+        element("card.confirm", in: app).tap()
+        XCTAssertTrue(element("card.success", in: app).waitForExistence(timeout: 12), app.debugDescription)
+        element("card.new", in: app).tap()
+        XCTAssertTrue(element("card.list", in: app).waitForExistence(timeout: 12), app.debugDescription)
+
+        let card = app.descendants(matching: .any)
+            .matching(NSPredicate(format: "identifier BEGINSWITH %@ AND label CONTAINS %@", "card.item.card_", cardName))
+            .firstMatch
+        XCTAssertTrue(card.waitForExistence(timeout: 12), app.debugDescription)
+        let cardID = String(card.identifier.dropFirst("card.item.".count))
+        card.tap()
+        XCTAssertTrue(element("card.detail", in: app).waitForExistence(timeout: 10), app.debugDescription)
+        element("card.purchase.\(cardID)", in: app).tap()
+        XCTAssertTrue(element("cardPurchase.form", in: app).waitForExistence(timeout: 10), app.debugDescription)
+        app.textFields["cardPurchase.description"].tap()
+        app.textFields["cardPurchase.description"].typeText(installmentDescription)
+        app.textFields["cardPurchase.amount"].tap()
+        app.textFields["cardPurchase.amount"].typeText("120,00")
+        dismissKeyboard(in: app)
+        app.textFields["cardPurchase.installments"].tap()
+        app.textFields["cardPurchase.installments"].typeText("2")
+        dismissKeyboard(in: app)
+        element("cardPurchase.review", in: app).tap()
+        XCTAssertTrue(element("cardPurchase.review.installments", in: app).waitForExistence(timeout: 12), app.debugDescription)
+        element("cardPurchase.confirm", in: app).tap()
+        XCTAssertTrue(element("cardPurchase.success", in: app).waitForExistence(timeout: 15), app.debugDescription)
+        element("cardPurchase.done", in: app).tap()
+        }
+
+        if safeAvailableSetupOnly {
+            return
+        }
+
+        if !safeAvailableReadOnly {
+            element("installmentPlans.open", in: app).tap()
+            XCTAssertTrue(element("installmentPlans.list", in: app).waitForExistence(timeout: 12), app.debugDescription)
+            XCTAssertTrue(
+                app.descendants(matching: .any)
+                    .matching(NSPredicate(format: "identifier BEGINSWITH %@", "installmentPlan.item.ipl_"))
+                    .firstMatch
+                    .waitForExistence(timeout: 12),
+                app.debugDescription
+            )
+        }
+
+        element("tab.history", in: app).tap()
+        let safeEntry = element("history.safeAvailable.entry", in: app)
+        XCTAssertTrue(safeEntry.waitForExistence(timeout: 10), app.debugDescription)
+        safeEntry.tap()
+        XCTAssertTrue(element("safeAvailable.screen", in: app).waitForExistence(timeout: 10), app.debugDescription)
+        XCTAssertTrue(element("safeAvailable.periodStart", in: app).exists, app.debugDescription)
+        XCTAssertTrue(element("safeAvailable.periodEnd", in: app).exists, app.debugDescription)
+        let load = element("safeAvailable.load", in: app)
+        XCTAssertTrue(load.waitForExistence(timeout: 8), app.debugDescription)
+        load.tap()
+        let finalAmount = element("safeAvailable.finalAmount", in: app)
+        XCTAssertTrue(finalAmount.waitForExistence(timeout: 15), app.debugDescription)
+        XCTAssertTrue(finalAmount.label.contains("R$ -618,10"), app.debugDescription)
+        XCTAssertTrue(element("safeAvailable.breakdown", in: app).exists, app.debugDescription)
+        let breakdownLines = app.descendants(matching: .any)
+            .matching(NSPredicate(format: "identifier BEGINSWITH %@", "safeAvailable.breakdown."))
+            .allElementsBoundByAccessibilityElement
+        XCTAssertEqual(breakdownLines.count, 10, app.debugDescription)
+        let breakdownLabels = breakdownLines.map(\.label)
+        XCTAssertEqual(
+            breakdownLabels.filter { $0.contains("Saldo de entrada") && $0.contains("R$ -191,70") }.count,
+            1,
+            app.debugDescription
+        )
+        XCTAssertEqual(
+            breakdownLabels.filter { $0.contains("Receita confirmada") && $0.contains("R$ 42,50") }.count,
+            2,
+            app.debugDescription
+        )
+        XCTAssertEqual(
+            breakdownLabels.filter { $0.contains("Despesa confirmada") && $0.contains("R$ 42,50") }.count,
+            2,
+            app.debugDescription
+        )
+        XCTAssertEqual(
+            breakdownLabels.filter { $0.contains("Despesa confirmada") && $0.contains("R$ 80,00") }.count,
+            1,
+            app.debugDescription
+        )
+        XCTAssertEqual(
+            breakdownLabels.filter { $0.contains("Despesa confirmada") && $0.contains("R$ 120,00") }.count,
+            2,
+            app.debugDescription
+        )
+        XCTAssertEqual(
+            breakdownLabels.filter { $0.contains("Compromisso confirmado") && $0.contains("R$ 42,50") }.count,
+            1,
+            app.debugDescription
+        )
+        XCTAssertEqual(
+            breakdownLabels.filter { $0.contains("Compromisso confirmado") && $0.contains("R$ 63,90") }.count,
+            1,
+            app.debugDescription
+        )
+        XCTAssertTrue(
+            element("safeAvailable.missingData", in: app).label.localizedCaseInsensitiveContains("orçamento"),
+            app.debugDescription
+        )
+        XCTAssertFalse(
+            app.staticTexts.matching(NSPredicate(format: "label CONTAINS[c] 'owner' OR label CONTAINS[c] 'usr_test'"))
+                .firstMatch.exists,
+            app.debugDescription
+        )
+
+        // A second explicit read proves replay-like refresh does not alter the rendered snapshot.
+        load.tap()
+        XCTAssertTrue(finalAmount.waitForExistence(timeout: 15), app.debugDescription)
+        XCTAssertTrue(finalAmount.label.contains("R$ -618,10"), app.debugDescription)
+    }
+
+    @MainActor
     func testCardStatementMixedFlowExposesLineAndTotalIdentifiers() throws {
         continueAfterFailure = false
         let launched = try launchApp()
