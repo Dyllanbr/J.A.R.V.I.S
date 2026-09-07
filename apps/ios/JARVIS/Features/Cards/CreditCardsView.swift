@@ -5,6 +5,7 @@ struct CreditCardsView: View {
     @Bindable var purchaseModel: CardPurchaseViewModel
     @Bindable var plansModel: InstallmentPlansViewModel
     private let statementAPI: any FinancialAPI
+    @State private var navigationPath: [String] = []
 
     init(
         model: CreditCardsViewModel,
@@ -18,15 +19,17 @@ struct CreditCardsView: View {
     }
 
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $navigationPath) {
             content
                 .navigationTitle("Cartões")
                 .navigationDestination(for: String.self) { id in
                     CreditCardDetailView(
                         model: model,
                         purchaseModel: purchaseModel,
+                        plansModel: plansModel,
                         cardID: id,
-                        statementAPI: statementAPI
+                        statementAPI: statementAPI,
+                        onPurchaseFinished: { navigationPath.removeAll() }
                     )
                 }
                 .toolbar {
@@ -174,8 +177,10 @@ private struct CreditCardRow: View {
 private struct CreditCardDetailView: View {
     @Bindable var model: CreditCardsViewModel
     @Bindable var purchaseModel: CardPurchaseViewModel
+    @Bindable var plansModel: InstallmentPlansViewModel
     let cardID: String
     let statementAPI: any FinancialAPI
+    let onPurchaseFinished: () -> Void
     @State private var statementModel: CardStatementViewModel
     private let money = BRLMoneyFormatter()
     private let dateTime = FinancialDisplayFormatter()
@@ -183,13 +188,17 @@ private struct CreditCardDetailView: View {
     init(
         model: CreditCardsViewModel,
         purchaseModel: CardPurchaseViewModel,
+        plansModel: InstallmentPlansViewModel,
         cardID: String,
-        statementAPI: any FinancialAPI
+        statementAPI: any FinancialAPI,
+        onPurchaseFinished: @escaping () -> Void
     ) {
         self.model = model
         self.purchaseModel = purchaseModel
+        self.plansModel = plansModel
         self.cardID = cardID
         self.statementAPI = statementAPI
+        self.onPurchaseFinished = onPurchaseFinished
         let defaultDate = (try? RecurrenceCivilDate(year: 2026, month: 10, day: 10))
             ?? (try! RecurrenceCivilDate(year: 2026, month: 1, day: 1))
         _statementModel = State(
@@ -249,9 +258,17 @@ private struct CreditCardDetailView: View {
             if card.status == .active {
                 Section {
                     NavigationLink {
-                        CardPurchaseView(model: purchaseModel)
+                        CardPurchaseView(
+                            model: purchaseModel,
+                            onFinished: onPurchaseFinished,
+                            embedsNavigationStack: false
+                        )
                             .environment(\.locale, Locale(identifier: "pt_BR"))
-                            .onAppear { purchaseModel.begin(cardID: card.id) }
+                            .onAppear {
+                                purchaseModel.dismiss()
+                                purchaseModel.creditCardID = card.id
+                                Task { await purchaseModel.loadCardsIfNeeded() }
+                            }
                     } label: {
                         Text("Registrar compra neste cartão")
                     }
@@ -278,6 +295,14 @@ private struct CreditCardDetailView: View {
         }
         .accessibilityIdentifier("card.detail")
         .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                NavigationLink {
+                    InstallmentPlansView(model: plansModel)
+                } label: {
+                    Label("Planos de parcelas", systemImage: "calendar")
+                }
+                .accessibilityIdentifier("installmentPlans.open")
+            }
             ToolbarItem(placement: .primaryAction) {
                 NavigationLink {
                     CardStatementView(model: statementModel, card: card)

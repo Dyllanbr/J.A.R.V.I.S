@@ -91,9 +91,10 @@ private struct NativeTabContainer: UIViewControllerRepresentable {
 
         private static func historyView(model: AppModel) -> AnyView {
             AnyView(
-                HistoryView(
+                HistorySafeAvailableEntryView(
                     model: model.history,
-                    scheduledCommitments: model.scheduledCommitments
+                    scheduledCommitments: model.scheduledCommitments,
+                    safeAvailable: model.safeAvailable
                 )
                     .environment(\.locale, Locale(identifier: "pt_BR"))
             )

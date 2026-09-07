@@ -7,8 +7,8 @@ import (
 
 func TestCardStatementOpenAPIContractStructurallyMatchesRuntime(t *testing.T) {
 	document := loadOpenAPIContract(t)
-	if got := contractString(t, contractAt(t, document, "info", "version"), "info.version"); got != "0.10.0" {
-		t.Fatalf("info.version = %q, want 0.10.0", got)
+	if got := contractString(t, contractAt(t, document, "info", "version"), "info.version"); got != "0.11.0" {
+		t.Fatalf("info.version = %q, want 0.11.0", got)
 	}
 
 	paths := contractObject(t, contractAt(t, document, "paths"), "paths")

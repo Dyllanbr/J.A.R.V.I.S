@@ -27,6 +27,13 @@ final class StubFinancialAPI: FinancialAPI {
         case error
     }
 
+    private enum SafeAvailableScenario: String {
+        case positive
+        case zero
+        case negative
+        case error
+    }
+
     private struct StoredRecurrenceCreate {
         let request: RecurrenceRequest
         let recurrence: Recurrence
@@ -78,6 +85,8 @@ final class StubFinancialAPI: FinancialAPI {
     private let scheduledCommitmentsScenario: ScheduledCommitmentsScenario
     private let cardStatementScenario: CardStatementScenario
     private var cardStatementErrorDelivered = false
+    private let safeAvailableScenario: SafeAvailableScenario
+    private var safeAvailableErrorDelivered = false
 
     init(environment: [String: String] = ProcessInfo.processInfo.environment) {
         suggestionScenario = SuggestionScenario(
@@ -90,6 +99,9 @@ final class StubFinancialAPI: FinancialAPI {
         cardStatementScenario = CardStatementScenario(
             rawValue: environment["JARVIS_IOS_CARD_STATEMENT_SCENARIO"] ?? "mixed"
         ) ?? .mixed
+        safeAvailableScenario = SafeAvailableScenario(
+            rawValue: environment["JARVIS_IOS_SAFE_AVAILABLE_SCENARIO"] ?? "positive"
+        ) ?? .positive
         let active = Recurrence(
             id: "rec_ui_synthetic_active",
             description: "Academia sintética",
@@ -518,6 +530,96 @@ final class StubFinancialAPI: FinancialAPI {
                 amount: FinancialMoney(minor: 2_990, currency: .brl)
             )
         ])
+    }
+
+    func safeAvailable(
+        periodStart: RecurrenceCivilDate,
+        periodEnd: RecurrenceCivilDate
+    ) async throws -> SafeAvailableResponse {
+        guard !(periodEnd < periodStart) else { throw FinancialAPIError.invalidData }
+        if safeAvailableScenario == .error, !safeAvailableErrorDelivered {
+            safeAvailableErrorDelivered = true
+            throw FinancialAPIError.serviceUnavailable
+        }
+        switch safeAvailableScenario {
+        case .positive:
+            return try makeSafeAvailable(
+                periodStart: periodStart,
+                periodEnd: periodEnd,
+                balance: 10_000,
+                income: 5_000,
+                expense: 2_500,
+                commitment: 3_000
+            )
+        case .zero:
+            return try makeSafeAvailable(
+                periodStart: periodStart,
+                periodEnd: periodEnd,
+                balance: 1_000,
+                income: 0,
+                expense: 1_000,
+                commitment: 0
+            )
+        case .negative:
+            return try makeSafeAvailable(
+                periodStart: periodStart,
+                periodEnd: periodEnd,
+                balance: 1_000,
+                income: 0,
+                expense: 2_500,
+                commitment: 1_000
+            )
+        case .error:
+            return try makeSafeAvailable(
+                periodStart: periodStart,
+                periodEnd: periodEnd,
+                balance: 10_000,
+                income: 5_000,
+                expense: 2_500,
+                commitment: 3_000
+            )
+        }
+    }
+
+    private func makeSafeAvailable(
+        periodStart: RecurrenceCivilDate,
+        periodEnd: RecurrenceCivilDate,
+        balance: Int64,
+        income: Int64,
+        expense: Int64,
+        commitment: Int64
+    ) throws -> SafeAvailableResponse {
+        let amount: (Int64) throws -> SafeAvailableAmount = { try SafeAvailableAmount(minor: $0) }
+        var lines = [
+            try SafeAvailableBreakdown(
+                kind: .availableBalance,
+                sourceID: "available-balance",
+                sequence: 0,
+                dueOn: periodStart,
+                amount: amount(balance)
+            )
+        ]
+        if income > 0 {
+            lines.append(try SafeAvailableBreakdown(kind: .income, sourceID: "inc_ui_synthetic", sequence: 0, dueOn: periodStart, amount: amount(income)))
+        }
+        if expense > 0 {
+            lines.append(try SafeAvailableBreakdown(kind: .expense, sourceID: "exp_ui_synthetic", sequence: 0, dueOn: periodStart, amount: amount(expense)))
+        }
+        if commitment > 0 {
+            lines.append(try SafeAvailableBreakdown(kind: .commitment, sourceID: "ipl_ui_synthetic", sequence: 1, dueOn: periodStart, amount: amount(commitment)))
+        }
+        let final = balance + income - expense - commitment
+        return try SafeAvailableResponse(
+            periodStart: periodStart,
+            periodEnd: periodEnd,
+            availableBalance: amount(balance),
+            totalConfirmedIncome: amount(income),
+            totalConfirmedExpense: amount(expense),
+            totalConfirmedCommitments: amount(commitment),
+            finalAmount: amount(final),
+            breakdown: lines,
+            missingData: [.budget]
+        )
     }
 
     func cardStatement(creditCardID: String, statementDueOn: RecurrenceCivilDate) async throws -> CardStatement {

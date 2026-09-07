@@ -23,6 +23,36 @@ card_name="${JARVIS_IOS_E2E_DESCRIPTION}_card"
 purchase_card_name="${JARVIS_IOS_E2E_DESCRIPTION}_purchase_card"
 purchase_one_time_description="${JARVIS_IOS_E2E_DESCRIPTION}_purchase_one_time"
 purchase_installment_description="${JARVIS_IOS_E2E_DESCRIPTION}_purchase_installment"
+safe_income_description="${JARVIS_IOS_E2E_DESCRIPTION}_safe_income"
+safe_expense_description="${JARVIS_IOS_E2E_DESCRIPTION}_safe_expense"
+safe_recurrence_description="${JARVIS_IOS_E2E_DESCRIPTION}_safe_recurrence"
+safe_card_name="${JARVIS_IOS_E2E_DESCRIPTION}_safe_card"
+safe_installment_description="${JARVIS_IOS_E2E_DESCRIPTION}_safe_installment"
+
+safe_available_database_fingerprint() {
+  docker compose \
+    --project-name "$JARVIS_INTEGRATION_COMPOSE_PROJECT_NAME" \
+    --file "$JARVIS_INTEGRATION_COMPOSE_FILE" \
+    exec -T postgres \
+    psql --quiet --tuples-only --no-align --set=ON_ERROR_STOP=1 \
+    --username "$JARVIS_POSTGRES_USER" \
+    --dbname "$JARVIS_POSTGRES_DB" <<'SQL' | tr -d '[:space:]'
+SELECT (SELECT count(*) FROM transactions) || ':' || COALESCE((SELECT sum(amount_minor) FROM transactions), 0) || '|' ||
+       (SELECT count(*) FROM audit_events) || '|' ||
+       (SELECT count(*) FROM idempotency_records) || '|' ||
+       (SELECT count(*) FROM recurrences) || ':' || COALESCE((SELECT sum(expected_amount_minor) FROM recurrences), 0) || '|' ||
+       (SELECT count(*) FROM recurrence_audit_events) || '|' ||
+       (SELECT count(*) FROM recurrence_idempotency_records) || '|' ||
+       (SELECT count(*) FROM recurrence_suggestion_suppressions) || '|' ||
+       (SELECT count(*) FROM credit_cards) || '|' ||
+       (SELECT count(*) FROM credit_card_audit_events) || '|' ||
+       (SELECT count(*) FROM credit_card_idempotency_records) || '|' ||
+       (SELECT count(*) FROM installment_plans) || ':' || COALESCE((SELECT sum(total_minor) FROM installment_plans), 0) || '|' ||
+       (SELECT count(*) FROM installment_plan_audit_events) || '|' ||
+       (SELECT count(*) FROM installment_plan_idempotency_records) || '|' ||
+       (SELECT count(*) FROM card_purchase_idempotency_records);
+SQL
+}
 
 counts="$(
   docker compose \
@@ -527,4 +557,175 @@ if [[ "$counts" != "1|1|1|1|1|1|1|1|1|1|1|0|0|0|3|3|3|1|1|1|0|1|1|1|1|1|0|0|0|1|
   exit 1
 fi
 
-echo "iOS real integration PostgreSQL postcondition passed for legacy flows, CreditCard, and CardPurchase/InstallmentPlan exactly once with zero legacy financial side effects."
+safe_counts="$(
+  docker compose \
+    --project-name "$JARVIS_INTEGRATION_COMPOSE_PROJECT_NAME" \
+    --file "$JARVIS_INTEGRATION_COMPOSE_FILE" \
+    exec -T postgres \
+    psql --quiet --tuples-only --no-align --set=ON_ERROR_STOP=1 \
+    --set=owner_id="$JARVIS_INTEGRATION_OWNER_ID" \
+    --set=safe_income_description="$safe_income_description" \
+    --set=safe_expense_description="$safe_expense_description" \
+    --set=safe_recurrence_description="$safe_recurrence_description" \
+    --set=safe_card_name="$safe_card_name" \
+    --set=safe_installment_description="$safe_installment_description" \
+    --username "$JARVIS_POSTGRES_USER" \
+    --dbname "$JARVIS_POSTGRES_DB" <<'SQL'
+WITH safe_income_target AS (
+    SELECT id FROM transactions
+    WHERE user_id = :'owner_id' AND description = :'safe_income_description'
+      AND type = 'INCOME' AND amount_minor = 4250 AND currency = 'BRL'
+      AND payment_method IS NULL AND category_id = 'income.salary'
+      AND origin = 'IOS' AND status = 'RECORDED'
+),
+safe_expense_target AS (
+    SELECT id FROM transactions
+    WHERE user_id = :'owner_id' AND description = :'safe_expense_description'
+      AND type = 'EXPENSE' AND amount_minor = 4250 AND currency = 'BRL'
+      AND payment_method = 'PIX' AND category_id = 'expense.food'
+      AND origin = 'IOS' AND status = 'RECORDED'
+),
+safe_recurrence_target AS (
+    SELECT id FROM recurrences
+    WHERE user_id = :'owner_id' AND description = :'safe_recurrence_description'
+      AND transaction_type = 'EXPENSE' AND expected_amount_minor = 4250
+      AND currency = 'BRL' AND frequency = 'MONTHLY'
+      AND status = 'ACTIVE' AND cancelled_at IS NULL
+),
+safe_card_target AS (
+    SELECT id FROM credit_cards
+    WHERE user_id = :'owner_id' AND name = :'safe_card_name'
+      AND last_four = '4821' AND brand = 'VISA' AND status = 'ACTIVE'
+),
+safe_installment_target AS (
+    SELECT id FROM transactions
+    WHERE user_id = :'owner_id' AND description = :'safe_installment_description'
+      AND type = 'EXPENSE' AND amount_minor = 12000 AND currency = 'BRL'
+      AND payment_method = 'CREDIT' AND category_id IS NULL
+      AND credit_card_id IN (SELECT id FROM safe_card_target)
+      AND origin = 'IOS' AND status = 'RECORDED'
+),
+safe_plan_target AS (
+    SELECT id FROM installment_plans
+    WHERE user_id = :'owner_id' AND expense_id IN (SELECT id FROM safe_installment_target)
+      AND credit_card_id IN (SELECT id FROM safe_card_target)
+      AND total_minor = 12000 AND total_currency = 'BRL'
+      AND installment_count = 2 AND status = 'ACTIVE' AND cancelled_on IS NULL
+),
+safe_income_count AS (SELECT count(*) AS value FROM safe_income_target),
+safe_income_audit_count AS (
+    SELECT count(*) AS value FROM audit_events
+    WHERE user_id = :'owner_id' AND aggregate_id IN (SELECT id FROM safe_income_target)
+      AND aggregate_type = 'INCOME' AND event_type = 'INCOME_RECORDED'
+),
+safe_income_idempotency_count AS (
+    SELECT count(*) AS value FROM idempotency_records
+    WHERE user_id = :'owner_id' AND transaction_id IN (SELECT id FROM safe_income_target)
+      AND operation = 'CREATE_INCOME' AND state = 'COMPLETED'
+),
+safe_expense_count AS (SELECT count(*) AS value FROM safe_expense_target),
+safe_expense_audit_count AS (
+    SELECT count(*) AS value FROM audit_events
+    WHERE user_id = :'owner_id' AND aggregate_id IN (SELECT id FROM safe_expense_target)
+      AND aggregate_type = 'EXPENSE' AND event_type = 'EXPENSE_RECORDED'
+),
+safe_expense_idempotency_count AS (
+    SELECT count(*) AS value FROM idempotency_records
+    WHERE user_id = :'owner_id' AND transaction_id IN (SELECT id FROM safe_expense_target)
+      AND operation = 'CREATE_EXPENSE' AND state = 'COMPLETED'
+),
+safe_recurrence_count AS (SELECT count(*) AS value FROM safe_recurrence_target),
+safe_recurrence_audit_count AS (
+    SELECT count(*) AS value FROM recurrence_audit_events
+    WHERE user_id = :'owner_id' AND recurrence_id IN (SELECT id FROM safe_recurrence_target)
+      AND event_type = 'RECURRENCE_CREATED'
+),
+safe_recurrence_idempotency_count AS (
+    SELECT count(*) AS value FROM recurrence_idempotency_records
+    WHERE user_id = :'owner_id' AND recurrence_id IN (SELECT id FROM safe_recurrence_target)
+      AND operation = 'CREATE_RECURRENCE' AND state = 'COMPLETED'
+),
+safe_recurrence_expense_count AS (
+    SELECT count(*) AS value FROM transactions
+    WHERE user_id = :'owner_id' AND description = :'safe_recurrence_description'
+),
+safe_card_count AS (SELECT count(*) AS value FROM safe_card_target),
+safe_card_audit_count AS (
+    SELECT count(*) AS value FROM credit_card_audit_events
+    WHERE user_id = :'owner_id' AND credit_card_id IN (SELECT id FROM safe_card_target)
+),
+safe_card_idempotency_count AS (
+    SELECT count(*) AS value FROM credit_card_idempotency_records
+    WHERE user_id = :'owner_id' AND credit_card_id IN (SELECT id FROM safe_card_target)
+),
+safe_installment_count AS (SELECT count(*) AS value FROM safe_installment_target),
+safe_purchase_idempotency_count AS (
+    SELECT count(*) AS value FROM card_purchase_idempotency_records
+    WHERE user_id = :'owner_id' AND expense_id IN (SELECT id FROM safe_installment_target)
+      AND operation = 'CREATE_CARD_PURCHASE' AND state = 'COMPLETED'
+),
+safe_plan_count AS (SELECT count(*) AS value FROM safe_plan_target),
+safe_plan_created_audit_count AS (
+    SELECT count(*) AS value FROM installment_plan_audit_events
+    WHERE user_id = :'owner_id' AND installment_plan_id IN (SELECT id FROM safe_plan_target)
+      AND event_type = 'INSTALLMENT_PLAN_CREATED'
+),
+safe_plan_cancel_idempotency_count AS (
+    SELECT count(*) AS value FROM installment_plan_idempotency_records
+    WHERE user_id = :'owner_id' AND plan_id IN (SELECT id FROM safe_plan_target)
+      AND operation = 'CANCEL_INSTALLMENT_PLAN' AND state = 'COMPLETED'
+),
+safe_unexpected_expense_count AS (
+    SELECT count(*) AS value FROM transactions
+    WHERE user_id = :'owner_id' AND credit_card_id IN (SELECT id FROM safe_card_target)
+      AND type = 'EXPENSE' AND id NOT IN (SELECT id FROM safe_installment_target)
+)
+SELECT safe_income_count.value
+    || '|' || safe_income_audit_count.value
+    || '|' || safe_income_idempotency_count.value
+    || '|' || safe_expense_count.value
+    || '|' || safe_expense_audit_count.value
+    || '|' || safe_expense_idempotency_count.value
+    || '|' || safe_recurrence_count.value
+    || '|' || safe_recurrence_audit_count.value
+    || '|' || safe_recurrence_idempotency_count.value
+    || '|' || safe_recurrence_expense_count.value
+    || '|' || safe_card_count.value
+    || '|' || safe_card_audit_count.value
+    || '|' || safe_card_idempotency_count.value
+    || '|' || safe_installment_count.value
+    || '|' || safe_purchase_idempotency_count.value
+    || '|' || safe_plan_count.value
+    || '|' || safe_plan_created_audit_count.value
+    || '|' || safe_plan_cancel_idempotency_count.value
+    || '|' || safe_unexpected_expense_count.value
+FROM safe_income_count, safe_income_audit_count, safe_income_idempotency_count,
+     safe_expense_count, safe_expense_audit_count, safe_expense_idempotency_count,
+     safe_recurrence_count, safe_recurrence_audit_count, safe_recurrence_idempotency_count,
+     safe_recurrence_expense_count, safe_card_count, safe_card_audit_count,
+     safe_card_idempotency_count, safe_installment_count, safe_purchase_idempotency_count,
+     safe_plan_count, safe_plan_created_audit_count, safe_plan_cancel_idempotency_count,
+     safe_unexpected_expense_count;
+SQL
+)"
+safe_counts="${safe_counts//[[:space:]]/}"
+if [[ "$safe_counts" != "1|1|1|1|1|1|1|1|1|0|1|1|1|1|1|1|1|0|0" ]]; then
+  echo "iOS SafeAvailable postcondition failed (income|audit|completion, expense|audit|completion, recurrence|audit|completion|future expenses, card|audit events|completion, installment expense|purchase completion, plan|created audit|cancel completion|unexpected future expense=$safe_counts)." >&2
+  exit 1
+fi
+
+if [[ -n "${JARVIS_INTEGRATION_SAFE_AVAILABLE_BASELINE_FILE:-}" ]]; then
+  if [[ ! -r "$JARVIS_INTEGRATION_SAFE_AVAILABLE_BASELINE_FILE" ]]; then
+    echo "SafeAvailable baseline file is missing or unreadable: $JARVIS_INTEGRATION_SAFE_AVAILABLE_BASELINE_FILE" >&2
+    exit 1
+  fi
+  safe_available_baseline="$(tr -d '[:space:]' <"$JARVIS_INTEGRATION_SAFE_AVAILABLE_BASELINE_FILE")"
+  safe_available_final_fingerprint="$(safe_available_database_fingerprint)"
+  if [[ -z "$safe_available_baseline" || "$safe_available_final_fingerprint" != "$safe_available_baseline" ]]; then
+    echo "SafeAvailable read postcondition failed: database fingerprint changed after reads (baseline=$safe_available_baseline final=$safe_available_final_fingerprint)." >&2
+    exit 1
+  fi
+  echo "SafeAvailable read baseline passed: all financial table counts and aggregate totals unchanged by A/B/repeated GETs."
+fi
+
+echo "iOS real integration PostgreSQL postconditions passed for legacy flows, CardPurchase/InstallmentPlan, and SafeAvailable sources exactly once with no projection writes or future Expenses."

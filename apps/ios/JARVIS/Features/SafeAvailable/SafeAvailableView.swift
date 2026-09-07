@@ -1,0 +1,234 @@
+import SwiftUI
+
+struct SafeAvailableView: View {
+    @Bindable var model: SafeAvailableViewModel
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                periodSelection
+                content
+            }
+            .padding()
+        }
+        .navigationTitle("Disponível Seguro")
+        .navigationBarTitleDisplayMode(.inline)
+        .accessibilityIdentifier("safeAvailable.screen")
+        .task { await model.loadIfNeeded() }
+    }
+
+    private var periodSelection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Período explícito")
+                .font(.headline)
+            DatePicker(
+                "Início",
+                selection: Binding(
+                    get: { model.periodStartPickerDate },
+                    set: { model.setPeriodStart($0) }
+                ),
+                displayedComponents: .date
+            )
+            .accessibilityIdentifier("safeAvailable.periodStart")
+            DatePicker(
+                "Fim",
+                selection: Binding(
+                    get: { model.periodEndPickerDate },
+                    set: { model.setPeriodEnd($0) }
+                ),
+                displayedComponents: .date
+            )
+            .accessibilityIdentifier("safeAvailable.periodEnd")
+            Button {
+                Task { await model.load(forceRefresh: true) }
+            } label: {
+                Label("Consultar disponibilidade", systemImage: "arrow.clockwise")
+                    .frame(maxWidth: .infinity, minHeight: 44)
+            }
+            .buttonStyle(.borderedProminent)
+            .disabled(model.state == .loading)
+            .accessibilityIdentifier("safeAvailable.load")
+        }
+        .padding()
+        .background(Color.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
+    }
+
+    @ViewBuilder
+    private var content: some View {
+        switch model.state {
+        case .idle:
+            EmptyView()
+        case .loading:
+            ProgressView("Calculando disponibilidade")
+                .frame(maxWidth: .infinity, minHeight: 120)
+                .accessibilityIdentifier("safeAvailable.loading")
+        case let .failed(message):
+            VStack(spacing: 12) {
+                Label("Não foi possível carregar", systemImage: "wifi.exclamationmark")
+                    .font(.headline)
+                Text(message)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+                Button("Tentar novamente") { Task { await model.retry() } }
+                    .buttonStyle(.borderedProminent)
+                    .frame(minHeight: 44)
+                    .accessibilityIdentifier("safeAvailable.retry")
+            }
+            .frame(maxWidth: .infinity)
+            .padding()
+            .accessibilityElement(children: .contain)
+            .accessibilityIdentifier("safeAvailable.error")
+        case let .empty(response):
+            resultView(response, empty: true)
+        case let .loaded(response):
+            resultView(response, empty: false)
+        }
+    }
+
+    private func resultView(_ response: SafeAvailableResponse, empty: Bool) -> some View {
+        VStack(alignment: .leading, spacing: 16) {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Resultado do período")
+                    .font(.headline)
+                Text(SafeAvailableMoneyFormatter.string(minor: response.finalAmount.minor))
+                    .font(.largeTitle.weight(.semibold).monospacedDigit())
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("safeAvailable.finalAmount")
+                    .accessibilityLabel(
+                        "Disponível seguro "
+                            + SafeAvailableMoneyFormatter.string(minor: response.finalAmount.minor)
+                    )
+            }
+            .padding()
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color.accentColor.opacity(0.12), in: RoundedRectangle(cornerRadius: 12))
+            .accessibilityElement(children: .contain)
+
+            if empty {
+                Text("Nenhuma entrada confirmada neste período.")
+                    .foregroundStyle(.secondary)
+                    .accessibilityIdentifier("safeAvailable.empty")
+            }
+
+            missingDataView(response.missingData)
+            breakdownView(response.breakdown)
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("safeAvailable.content")
+    }
+
+    private func missingDataView(_ values: [SafeAvailableMissingData]) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Dados e hipóteses")
+                .font(.headline)
+            ForEach(values, id: \.self) { value in
+                Label(value.displayName, systemImage: "info.circle")
+                    .font(.subheadline)
+            }
+        }
+        .padding()
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(values.map(\.displayName).joined(separator: ", "))
+        .accessibilityIdentifier("safeAvailable.missingData")
+    }
+
+    private func breakdownView(_ lines: [SafeAvailableBreakdown]) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text("Composição")
+                .font(.headline)
+                .padding(.bottom, 8)
+                .accessibilityIdentifier("safeAvailable.breakdown")
+            ForEach(lines) { line in
+                HStack(alignment: .top, spacing: 12) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(line.kind.displayName)
+                            .font(.body.weight(.medium))
+                        Text(line.dueOn.displayValue)
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                        if line.kind == .commitment {
+                            Text("Sequência \(line.sequence)")
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    Spacer(minLength: 8)
+                    Text(SafeAvailableMoneyFormatter.string(minor: line.amount.minor))
+                        .font(.body.monospacedDigit())
+                }
+                .padding(.vertical, 10)
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel(
+                    "\(line.kind.displayName), \(line.dueOn.displayValue), "
+                        + SafeAvailableMoneyFormatter.string(minor: line.amount.minor)
+                )
+                .accessibilityIdentifier("safeAvailable.breakdown.\(line.id)")
+                if line.id != lines.last?.id { Divider() }
+            }
+        }
+        .accessibilityElement(children: .contain)
+    }
+}
+
+struct HistorySafeAvailableEntryView: View {
+    @Bindable var model: HistoryViewModel
+    let scheduledCommitments: ScheduledCommitmentsViewModel
+    @Bindable var safeAvailable: SafeAvailableViewModel
+    @State private var isPresentingSafeAvailable = false
+
+    var body: some View {
+        VStack(spacing: 0) {
+            Button {
+                isPresentingSafeAvailable = true
+            } label: {
+                Label("Disponível Seguro", systemImage: "chart.line.uptrend.xyaxis")
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .frame(minHeight: 44)
+            .padding(.horizontal)
+            .accessibilityIdentifier("history.safeAvailable.entry")
+            HistoryView(model: model, scheduledCommitments: scheduledCommitments)
+        }
+        .sheet(isPresented: $isPresentingSafeAvailable) {
+            NavigationStack {
+                SafeAvailableView(model: safeAvailable)
+                    .environment(\.locale, Locale(identifier: "pt_BR"))
+            }
+        }
+    }
+}
+
+private enum SafeAvailableMoneyFormatter {
+    static func string(minor: Int64) -> String {
+        let negative = minor < 0
+        let magnitude = minor == Int64.min ? UInt64(Int64.max) + 1 : UInt64(abs(minor))
+        let whole = magnitude / 100
+        let cents = magnitude % 100
+        return "R$ \(negative ? "-" : "")\(whole),\(String(format: "%02llu", cents))"
+    }
+}
+
+private extension SafeAvailableBreakdownKind {
+    var displayName: String {
+        switch self {
+        case .availableBalance: "Saldo de entrada"
+        case .income: "Receita confirmada"
+        case .expense: "Despesa confirmada"
+        case .commitment: "Compromisso confirmado"
+        }
+    }
+}
+
+private extension SafeAvailableMissingData {
+    var displayName: String {
+        switch self {
+        case .budget: "Orçamento mensal ausente (não tratado como zero)"
+        case .confirmedIncome: "Receitas confirmadas ausentes"
+        case .confirmedExpense: "Despesas confirmadas ausentes"
+        case .commitments: "Compromissos confirmados ausentes"
+        }
+    }
+}
