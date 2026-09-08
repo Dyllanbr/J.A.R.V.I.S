@@ -16,6 +16,25 @@ type monthlyBudgetStoreFake struct {
 	calls   int
 }
 
+type monthlyBudgetReaderFake struct {
+	budget domain.MonthlyBudget
+	found  bool
+	err    error
+	calls  int
+	owner  string
+	month  domain.CivilMonth
+}
+
+func (reader *monthlyBudgetReaderFake) ReadMonthlyBudget(_ context.Context, ownerID string, month domain.CivilMonth) (domain.MonthlyBudget, bool, error) {
+	reader.calls++
+	reader.owner = ownerID
+	reader.month = month
+	if reader.err != nil {
+		return domain.MonthlyBudget{}, false, reader.err
+	}
+	return reader.budget, reader.found, nil
+}
+
 func (store *monthlyBudgetStoreFake) ReplaceMonthlyBudget(_ context.Context, budget domain.MonthlyBudget) error {
 	store.calls++
 	if store.err != nil {
@@ -104,6 +123,51 @@ func TestSetMonthlyBudgetPreservesContextAndSanitizesPersistence(t *testing.T) {
 	_, err = deadlineUseCase.Execute(deadline, application.SetMonthlyBudgetInput{OwnerID: "owner-1", Month: month, Amount: appMonthlyBudgetMoney(t, 1)})
 	if !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("deadline store error = %v, want context.DeadlineExceeded", err)
+	}
+}
+
+func TestGetMonthlyBudgetUsesOneOwnerScopedReadAndPreservesAbsence(t *testing.T) {
+	month := appMonthlyBudgetMonth(t, "2026-12")
+	budget := appMonthlyBudget(t, "owner-1", month, 500)
+	reader := &monthlyBudgetReaderFake{budget: budget, found: true}
+	useCase, err := application.NewGetMonthlyBudget(reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := useCase.Execute(context.Background(), application.GetMonthlyBudgetInput{OwnerID: "owner-1", Month: month})
+	if err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+	if reader.calls != 1 || reader.owner != "owner-1" || !reader.month.Equal(month) || !result.Budget.Equal(budget) {
+		t.Fatalf("reader/result = %+v/%+v", reader, result.Budget)
+	}
+
+	reader = &monthlyBudgetReaderFake{}
+	useCase, _ = application.NewGetMonthlyBudget(reader)
+	if _, err := useCase.Execute(context.Background(), application.GetMonthlyBudgetInput{OwnerID: "owner-1", Month: month}); !errors.Is(err, application.ErrMonthlyBudgetNotFound) {
+		t.Fatalf("missing Execute() error = %v, want ErrMonthlyBudgetNotFound", err)
+	}
+}
+
+func TestGetMonthlyBudgetValidatesBeforeReaderAndSanitizesErrors(t *testing.T) {
+	month := appMonthlyBudgetMonth(t, "2027-01")
+	reader := &monthlyBudgetReaderFake{}
+	useCase, _ := application.NewGetMonthlyBudget(reader)
+	if _, err := useCase.Execute(context.Background(), application.GetMonthlyBudgetInput{Month: month}); !errors.Is(err, application.ErrInvalidMonthlyBudgetOwnerID) {
+		t.Fatalf("invalid owner error = %v", err)
+	}
+	if reader.calls != 0 {
+		t.Fatalf("reader calls = %d, want zero", reader.calls)
+	}
+	reader.err = errors.New("SELECT monthly_budgets owner=owner-1 dsn=secret")
+	_, err := useCase.Execute(context.Background(), application.GetMonthlyBudgetInput{OwnerID: "owner-1", Month: month})
+	if !errors.Is(err, application.ErrMonthlyBudgetLookup) || err.Error() != application.ErrMonthlyBudgetLookup.Error() {
+		t.Fatalf("lookup error = %v, want sanitized lookup error", err)
+	}
+	cancelled, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err := useCase.Execute(cancelled, application.GetMonthlyBudgetInput{OwnerID: "owner-1", Month: month}); !errors.Is(err, context.Canceled) {
+		t.Fatalf("cancelled error = %v, want context.Canceled", err)
 	}
 }
 

@@ -168,4 +168,12 @@ private struct UnavailableFinancialAPI: FinancialAPI {
     func scheduledCommitments(evaluationDate _: RecurrenceCivilDate) async throws -> ScheduledCommitmentListResponse {
         throw FinancialAPIError.configuration
     }
+
+    func monthlyBudget(month _: String) async throws -> MonthlyBudget {
+        throw FinancialAPIError.configuration
+    }
+
+    func replaceMonthlyBudget(month _: String, amount _: MonthlyBudgetAmount) async throws -> MonthlyBudget {
+        throw FinancialAPIError.configuration
+    }
 }

@@ -293,11 +293,27 @@ func New(
 		pool.Close()
 		return nil, err
 	}
+	monthlyBudgetRepository, err := transactionspostgres.NewMonthlyBudgetRepository(pool, postgresConfig.OperationTimeout)
+	if err != nil {
+		pool.Close()
+		return nil, err
+	}
+	setMonthlyBudget, err := application.NewSetMonthlyBudget(monthlyBudgetRepository)
+	if err != nil {
+		pool.Close()
+		return nil, err
+	}
+	getMonthlyBudget, err := application.NewGetMonthlyBudget(monthlyBudgetRepository)
+	if err != nil {
+		pool.Close()
+		return nil, err
+	}
 	cardPurchaseRoutes := httpapi.NewCardPurchase(cfg.OwnerID, previewCardPurchase, recordCardPurchase)
 	cardStatementRoutes := httpapi.NewCardStatement(cfg.OwnerID, getCardStatement)
 	installmentPlanRoutes := httpapi.NewInstallmentPlan(cfg.OwnerID, listInstallmentPlans, getInstallmentPlan, previewInstallmentCancellation, cancelInstallmentPlan)
 	scheduledCommitmentRoutes := httpapi.NewScheduledCommitments(cfg.OwnerID, listScheduledCommitments)
 	safeAvailableRoutes := httpapi.NewSafeAvailable(cfg.OwnerID, calculateSafeAvailable)
+	monthlyBudgetRoutes := httpapi.NewMonthlyBudget(cfg.OwnerID, setMonthlyBudget, getMonthlyBudget)
 	applicationInstance.server = httpserver.New(
 		cfg.HTTPAddress,
 		logger,
@@ -310,6 +326,7 @@ func New(
 		installmentPlanRoutes,
 		scheduledCommitmentRoutes,
 		safeAvailableRoutes,
+		monthlyBudgetRoutes,
 	)
 	return applicationInstance, nil
 }

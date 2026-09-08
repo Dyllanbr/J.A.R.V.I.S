@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"jarvis/backend/internal/modules/transactions/application"
@@ -25,6 +26,7 @@ var (
 	ErrReadSafeAvailableIncomes     = errors.New("safe available postgres reader: income read failed")
 	ErrReadSafeAvailablePlans       = errors.New("safe available postgres reader: installment plan read failed")
 	ErrReadSafeAvailableRecurrences = errors.New("safe available postgres reader: recurrence read failed")
+	ErrReadSafeAvailableBudget      = errors.New("safe available postgres reader: budget read failed")
 	ErrInvalidStoredSafeAvailable   = errors.New("safe available postgres reader: stored result is invalid")
 	ErrReadSafeAvailableSnapshot    = errors.New("safe available postgres reader: snapshot read failed")
 )
@@ -102,19 +104,32 @@ func (repository *SafeAvailableRepository) Read(
 		if err != nil {
 			return newRepositoryError(ErrReadSafeAvailableRecurrences, err)
 		}
+		budget, budgetFound, err := readSafeAvailableBudget(operationContext, transaction, query.OwnerID, query.Period)
+		if err != nil {
+			return err
+		}
 		commitments, err := safeAvailableCommitments(query.OwnerID, query.Period, plans, recurrences)
 		if err != nil {
 			return err
 		}
 
+		var budgetPtr *domain.MonthlyBudget
+		if budgetFound {
+			budgetPtr = &budget
+		}
+		missingData := []domain.SafeAvailableMissingData(nil)
+		if !budgetFound {
+			missingData = []domain.SafeAvailableMissingData{domain.SafeAvailableMissingBudget}
+		}
 		candidate, err := domain.NewSafeAvailableSnapshot(domain.SafeAvailableSnapshotParams{
 			OwnerID:          query.OwnerID,
 			Period:           query.Period,
 			AvailableBalance: openingBalance,
+			Budget:           budgetPtr,
 			Incomes:          incomes,
 			Expenses:         expenses,
 			Commitments:      commitments,
-			MissingData:      []domain.SafeAvailableMissingData{domain.SafeAvailableMissingBudget},
+			MissingData:      missingData,
 		})
 		if err != nil {
 			return newRepositoryError(ErrInvalidStoredSafeAvailable, err)
@@ -317,6 +332,56 @@ func readSafeAvailableIncomes(ctx context.Context, querier postgresRowsQuerier, 
 func safeAvailableCivilDate(value time.Time, location *time.Location) (domain.CivilDate, error) {
 	local := value.In(location)
 	return domain.NewCivilDate(local.Year(), local.Month(), local.Day())
+}
+
+// readSafeAvailableBudget reads the optional owner/month budget inside the
+// caller's existing repeatable-read transaction. A period spanning more than
+// one civil month remains explicitly unbudgeted because this slice does not
+// define an aggregation rule across multiple monthly budgets.
+func readSafeAvailableBudget(ctx context.Context, querier postgresRowQuerier, ownerID string, period domain.SafeAvailablePeriod) (domain.MonthlyBudget, bool, error) {
+	if period.StartOn().Year() != period.EndOn().Year() || period.StartOn().Month() != period.EndOn().Month() {
+		return domain.MonthlyBudget{}, false, nil
+	}
+	var (
+		storedMonth pgtype.Date
+		minor       int64
+		currency    string
+	)
+	month, err := domain.NewCivilMonth(period.StartOn().Year(), period.StartOn().Month())
+	if err != nil {
+		return domain.MonthlyBudget{}, false, ErrInvalidStoredSafeAvailable
+	}
+	err = querier.QueryRow(ctx, `
+		SELECT month, amount_minor, currency
+		FROM monthly_budgets
+		WHERE user_id = $1 AND month = $2
+	`, ownerID, postgresDate(month.StartOn())).Scan(&storedMonth, &minor, &currency)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return domain.MonthlyBudget{}, false, nil
+	}
+	if err != nil {
+		return domain.MonthlyBudget{}, false, newRepositoryError(ErrReadSafeAvailableBudget, err)
+	}
+	if !storedMonth.Valid || storedMonth.InfinityModifier != pgtype.Finite {
+		return domain.MonthlyBudget{}, false, ErrInvalidStoredSafeAvailable
+	}
+	storedDate, err := civilDateFromPostgres(storedMonth)
+	if err != nil || storedDate.Day() != 1 {
+		return domain.MonthlyBudget{}, false, ErrInvalidStoredSafeAvailable
+	}
+	storedCivilMonth, err := domain.NewCivilMonth(storedDate.Year(), storedDate.Month())
+	if err != nil {
+		return domain.MonthlyBudget{}, false, ErrInvalidStoredSafeAvailable
+	}
+	amount, err := domain.NewMoney(minor, domain.Currency(currency))
+	if err != nil {
+		return domain.MonthlyBudget{}, false, ErrInvalidStoredSafeAvailable
+	}
+	budget, err := domain.NewMonthlyBudget(domain.MonthlyBudgetParams{OwnerID: ownerID, Month: storedCivilMonth, Amount: amount})
+	if err != nil || !storedCivilMonth.Equal(month) {
+		return domain.MonthlyBudget{}, false, ErrInvalidStoredSafeAvailable
+	}
+	return budget, true, nil
 }
 
 func safeAvailableCommitments(ownerID string, period domain.SafeAvailablePeriod, plans []domain.InstallmentPlan, recurrences []domain.Recurrence) ([]domain.SafeAvailableEntry, error) {

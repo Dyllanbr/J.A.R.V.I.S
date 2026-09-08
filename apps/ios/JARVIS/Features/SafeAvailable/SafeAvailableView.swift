@@ -7,6 +7,7 @@ struct SafeAvailableView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 periodSelection
+                budgetSection
                 content
             }
             .padding()
@@ -15,6 +16,7 @@ struct SafeAvailableView: View {
         .navigationBarTitleDisplayMode(.inline)
         .accessibilityIdentifier("safeAvailable.screen")
         .task { await model.loadIfNeeded() }
+        .task { await model.loadBudgetIfNeeded() }
     }
 
     private var periodSelection: some View {
@@ -51,6 +53,51 @@ struct SafeAvailableView: View {
         }
         .padding()
         .background(Color.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
+    }
+
+    private var budgetSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Orçamento mensal")
+                .font(.headline)
+            switch model.budgetState {
+            case .loading:
+                ProgressView("Consultando orçamento")
+                    .accessibilityIdentifier("safeAvailable.budget.loading")
+            case .saving:
+                ProgressView("Salvando orçamento")
+                    .accessibilityIdentifier("safeAvailable.budget.saving")
+            case .absent, .idle:
+                Text("Nenhum orçamento definido para o mês do período.")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .accessibilityIdentifier("safeAvailable.budget.absent")
+            case let .loaded(budget):
+                Text("Definido: \(SafeAvailableMoneyFormatter.string(minor: budget.amount.minor))")
+                    .font(.subheadline)
+                    .accessibilityIdentifier("safeAvailable.budget.value")
+            case let .failed(message):
+                Text(message)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .accessibilityIdentifier("safeAvailable.budget.error")
+            }
+            TextField("Valor em reais", text: $model.budgetAmountText)
+                .textFieldStyle(.roundedBorder)
+                .keyboardType(.decimalPad)
+                .accessibilityLabel("Valor do orçamento mensal")
+                .accessibilityIdentifier("safeAvailable.budget.input")
+            Button("Salvar orçamento") {
+                Task { await model.saveBudget() }
+            }
+            .buttonStyle(.bordered)
+            .frame(minHeight: 44)
+            .disabled(model.budgetState == .loading || model.budgetState == .saving)
+            .accessibilityIdentifier("safeAvailable.budget.save")
+        }
+        .padding()
+        .background(Color.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("safeAvailable.budget")
     }
 
     @ViewBuilder
