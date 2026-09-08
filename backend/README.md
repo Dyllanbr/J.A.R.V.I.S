@@ -1,6 +1,6 @@
 # Backend
 
-Backend Go em monólito modular. O processo permanece health-only por padrão; quando habilitado explicitamente, compõe os endpoints financeiros para despesas e receitas com PostgreSQL e um owner temporário derivado pelo servidor.
+Backend Go em monólito modular. O processo permanece health-only por padrão; quando habilitado explicitamente, compõe os endpoints financeiros para despesas, receitas, cartões, compromissos, orçamento e Disponível Seguro com PostgreSQL e um owner temporário derivado pelo servidor.
 
 ## Pacotes
 
@@ -8,17 +8,19 @@ Backend Go em monólito modular. O processo permanece health-only por padrão; q
 - `internal/app`: composição e execução da aplicação.
 - `internal/config`: configuração explícita por ambiente.
 - `internal/platform/httpserver`: adaptador HTTP e limites do servidor.
-- `internal/modules/transactions/domain`: `Money`, `CategoryID` opcional e os agregados separados `Expense`/`Income`, `CreditCard` e `InstallmentPlan`, sem infraestrutura.
-- `internal/modules/transactions/application`: catálogo de categorias, preview, registro confirmado/idempotente, CardPurchase, cancelamento de InstallmentPlan e projeção mensal mista com portas consumidoras mínimas.
+- `internal/modules/transactions/domain`: `Money`, `CategoryID` opcional, os agregados separados `Expense`/`Income`, `CreditCard` e `InstallmentPlan`, e os read models de SafeAvailable/MonthlyBudget, sem infraestrutura.
+- `internal/modules/transactions/application`: catálogo de categorias, preview, registro confirmado/idempotente, CardPurchase, cancelamento de InstallmentPlan, projeção mensal mista, SafeAvailable e MonthlyBudget com portas consumidoras mínimas.
 - `internal/modules/transactions/adapters/httpapi`: DTOs, decoding estrito e mapeamento HTTP fino.
-- `internal/modules/transactions/adapters/postgres`: catálogo read-only, persistência Expense/Income/CreditCard/InstallmentPlan, command stores idempotentes e readers mensais.
+- `internal/modules/transactions/adapters/postgres`: catálogo read-only, persistência Expense/Income/CreditCard/InstallmentPlan/MonthlyBudget, command stores idempotentes e readers mensais/SafeAvailable.
 - `internal/modules/transactions/adapters/randomid`: geração criptográfica de IDs opacos de Expense, Income, CreditCard e InstallmentPlan.
 - `internal/platform/postgres`: configuração, pool e migrations fora do domínio.
 - `cmd/migrate`: comando explícito para aplicar ou reverter migrations.
 
-O Incremento 1 — Despesas, o Incremento 2 — Receitas e os Incrementos 3A, 3B e 3C estão **VERIFICADOS**. As subcapacidades 4A — CreditCard e 4B — CardPurchase + InstallmentPlan também estão **VERIFICADAS**, após auditoria independente e CI completo; o merge do 4B ocorreu no PR #75, commit `526cc855`.
+Os Incrementos 1 — Despesas, 2 — Receitas, 3A, 3B, 3C e 5 — Orçamento e Disponível Seguro estão **VERIFICADOS**. As subcapacidades 4A — CreditCard e 4B — CardPurchase + InstallmentPlan também estão **VERIFICADAS**, após auditoria independente e CI completo; o merge do 4B ocorreu no PR #75, commit `526cc855`.
 
 O Incremento 4B acrescenta compra à vista ou parcelada vinculada a CreditCard, Expense total, InstallmentPlan, schedule derivado, preview/review/confirm, listagem/detalhe, cancellation preview/cancelamento, replay e idempotência. A persistência correspondente está na migration 008; parcelas futuras não são inseridas como novas Expenses e nenhuma operação movimenta dinheiro.
+
+O Incremento 5 acrescenta o cálculo read-only de SafeAvailable para período civil explícito e o MonthlyBudget owner-scoped por mês `YYYY-MM`. A fórmula financeira é `saldo + receitas − despesas − compromissos`; com orçamento cobrindo todo o período, o resultado é limitado pelo restante do orçamento. A migration 009 persiste somente o orçamento mensal, e nenhuma leitura cria Expense futura ou movimentação financeira.
 
 O módulo Go usa o caminho local `jarvis/backend` enquanto o repositório não possui URL canônica. Uma URL de módulo pública deve ser decidida antes da primeira publicação externa.
 
@@ -58,4 +60,4 @@ Os command stores usam queries parametrizadas e uma única DB transaction para r
 
 A migration 004 cria o catálogo global de categorias do sistema e `transactions.category_id` nullable. Uma FK composta entre tipo e Category impede combinações incompatíveis no banco. O adapter de catálogo é somente leitura; ausência de Category permanece `NULL`, sem conversão para “Outros”. O DOWN obtém lock exclusivo, executa o guard sob esse lock e recusa atomicamente remover a infraestrutura enquanto existir transaction categorizada.
 
-A migration 007 cria a persistência owner-scoped de CreditCard, com auditoria e idempotência próprias; `ACTIVE → ARCHIVED` é o lifecycle implementado. A migration 008 cria a persistência de InstallmentPlan, seus eventos/idempotência e os registros de idempotência de CardPurchase. A compra à vista registra somente a Expense total; a compra parcelada registra a Expense total e um plano. O cancelamento do plano não altera a Expense e o schedule continua sendo uma projeção derivada.
+A migration 007 cria a persistência owner-scoped de CreditCard, com auditoria e idempotência próprias; `ACTIVE → ARCHIVED` é o lifecycle implementado. A migration 008 cria a persistência de InstallmentPlan, seus eventos/idempotência e os registros de idempotência de CardPurchase. A migration 009 cria `monthly_budgets` com unicidade owner/mês e upsert atômico, sem tocar nas tabelas de transações. A compra à vista registra somente a Expense total; a compra parcelada registra a Expense total e um plano. O cancelamento do plano não altera a Expense e o schedule continua sendo uma projeção derivada.

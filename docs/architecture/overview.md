@@ -2,7 +2,7 @@
 
 ## Estado
 
-O backend é um único processo Go organizado como monólito modular. Por padrão ele permanece health-only e não exige banco. Os Incrementos 1 — Despesas, 2 — Receitas, 3A — Categorias e filtros do histórico, 3B — Recorrências confirmadas e assinaturas e 3C — Detecção e sugestão de recorrências estão verificados. As subcapacidades 4A — CreditCard e 4B — CardPurchase + InstallmentPlan também estão verificadas dentro de seus escopos; Statement/faturas completas e compromissos futuros adicionais permanecem planejados.
+O backend é um único processo Go organizado como monólito modular. Por padrão ele permanece health-only e não exige banco. Os Incrementos 1 — Despesas, 2 — Receitas, 3A — Categorias e filtros do histórico, 3B — Recorrências confirmadas e assinaturas, 3C — Detecção e sugestão de recorrências e 5 — Orçamento e Disponível Seguro estão verificados. As subcapacidades 4A — CreditCard e 4B — CardPurchase + InstallmentPlan também estão verificadas dentro de seus escopos; Statement/faturas completas e compromissos futuros adicionais permanecem planejados.
 
 | Elemento | Estado |
 | --- | --- |
@@ -32,6 +32,8 @@ O backend é um único processo Go organizado como monólito modular. Por padrã
 | `CreditCard`, migration 007 e persistência/auditoria/idempotência dedicadas | Verificados pela subcapacidade 4A |
 | `CardPurchase`, `InstallmentPlan`, migration 008 e persistência atômica | Verificados pela subcapacidade 4B |
 | API REST/OpenAPI, cliente iOS e E2E real de cartões/parcelas | Verificados pelas subcapacidades 4A/4B |
+| `SafeAvailable`, `MonthlyBudget`, migration 009 e leitura owner-scoped | Verificados pelo Incremento 5 |
+| API REST/OpenAPI, cliente iOS e E2E real de orçamento/Disponível Seguro | Verificados pelo Incremento 5 |
 | Terraform/nuvem | Planejado, sem configuração |
 
 ## Direção de dependências
@@ -69,7 +71,11 @@ A migration 007 adiciona `CreditCard`, suas auditorias e sua idempotência dedic
 
 A migration 008 adiciona persistência para `InstallmentPlan`, seus eventos e idempotência, além de `card_purchase_idempotency_records`. `CardPurchase` é um comando de orquestração da aplicação: uma compra à vista cria uma `Expense` total, enquanto uma compra parcelada cria uma `Expense` total e um `InstallmentPlan`. O schedule do plano é derivado por calendário civil e não materializa parcelas futuras como novas `Expense`. Preview, review e confirm permanecem distintos; replay usa snapshots históricos e o cancelamento do plano não altera a Expense.
 
-Os adapters HTTP e PostgreSQL expõem somente os contratos aprovados para cartões e planos. As camadas permanecem separadas: Domain define as invariantes de CreditCard, CardPurchase e InstallmentPlan; Application orquestra preview, registro, replay e cancelamento por ports mínimas; HTTP traduz requests/responses; PostgreSQL executa persistência owner-scoped e atômica; `randomid` gera identificadores opacos. A composição conecta essas camadas sem dependências invertidas.
+A migration 009 adiciona `monthly_budgets`, com chave owner-scoped `(user_id, month)`, valor BRL em minor units e substituição atômica por mês. Ela não altera as tabelas financeiras de transações nem cria lançamentos futuros. `MonthlyBudget` permanece um value/read model imutável no domínio; categorias, rollover, metas e alertas não fazem parte deste incremento.
+
+`SafeAvailable` é uma projeção read-only calculada em memória a partir de um snapshot consistente. O cálculo usa período civil explícito, saldo disponível, receitas e despesas confirmadas e compromissos derivados de `InstallmentPlan` e `Recurrence`: `saldo + receitas − despesas − compromissos`. Quando há orçamento cobrindo o período, o resultado é limitado por `orçamento − despesas − compromissos`; quando não há orçamento, a ausência é retornada explicitamente como `BUDGET`. Nenhuma leitura cria `Expense`, pagamento ou evento de auditoria.
+
+Os adapters HTTP e PostgreSQL expõem somente os contratos aprovados para cartões, planos, SafeAvailable e MonthlyBudget. As camadas permanecem separadas: Domain define as invariantes e projeções; Application orquestra preview, registro, replay, cancelamento e cálculos por ports mínimas; HTTP traduz requests/responses; PostgreSQL executa persistência owner-scoped e atômica; `randomid` gera identificadores opacos quando necessário. A composição conecta essas camadas sem dependências invertidas.
 
 O cliente iOS segue uma direção igualmente curta:
 
@@ -77,7 +83,7 @@ O cliente iOS segue uma direção igualmente curta:
 SwiftUI Views -> View Models -> FinancialAPI -> URLSession -> backend
 ```
 
-Para as subcapacidades 4A/4B, a composição real segue `SwiftUI → FinancialAPI → API Go → PostgreSQL`. O cliente suporta CreditCard, compra à vista, compra parcelada e InstallmentPlan, incluindo preview, revisão, confirmação, listagem, detalhe e cancelamento. O owner permanece definido no servidor; o app não executa pagamentos e não persiste parcelas futuras como Expenses.
+Para as subcapacidades 4A/4B e o Incremento 5, a composição real segue `SwiftUI → FinancialAPI → API Go → PostgreSQL`. O cliente suporta CreditCard, compra à vista, compra parcelada, InstallmentPlan, SafeAvailable e MonthlyBudget, incluindo os fluxos explícitos de cada contrato. O owner permanece definido no servidor; o app não executa pagamentos e não persiste parcelas futuras como Expenses.
 
 Views não montam JSON; features dependem da abstração pequena `FinancialAPI`, e o cliente concreto concentra DTOs/HTTP discriminados por `EXPENSE`/`INCOME` e os contratos próprios de `Recurrence` e `RecurrenceSuggestion`. A composição fica em `JARVISApp`/`AppModel`, sem singleton ou container de DI. `CategoryCatalogModel` pertence ao `AppModel`, mantém uma única Task compartilhada de catálogo e não transfere ownership do fetch para as Tasks efêmeras das Views. Parsing BRL inteiro, codec temporal e data civil de Recurrence têm responsabilidades nomeadas. O preview devolvido pelo servidor congela a semântica revisada antes da confirmação; alterações no draft invalidam respostas antigas por geração. A mesma chave idempotente permanece em memória durante retries transitórios; edição ou troca de tipo inicia nova tentativa, e erros determinísticos `400`/`409` retornam à edição em vez de oferecer retry infinito.
 
@@ -101,7 +107,7 @@ Startup registra apenas o endereço efetivamente ligado, shutdown registra o té
 
 O pool PostgreSQL usa limites configuráveis conservadores (4 conexões máximas, 0 mínimas por padrão), timeout de conexão/ping e timeout por operação. Isso é baseline operacional, não tuning comprovado. Migrations e testes são comandos opt-in; ausência de configuração de banco não impede o startup health-only. Quando a API financeira é habilitada, `JARVIS_OWNER_ID` e PostgreSQL tornam-se obrigatórios, as rotas são registradas e o pool é fechado no shutdown.
 
-O owner atual é um contexto single-owner temporário derivado pelo servidor, não autenticação. O cliente não controla owner, origin ou timezone. A API registra despesas e receitas já ocorridas no organizador e também gerencia recorrências confirmadas como compromissos esperados separados; ela não recebe nem movimenta fundos. A consulta mensal de transações retorna itens discriminados com `categoryId` opcional, sem totais, saldo, orçamento ou Disponível Seguro; usa calendário IANA `America/Sao_Paulo`, limites `[start,end)` convertidos para UTC e ordenação total. Os filtros de tipo e Category são client-side no iOS; a API mensal não possui filtros, search ou agrupamento. As rotas de Recurrence são dedicadas a preview, criação, listagem e cancelamento e não criam transações como efeito colateral. As rotas de suggestion listam inferências efêmeras, persistem dismiss e preparam preview usando conteúdo derivado server-side; elas não aceitam owner do cliente nem criam `Recurrence`. UTC-3 não é hard-coded.
+O owner atual é um contexto single-owner temporário derivado pelo servidor, não autenticação. O cliente não controla owner, origin ou timezone. A API registra despesas e receitas já ocorridas no organizador, gerencia recorrências confirmadas como compromissos esperados separados e calcula SafeAvailable/MonthlyBudget sem receber nem movimentar fundos. A consulta mensal de transações retorna itens discriminados com `categoryId` opcional, sem totais agregados; SafeAvailable usa endpoint separado com período explícito e MonthlyBudget usa mês civil explícito. Todas essas leituras permanecem owner-scoped e não geram transações como efeito colateral. Os filtros de tipo e Category são client-side no iOS; a API mensal não possui filtros, search ou agrupamento. As rotas de Recurrence são dedicadas a preview, criação, listagem e cancelamento e não criam transações como efeito colateral. As rotas de suggestion listam inferências efêmeras, persistem dismiss e preparam preview usando conteúdo derivado server-side; elas não aceitam owner do cliente nem criam `Recurrence`. UTC-3 não é hard-coded.
 
 O domínio valida nomes de timezone pela base IANA do ambiente. `America/Sao_Paulo` é a baseline financeira planejada e UTC-3 não pode ser hard-coded. A disponibilidade de tzdata continua requisito operacional para um futuro container/deploy da aplicação; o container PostgreSQL não altera essa decisão.
 

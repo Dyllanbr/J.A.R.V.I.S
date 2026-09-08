@@ -54,7 +54,7 @@ Essa progressão não transforma o J.A.R.V.I.S. em banco nem em executor de tran
 | Incremento 4 — Cartões, parcelas e compromissos futuros | **Planned** | Compreensão do dinheiro já comprometido |
 | Incremento 4A — CreditCard | **Verified** | Cartões owner-scoped, com ciclo de vida e operações explícitas |
 | Incremento 4B — CardPurchase + InstallmentPlan | **Verified** | Compras no cartão à vista ou parceladas e compromissos derivados |
-| Incremento 5 — Orçamento e Disponível Seguro | **Planned** | Resposta explicável sobre quanto pode ser gasto |
+| Incremento 5 — Orçamento e Disponível Seguro | **Verified** | Resposta explicável sobre quanto pode ser gasto |
 | Incremento 6 — Metas e “Posso comprar?” | **Planned** | Apoio estruturado a decisões financeiras |
 | Incremento 7 — Identidade, autenticação e Trust Center | **Planned** | Base de confiança para uso pessoal real e multiusuário |
 | Incremento 8 — WhatsApp | **Planned** | Conveniência com continuidade e autoridade preservada no app |
@@ -109,7 +109,7 @@ O incremento implementa a base para o sistema representar tanto entrada quanto s
 - API discriminada e histórico mensal misto de Expense/Income;
 - fluxo iOS completo e integração real Simulator → app → API → PostgreSQL.
 
-O histórico não inclui totais, saldo, orçamento ou Disponível Seguro. Essas entradas criam base para análises futuras sem antecipar cálculos ou aconselhamento. O incremento passou pela auditoria global independente e pelos quality gates aplicáveis, portanto a capacidade está **Verified**.
+O histórico mensal deste incremento continua sendo uma lista de itens, sem totais calculados; saldo, orçamento e Disponível Seguro pertencem às capacidades posteriores do Incremento 5. Essas entradas criam base para análises futuras sem antecipar cálculos ou aconselhamento. O incremento passou pela auditoria global independente e pelos quality gates aplicáveis, portanto a capacidade está **Verified**.
 
 ## Incremento 3A — Categorias e filtros do histórico
 
@@ -177,7 +177,7 @@ A entrega verificada inclui:
 
 A auditoria final independente concluiu com P0=0, P1=0, P2=0 e P3=0.
 
-Projeções, orçamento, Disponível Seguro, alertas, Personal Financial Model, recorrências de receitas, alterações automáticas de valor e nudges contextuais continuam **Planned**. A detecção atual não usa IA/LLM para decidir recorrência.
+Projeções adicionais, alertas, Personal Financial Model, recorrências de receitas, alterações automáticas de valor e nudges contextuais continuam **Planned**. Orçamento e Disponível Seguro são tratados no Incremento 5. A detecção atual não usa IA/LLM para decidir recorrência.
 
 ## Incremento 4 — Cartões, parcelas e compromissos futuros
 
@@ -214,25 +214,19 @@ A direção mais ampla do Incremento 4 continua incluindo:
 - compromissos financeiros futuros;
 - visão dos períodos seguintes.
 
-**Saldo disponível não é automaticamente dinheiro seguro para gastar.** Conhecer obrigações futuras prepara o sistema para calcular um Disponível Seguro com mais contexto.
+**Saldo disponível não é automaticamente dinheiro seguro para gastar.** O Incremento 5 combina o saldo com entradas, despesas e compromissos confirmados em uma projeção explicável, sem prometer garantia absoluta.
 
 ## Incremento 5 — Orçamento e Disponível Seguro
 
-**Estado: Planned.**
+**Estado: Verified.**
 
-O objetivo é transformar dados financeiros em uma resposta mais útil para a pergunta:
+O incremento entrega uma resposta determinística e explicável para a pergunta “Quanto eu realmente posso gastar?”, sem promessa de garantia absoluta. A capacidade combina um período civil explícito com saldo disponível, receitas e despesas confirmadas e compromissos conhecidos de `InstallmentPlan` e `Recurrence`.
 
-> Quanto eu realmente posso gastar?
+O cálculo sem orçamento é `saldo + receitas − despesas − compromissos`. Quando existe um orçamento mensal BRL para um período coberto integralmente por esse mês, o limite restante é `orçamento − despesas − compromissos` e o resultado final é o menor entre o valor financeiro e esse limite. A resposta mantém breakdown determinístico e marca explicitamente dados ausentes, incluindo orçamento não definido.
 
-O Disponível Seguro deverá ser:
+O orçamento mensal é owner-scoped, usa `YYYY-MM`, aceita zero, rejeita valores negativos e pode ser substituído idempotentemente para o mesmo owner/mês. Safe Available e Monthly Budget são somente leitura no cálculo e não criam Expenses futuras, pagamentos ou lançamentos. A implementação foi validada nas camadas Domain/Application, PostgreSQL, HTTP/OpenAPI, iOS e E2E real com owner isolation.
 
-- determinístico;
-- explicável e decomponível;
-- transparente quanto a hipóteses e dados ausentes;
-- sensível aos compromissos conhecidos;
-- apresentado sem promessa de garantia absoluta.
-
-Este roadmap não define sua fórmula final. O conceito e seus limites estão descritos no [Product Book](product-book.md), e a experiência futura deve seguir os [princípios de design](design-principles.md).
+Statement/faturas completas, pagamentos, baixa financeira, metas, alertas, margem oculta, Disponível Seguro baseado em dados não confirmados e demais fontes futuras continuam fora deste incremento.
 
 ## Incremento 6 — Metas e “Posso comprar?”
 

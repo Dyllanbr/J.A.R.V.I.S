@@ -20,6 +20,8 @@
 | API de catálogo e filtros locais no histórico iOS | IMPLEMENTADO | Incremento 3A com OpenAPI 0.4.0, Playwright, XCTest/XCUITest e E2E real; auditoria final pendente |
 | `CreditCard`, migration 007 e operações owner-scoped | VERIFICADO | Incremento 4A mergeado e aprovado após auditoria independente |
 | `CardPurchase`, `InstallmentPlan`, migration 008 e cancelamento | VERIFICADO | Incremento 4B mergeado no PR #75, com auditoria Stage 4 aprovada |
+| `SafeAvailable` e projeção de compromissos/lançamentos confirmados | VERIFICADO | Incremento 5 com snapshot read-only, HTTP, iOS e E2E real |
+| `MonthlyBudget`, migration 009 e substituição owner/mês | VERIFICADO | Incremento 5 com PostgreSQL, contrato e pós-condições E2E |
 | Demais canais | PLANEJADO | não implementados |
 
 O estado **VERIFICADO** depende de quality gate e revisão independente conforme a Definition of Done; não é atribuído autonomamente por esta implementação.
@@ -72,4 +74,4 @@ O fingerprint inclui tipo, descrição normalizada, Money, instante já canonica
 
 Retenção de metadata idempotente, autenticação real, rate limiting distribuído e tratamento de outcomes operacionais indeterminados permanecem decisões anteriores ao uso real. Idempotência não faz parte de `Money`, `Expense` ou `Income`, e logs não substituem audit events nem recebem conteúdo financeiro.
 
-Não existem autenticação, armazenamento financeiro local, categorias customizadas, CRUD/reclassificação de Category, Statement/faturas completas, projeções gerais, orçamento, saldo calculado, Disponível Seguro, IA, WhatsApp funcional, Open Finance, infraestrutura de nuvem ou banco de produção nesta etapa. A UI iOS usa dados sintéticos em desenvolvimento. A API registra despesas e receitas ocorridas e compromissos parcelados confirmados, mas nunca executa recebimento, Pix, pagamento, compra ou transferência.
+Não existem autenticação, armazenamento financeiro local, categorias customizadas, CRUD/reclassificação de Category, Statement/faturas completas, projeções gerais além de SafeAvailable, IA, WhatsApp funcional, Open Finance, infraestrutura de nuvem ou banco de produção nesta etapa. A UI iOS usa dados sintéticos em desenvolvimento. A API registra despesas e receitas ocorridas, compromissos parcelados confirmados, orçamento mensal e projeção SafeAvailable, mas nunca executa recebimento, Pix, pagamento, compra ou transferência. SafeAvailable e MonthlyBudget não criam Expenses futuras nem representam pagamentos ou baixa financeira.

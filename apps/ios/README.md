@@ -1,6 +1,6 @@
 # Aplicativo iOS
 
-Estado: **Incrementos 1, 2, 3A, 3B, 3C, 4A e 4B verificados** dentro de seus escopos, com auditoria independente e quality gates correspondentes. O Incremento 4B foi mergeado na `main` pelo PR #75, commit `526cc855`.
+Estado: **Incrementos 1, 2, 3A, 3B, 3C, 4A, 4B e 5 verificados** dentro de seus escopos, com auditoria independente e quality gates correspondentes. O Incremento 4B foi mergeado na `main` pelo PR #75, commit `526cc855`; o Incremento 5 foi concluído com Safe Available, Monthly Budget e harness E2E real.
 
 O primeiro cliente nativo do J.A.R.V.I.S. usa SwiftUI, Swift concurrency, Foundation e URLSession, sem dependências externas. O deployment target é iOS 17.0, o target/scheme compartilhado é `JARVIS` e o bundle identifier de desenvolvimento é `dev.jarvis.JARVIS`.
 
@@ -15,11 +15,13 @@ O primeiro cliente nativo do J.A.R.V.I.S. usa SwiftUI, Swift concurrency, Founda
 - formulário discriminado, preview obrigatório, revisão congelada e confirmação explícita; Income não possui forma de pagamento;
 - retry em memória com a mesma `Idempotency-Key` durante uma tentativa lógica;
 - histórico mensal misto de despesas e receitas via `GET /v1/transactions?month=YYYY-MM`, com labels de Category e filtros locais por tipo/Category;
+- experiência de Safe Available integrada ao Histórico, com período civil explícito, breakdown de saldo/receitas/despesas/compromissos e marcador de orçamento ausente;
+- consulta e substituição de Monthly Budget por mês civil, com valores BRL em minor units e zero permitido;
 - cliente HTTP explícito com `URLSessionConfiguration.ephemeral`;
 - testes XCTest e XCUITest com stub disponível apenas em `DEBUG` e selecionado explicitamente;
 - caminho automatizado Simulator → app → URLSession → API real → PostgreSQL real, com pós-condição no banco, incluindo os fluxos de cartões e parcelas.
 
-O app registra despesas e receitas já ocorridas e representa compras no cartão e seus compromissos parcelados após confirmação explícita. Ele não executa Pix, recebimento, pagamento, compra, transferência ou movimentação de fundos, e parcelas futuras não viram novas Expenses.
+O app registra despesas e receitas já ocorridas, representa compras no cartão e seus compromissos parcelados após confirmação explícita e apresenta projeções read-only de Safe Available. Ele não executa Pix, recebimento, pagamento, compra, transferência ou movimentação de fundos, e parcelas futuras não viram novas Expenses.
 
 ## Abrir e executar
 
@@ -50,7 +52,7 @@ make test-ios-integration
 
 `make verify-ios` executa build, análise estática e XCTest/XCUITest com `JARVIS_IOS_API_MODE=stub`. O script exige Xcode 16+, considera somente runtimes iOS 17+, prefere iPhone 15 e, na ausência dele, escolhe deterministicamente outro iPhone no runtime mais recente. Device, runtime e UDID são informados. Um Simulator que já estava ligado é preservado; um Simulator iniciado pelo script é desligado e aguardado no cleanup. Resultados/DerivedData ficam fora do repositório.
 
-`make test-ios-integration` injeta `JARVIS_IOS_API_MODE=real`, a base URL e fixtures sintéticas no bundle do XCUITest; o test runner repassa esses valores ao processo do app. O modo real falha fechado se a URL estiver ausente, inválida ou indisponível e nunca usa o stub. O gate comprova os fluxos reais de Expense, Income, CreditCard, CardPurchase e InstallmentPlan, incluindo preview → revisão → confirmação, replay e cancelamento quando aplicável, e consulta o PostgreSQL para validar as pós-condições de transações, auditoria, idempotência e planos. Ele exige Docker e limpa API, Simulator iniciado pelo script, container e volume mesmo em falha.
+`make test-ios-integration` injeta `JARVIS_IOS_API_MODE=real`, a base URL e fixtures sintéticas no bundle do XCUITest; o test runner repassa esses valores ao processo do app. O modo real falha fechado se a URL estiver ausente, inválida ou indisponível e nunca usa o stub. O gate comprova os fluxos reais de Expense, Income, CreditCard, CardPurchase, InstallmentPlan, Safe Available e Monthly Budget, incluindo preview → revisão → confirmação quando aplicável, replay e cancelamento, e consulta o PostgreSQL para validar as pós-condições de transações, auditoria, idempotência, planos, orçamento e leituras sem writes. Ele exige Docker e limpa API, Simulator iniciado pelo script, container e volume mesmo em falha.
 
 Ações e navegação do XCUITest usam identifiers semânticos (`tab.*`, `register.*`, `review.*` e `history.*`), não textos traduzíveis. O seletor expõe `register.type`, `register.type.expense` e `register.type.income`; Category usa `register.category` e opções identificadas pela key técnica estável; filtros usam `history.filter.type` e `history.filter.category`. O fluxo de Income usa `register.newIncome`, e itens do histórico usam `history.expense.<id>`/`history.income.<id>`. `RootView` usa um `UITabBarController` nativo com um `UIHostingController` por tab; cada hosting controller recebe diretamente seu próprio `UITabBarItem` e identifier. Não há barra customizada nem associação por posição, texto, símbolo ou espera temporal. `bash scripts/test-ios.sh --tab-regression` alterna Register/History dez vezes após Success; a suíte também cobre o inventário normal de History e o identifier de retry. Existe regressão em `UIContentSizeCategoryAccessibilityExtraExtraExtraLarge`; ela complementa, mas não substitui, VoiceOver e validação manual.
 
