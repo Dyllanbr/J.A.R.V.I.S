@@ -120,7 +120,8 @@ SELECT (SELECT count(*) FROM transactions) || ':' || COALESCE((SELECT sum(amount
        (SELECT count(*) FROM installment_plans) || ':' || COALESCE((SELECT sum(total_minor) FROM installment_plans), 0) || '|' ||
        (SELECT count(*) FROM installment_plan_audit_events) || '|' ||
        (SELECT count(*) FROM installment_plan_idempotency_records) || '|' ||
-       (SELECT count(*) FROM card_purchase_idempotency_records);
+       (SELECT count(*) FROM card_purchase_idempotency_records) || '|' ||
+       (SELECT count(*) FROM monthly_budgets) || ':' || COALESCE((SELECT sum(amount_minor) FROM monthly_budgets), 0);
 SQL
     }
     xcodebuild_arguments=(
@@ -140,23 +141,60 @@ SQL
       "JARVIS_IOS_E2E_SUGGESTION_STARTS_ON=${JARVIS_IOS_E2E_SUGGESTION_STARTS_ON:-}"
       -only-testing:JARVISUITests/JARVISUITests/testRealAPISafeAvailableLifecycle
     )
+    monthly_budget_xcodebuild_arguments=(
+      test
+      -project "$repository_root/apps/ios/JARVIS.xcodeproj"
+      -scheme JARVIS
+      -destination "platform=iOS Simulator,name=iPhone 15,OS=17.5"
+      -derivedDataPath "$safe_available_temporary_dir/DerivedData"
+      -parallel-testing-enabled NO
+      -maximum-concurrent-test-simulator-destinations 1
+      -enableCodeCoverage YES
+      CODE_SIGNING_ALLOWED=NO
+      JARVIS_IOS_TEST_MODE=real
+      "JARVIS_IOS_E2E_BASE_URL=$JARVIS_IOS_E2E_BASE_URL"
+      "JARVIS_IOS_E2E_DESCRIPTION=$JARVIS_IOS_E2E_DESCRIPTION"
+      "JARVIS_IOS_E2E_SUGGESTION_DESCRIPTION=${JARVIS_IOS_E2E_SUGGESTION_DESCRIPTION:-}"
+      "JARVIS_IOS_E2E_SUGGESTION_STARTS_ON=${JARVIS_IOS_E2E_SUGGESTION_STARTS_ON:-}"
+      -only-testing:JARVISUITests/JARVISUITests/testRealAPIMonthlyBudgetLifecycle
+    )
     echo "Creating SafeAvailable deterministic fixture with the real iOS client (serial, iPhone 15 iOS 17.5)."
     xcodebuild "${xcodebuild_arguments[@]}" \
       -resultBundlePath "$safe_available_temporary_dir/SafeAvailableSetup.xcresult" \
       JARVIS_IOS_E2E_SUGGESTION_DESCRIPTION=__safe_available_setup__
 
-    safe_available_counts_before="$(safe_available_db_fingerprint)"
-    printf '%s\n' "$safe_available_counts_before" >"$safe_available_temporary_dir/safe-available-baseline"
-    export JARVIS_INTEGRATION_SAFE_AVAILABLE_BASELINE_FILE="$safe_available_temporary_dir/safe-available-baseline"
+    safe_available_setup_counts_before="$(safe_available_db_fingerprint)"
+    printf '%s\n' "$safe_available_setup_counts_before" >"$safe_available_temporary_dir/safe-available-setup-baseline"
+    export JARVIS_INTEGRATION_SAFE_AVAILABLE_SETUP_BASELINE_FILE="$safe_available_temporary_dir/safe-available-setup-baseline"
 
     echo "Running dedicated SafeAvailable real-api XCUITest (read-only, serial, iPhone 15 iOS 17.5)."
     xcodebuild "${xcodebuild_arguments[@]}" \
       -resultBundlePath "$safe_available_temporary_dir/SafeAvailable.xcresult" \
       JARVIS_IOS_E2E_SUGGESTION_DESCRIPTION=__safe_available_read__
 
+    safe_available_setup_counts_after="$(safe_available_db_fingerprint)"
+    printf '%s\n' "$safe_available_setup_counts_after" >"$safe_available_temporary_dir/safe-available-setup-after"
+    export JARVIS_INTEGRATION_SAFE_AVAILABLE_SETUP_AFTER_FILE="$safe_available_temporary_dir/safe-available-setup-after"
+
+    echo "Creating monthly budget fixture with the real iOS client (serial, iPhone 15 iOS 17.5)."
+    xcodebuild "${monthly_budget_xcodebuild_arguments[@]}" \
+      -resultBundlePath "$safe_available_temporary_dir/MonthlyBudgetSetup.xcresult" \
+      JARVIS_IOS_E2E_SUGGESTION_DESCRIPTION=__monthly_budget_setup__
+
+    safe_available_counts_before="$(safe_available_db_fingerprint)"
+    printf '%s\n' "$safe_available_counts_before" >"$safe_available_temporary_dir/safe-available-baseline"
+    export JARVIS_INTEGRATION_SAFE_AVAILABLE_BASELINE_FILE="$safe_available_temporary_dir/safe-available-baseline"
+    safe_available_budget_month="$(TZ=America/Sao_Paulo node -e 'const now=new Date(); process.stdout.write(`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,"0")}`);')"
+    export JARVIS_IOS_E2E_BUDGET_MONTH="$safe_available_budget_month"
+
+    echo "Running monthly budget cap real-api XCUITest (serial, iPhone 15 iOS 17.5)."
+    xcodebuild "${monthly_budget_xcodebuild_arguments[@]}" \
+      -resultBundlePath "$safe_available_temporary_dir/MonthlyBudgetRead.xcresult" \
+      JARVIS_IOS_E2E_SUGGESTION_DESCRIPTION=__monthly_budget_read__
+
     if [[ "${JARVIS_IOS_OWNER_ISOLATION_MODE:-false}" == true ]]; then
       owner_b="${JARVIS_INTEGRATION_OWNER_B_ID:?owner B is required for isolation}"
-      safe_available_period="periodStart=2020-01-01&periodEnd=2035-12-31"
+      safe_available_period="$(TZ=America/Sao_Paulo node -e 'const now=new Date(); const y=now.getFullYear(); const m=now.getMonth()+1; const mm=String(m).padStart(2,"0"); const last=new Date(y,m,0).getDate(); process.stdout.write(`periodStart=${y}-${mm}-01&periodEnd=${y}-${mm}-${String(last).padStart(2,"0")}`);')"
       safe_available_base_url="${JARVIS_IOS_E2E_BASE_URL:?real API base URL is required}"
       safe_available_api_port="$(node -e "const u = new URL(process.argv[1]); process.stdout.write(String(u.port || (u.protocol === \"https:\" ? 443 : 80)));" "$safe_available_base_url")"
       safe_available_api_address="127.0.0.1:$safe_available_api_port"
@@ -281,6 +319,22 @@ console.log(`SafeAvailable owner A totals: available=${after.availableBalance.mi
 NODE
       }
 
+      safe_available_assert_owner_a_budget_response() {
+        node - "$1" "$2" <<'NODE'
+const fs = require('fs');
+const before = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
+const after = JSON.parse(fs.readFileSync(process.argv[3], 'utf8'));
+if (JSON.stringify(before) !== JSON.stringify(after)) process.exit(1);
+if (!after || !after.budget || after.budget.minor !== 7000 || after.budget.currency !== 'BRL') process.exit(1);
+if (!after.budgetRemaining || after.budgetRemaining.currency !== 'BRL' || !Number.isInteger(after.budgetRemaining.minor)) process.exit(1);
+if (!after.finalAmount || after.finalAmount.currency !== 'BRL' || !Number.isInteger(after.finalAmount.minor)) process.exit(1);
+if (!Array.isArray(after.breakdown) || after.breakdown.length !== 11) process.exit(1);
+if (!Array.isArray(after.missingData) || after.missingData.includes('BUDGET')) process.exit(1);
+if (!after.breakdown.some((line) => line.kind === 'INCOME' && line.amount && line.amount.minor === 100000)) process.exit(1);
+console.log(`SafeAvailable owner A with budget: final=${after.finalAmount.minor}, budgetRemaining=${after.budgetRemaining.minor}, breakdown=${after.breakdown.length}`);
+NODE
+      }
+
       if ! docker compose \
         --project-name "$JARVIS_INTEGRATION_COMPOSE_PROJECT_NAME" \
         --file "$JARVIS_INTEGRATION_COMPOSE_FILE" \
@@ -307,16 +361,26 @@ SQL
       node - "$safe_available_a_before" <<'NODE'
 const fs = require('fs');
 const body = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
-if (!body || !body.finalAmount || !Number.isInteger(body.finalAmount.minor) || body.finalAmount.currency !== 'BRL') process.exit(1);
-if (!Array.isArray(body.breakdown) || body.breakdown.length < 2) process.exit(1);
-if (!Array.isArray(body.missingData) || !body.missingData.includes('BUDGET')) process.exit(1);
-console.log(`SafeAvailable owner A: finalAmount.minor=${body.finalAmount.minor}, breakdown=${body.breakdown.length}, missingData=${body.missingData.join(',')}`);
+      if (!body || !body.budget || body.budget.minor !== 7000 || body.budget.currency !== 'BRL') process.exit(1);
+      if (!body.budgetRemaining || body.budgetRemaining.currency !== 'BRL' || !Number.isInteger(body.budgetRemaining.minor)) process.exit(1);
+      if (!body.finalAmount || !Number.isInteger(body.finalAmount.minor) || body.finalAmount.currency !== 'BRL') process.exit(1);
+      if (!Array.isArray(body.breakdown) || body.breakdown.length !== 11) process.exit(1);
+      if (!Array.isArray(body.missingData) || body.missingData.includes('BUDGET')) process.exit(1);
+      if (!body.breakdown.some((line) => line.kind === 'INCOME' && line.amount && line.amount.minor === 100000)) process.exit(1);
+      console.log(`SafeAvailable owner A with budget: finalAmount.minor=${body.finalAmount.minor}, budgetRemaining=${body.budgetRemaining.minor}, breakdown=${body.breakdown.length}`);
 NODE
 
       safe_available_stop_outer_api
       safe_available_start_switch_api "$owner_b"
       safe_available_capture_response "owner B" "$safe_available_b"
       safe_available_assert_owner_b_response "$safe_available_b"
+      budget_b_status="$(curl --silent --show-error --output "$safe_available_temporary_dir/budget-b.json" --write-out '%{http_code}' \
+        --connect-timeout 2 --max-time 5 -H 'Accept: application/json' \
+        "$safe_available_base_url/v1/monthly-budgets/$safe_available_budget_month")"
+      if [[ "$budget_b_status" != 404 ]] || ! grep -q 'MONTHLY_BUDGET_NOT_FOUND' "$safe_available_temporary_dir/budget-b.json"; then
+        echo "Owner B monthly budget read did not return sanitized 404." >&2
+        return 1
+      fi
       safe_available_counts_after_b="$(safe_available_db_fingerprint)"
       if [[ "$safe_available_counts_after_b" != "$safe_available_counts_before" ]]; then
         echo "SafeAvailable owner B read changed database state: before=$safe_available_counts_before after=$safe_available_counts_after_b" >&2
@@ -327,9 +391,16 @@ NODE
       safe_available_stop_switch_api
       safe_available_start_switch_api "$JARVIS_INTEGRATION_OWNER_ID"
       safe_available_capture_response "owner A after switch" "$safe_available_a_after"
-      safe_available_assert_owner_a_response "$safe_available_a_before" "$safe_available_a_after"
+      safe_available_assert_owner_a_budget_response "$safe_available_a_before" "$safe_available_a_after"
+      budget_a_status="$(curl --silent --show-error --output "$safe_available_temporary_dir/budget-a.json" --write-out '%{http_code}' \
+        --connect-timeout 2 --max-time 5 -H 'Accept: application/json' \
+        "$safe_available_base_url/v1/monthly-budgets/$safe_available_budget_month")"
+      if [[ "$budget_a_status" != 200 ]] || ! grep -q '"minor":7000' "$safe_available_temporary_dir/budget-a.json"; then
+        echo "Owner A monthly budget read did not preserve the configured value." >&2
+        return 1
+      fi
       safe_available_capture_response "owner A repeated read" "$safe_available_temporary_dir/safe-a-repeated.json"
-      safe_available_assert_owner_a_response "$safe_available_a_before" "$safe_available_temporary_dir/safe-a-repeated.json"
+      safe_available_assert_owner_a_budget_response "$safe_available_a_before" "$safe_available_temporary_dir/safe-a-repeated.json"
       safe_available_counts_after_a="$(safe_available_db_fingerprint)"
       if [[ "$safe_available_counts_after_a" != "$safe_available_counts_before" ]]; then
         echo "SafeAvailable owner A reads changed database state: before=$safe_available_counts_before after=$safe_available_counts_after_a" >&2

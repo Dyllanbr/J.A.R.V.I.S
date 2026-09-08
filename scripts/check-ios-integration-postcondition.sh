@@ -28,6 +28,12 @@ safe_expense_description="${JARVIS_IOS_E2E_DESCRIPTION}_safe_expense"
 safe_recurrence_description="${JARVIS_IOS_E2E_DESCRIPTION}_safe_recurrence"
 safe_card_name="${JARVIS_IOS_E2E_DESCRIPTION}_safe_card"
 safe_installment_description="${JARVIS_IOS_E2E_DESCRIPTION}_safe_installment"
+budget_income_description="${JARVIS_IOS_E2E_DESCRIPTION}_budget_income"
+budget_month="${JARVIS_IOS_E2E_BUDGET_MONTH:-$(TZ=America/Sao_Paulo date +%Y-%m)}"
+if [[ ! "$budget_month" =~ ^[0-9]{4}-[0-9]{2}$ ]]; then
+  echo "JARVIS_IOS_E2E_BUDGET_MONTH must use YYYY-MM." >&2
+  exit 1
+fi
 
 safe_available_database_fingerprint() {
   docker compose \
@@ -50,7 +56,8 @@ SELECT (SELECT count(*) FROM transactions) || ':' || COALESCE((SELECT sum(amount
        (SELECT count(*) FROM installment_plans) || ':' || COALESCE((SELECT sum(total_minor) FROM installment_plans), 0) || '|' ||
        (SELECT count(*) FROM installment_plan_audit_events) || '|' ||
        (SELECT count(*) FROM installment_plan_idempotency_records) || '|' ||
-       (SELECT count(*) FROM card_purchase_idempotency_records);
+       (SELECT count(*) FROM card_purchase_idempotency_records) || '|' ||
+       (SELECT count(*) FROM monthly_budgets) || ':' || COALESCE((SELECT sum(amount_minor) FROM monthly_budgets), 0);
 SQL
 }
 
@@ -714,18 +721,106 @@ if [[ "$safe_counts" != "1|1|1|1|1|1|1|1|1|0|1|1|1|1|1|1|1|0|0" ]]; then
   exit 1
 fi
 
+budget_counts="$(
+  docker compose \
+    --project-name "$JARVIS_INTEGRATION_COMPOSE_PROJECT_NAME" \
+    --file "$JARVIS_INTEGRATION_COMPOSE_FILE" \
+    exec -T postgres \
+    psql --quiet --tuples-only --no-align --set=ON_ERROR_STOP=1 \
+    --set=owner_id="$JARVIS_INTEGRATION_OWNER_ID" \
+    --set=budget_income_description="$budget_income_description" \
+    --set=budget_month="$budget_month" \
+    --username "$JARVIS_POSTGRES_USER" \
+    --dbname "$JARVIS_POSTGRES_DB" <<'SQL'
+WITH budget_target AS (
+    SELECT 1
+    FROM monthly_budgets
+    WHERE user_id = :'owner_id'
+      AND month = (:'budget_month' || '-01')::date
+      AND amount_minor = 7000
+      AND currency = 'BRL'
+),
+income_target AS (
+    SELECT id
+    FROM transactions
+    WHERE user_id = :'owner_id'
+      AND description = :'budget_income_description'
+      AND type = 'INCOME'
+      AND amount_minor = 100000
+      AND currency = 'BRL'
+      AND payment_method IS NULL
+      AND category_id = 'income.salary'
+      AND origin = 'IOS'
+      AND status = 'RECORDED'
+),
+income_audit AS (
+    SELECT 1
+    FROM audit_events
+    WHERE user_id = :'owner_id'
+      AND aggregate_id IN (SELECT id FROM income_target)
+      AND aggregate_type = 'INCOME'
+      AND event_type = 'INCOME_RECORDED'
+),
+income_idempotency AS (
+    SELECT 1
+    FROM idempotency_records
+    WHERE user_id = :'owner_id'
+      AND transaction_id IN (SELECT id FROM income_target)
+      AND operation = 'CREATE_INCOME'
+      AND state = 'COMPLETED'
+)
+SELECT (SELECT count(*) FROM budget_target)
+    || '|' || (SELECT count(*) FROM income_target)
+    || '|' || (SELECT count(*) FROM income_audit)
+    || '|' || (SELECT count(*) FROM income_idempotency);
+SQL
+)"
+budget_counts="${budget_counts//[[:space:]]/}"
+if [[ "$budget_counts" != "1|1|1|1" ]]; then
+  echo "Monthly budget postcondition failed (budget|income|income audit|income completion=$budget_counts)." >&2
+  exit 1
+fi
+
+verify_snapshot_pair() {
+  local label="$1"
+  local before_file="$2"
+  local after_file="$3"
+  if [[ ! -r "$before_file" || ! -r "$after_file" ]]; then
+    echo "$label baseline files are missing or unreadable: before=$before_file after=$after_file" >&2
+    exit 1
+  fi
+  local before after
+  before="$(tr -d '[:space:]' <"$before_file")"
+  after="$(tr -d '[:space:]' <"$after_file")"
+  if [[ -z "$before" || -z "$after" || "$before" != "$after" ]]; then
+    echo "$label read postcondition failed: database fingerprint changed (before=$before after=$after)." >&2
+    exit 1
+  fi
+  echo "$label read baseline passed: database fingerprint unchanged by reads."
+}
+
+if [[ -n "${JARVIS_INTEGRATION_SAFE_AVAILABLE_SETUP_BASELINE_FILE:-}" || -n "${JARVIS_INTEGRATION_SAFE_AVAILABLE_SETUP_AFTER_FILE:-}" ]]; then
+  if [[ -z "${JARVIS_INTEGRATION_SAFE_AVAILABLE_SETUP_BASELINE_FILE:-}" || -z "${JARVIS_INTEGRATION_SAFE_AVAILABLE_SETUP_AFTER_FILE:-}" ]]; then
+    echo "SafeAvailable setup baseline requires both before and after files." >&2
+    exit 1
+  fi
+  verify_snapshot_pair "SafeAvailable" \
+    "$JARVIS_INTEGRATION_SAFE_AVAILABLE_SETUP_BASELINE_FILE" \
+    "$JARVIS_INTEGRATION_SAFE_AVAILABLE_SETUP_AFTER_FILE"
+fi
+
 if [[ -n "${JARVIS_INTEGRATION_SAFE_AVAILABLE_BASELINE_FILE:-}" ]]; then
   if [[ ! -r "$JARVIS_INTEGRATION_SAFE_AVAILABLE_BASELINE_FILE" ]]; then
-    echo "SafeAvailable baseline file is missing or unreadable: $JARVIS_INTEGRATION_SAFE_AVAILABLE_BASELINE_FILE" >&2
+    echo "Monthly budget baseline file is missing or unreadable: $JARVIS_INTEGRATION_SAFE_AVAILABLE_BASELINE_FILE" >&2
     exit 1
   fi
   safe_available_baseline="$(tr -d '[:space:]' <"$JARVIS_INTEGRATION_SAFE_AVAILABLE_BASELINE_FILE")"
   safe_available_final_fingerprint="$(safe_available_database_fingerprint)"
   if [[ -z "$safe_available_baseline" || "$safe_available_final_fingerprint" != "$safe_available_baseline" ]]; then
-    echo "SafeAvailable read postcondition failed: database fingerprint changed after reads (baseline=$safe_available_baseline final=$safe_available_final_fingerprint)." >&2
+    echo "Monthly budget read postcondition failed: database fingerprint changed after reads (baseline=$safe_available_baseline final=$safe_available_final_fingerprint)." >&2
     exit 1
   fi
-  echo "SafeAvailable read baseline passed: all financial table counts and aggregate totals unchanged by A/B/repeated GETs."
+  echo "Monthly budget read baseline passed: all financial table counts and aggregate totals unchanged by A/B/repeated GETs."
 fi
 
-echo "iOS real integration PostgreSQL postconditions passed for legacy flows, CardPurchase/InstallmentPlan, and SafeAvailable sources exactly once with no projection writes or future Expenses."
+echo "iOS real integration PostgreSQL postconditions passed for legacy flows, CardPurchase/InstallmentPlan, SafeAvailable sources and monthly budget with no projection writes or future Expenses."
