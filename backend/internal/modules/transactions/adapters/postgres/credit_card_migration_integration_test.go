@@ -238,7 +238,7 @@ func TestMigration007FreshSchemaConstraintsSafeDownAndReapply(t *testing.T) {
 		if err := migrations.Up(ctx, connection); err != nil {
 			t.Fatalf("migration 007 reapply failed: %v", err)
 		}
-		assertMigrationVersion(t, ctx, connection, 8)
+		assertMigrationVersion(t, ctx, connection, 9)
 	})
 
 	repository := newCreditCardRepository(t, pool)
@@ -329,7 +329,7 @@ func TestMigration007UpgradeFrom006PreservesLegacyDataWithoutBackfill(t *testing
 		if err := migrations.Up(ctx, connection); err != nil {
 			t.Fatalf("migration 006 to 007 failed: %v", err)
 		}
-		assertMigrationVersion(t, ctx, connection, 8)
+		assertMigrationVersion(t, ctx, connection, 9)
 	})
 	for table, want := range map[string]int{
 		"transactions":                       1,
