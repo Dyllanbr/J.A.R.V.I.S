@@ -100,6 +100,8 @@ struct SafeAvailableResponse: Codable, Equatable, Sendable {
     let totalConfirmedExpense: SafeAvailableAmount
     let totalConfirmedCommitments: SafeAvailableAmount
     let finalAmount: SafeAvailableAmount
+    let budget: SafeAvailableAmount?
+    let budgetRemaining: SafeAvailableAmount?
     let breakdown: [SafeAvailableBreakdown]
     let missingData: [SafeAvailableMissingData]
 
@@ -111,12 +113,15 @@ struct SafeAvailableResponse: Codable, Equatable, Sendable {
         totalConfirmedExpense: SafeAvailableAmount,
         totalConfirmedCommitments: SafeAvailableAmount,
         finalAmount: SafeAvailableAmount,
+        budget: SafeAvailableAmount? = nil,
+        budgetRemaining: SafeAvailableAmount? = nil,
         breakdown: [SafeAvailableBreakdown],
         missingData: [SafeAvailableMissingData]
     ) throws {
         guard !periodEnd.isBefore(periodStart),
               Self.hasUniqueMissingData(missingData),
-              missingData.contains(.budget),
+              (budget == nil) == missingData.contains(.budget),
+              budget == nil ? budgetRemaining == nil : budgetRemaining != nil,
               Self.hasUniqueBreakdown(breakdown),
               Self.isSorted(breakdown),
               Self.isInPeriod(breakdown, start: periodStart, end: periodEnd),
@@ -132,7 +137,17 @@ struct SafeAvailableResponse: Codable, Equatable, Sendable {
                   income: totalConfirmedIncome,
                   expense: totalConfirmedExpense,
                   commitments: totalConfirmedCommitments,
-                  finalAmount: finalAmount
+                  finalAmount: finalAmount,
+                  budgetRemaining: budgetRemaining
+              ),
+              Self.matchesBudget(
+                  budget: budget,
+                  budgetRemaining: budgetRemaining,
+                  expense: totalConfirmedExpense,
+                  commitments: totalConfirmedCommitments,
+                  financialAmount: finalAmount,
+                  availableBalance: availableBalance,
+                  income: totalConfirmedIncome
               )
         else { throw SafeAvailableModelError.invalid }
         self.periodStart = periodStart
@@ -142,6 +157,8 @@ struct SafeAvailableResponse: Codable, Equatable, Sendable {
         self.totalConfirmedExpense = totalConfirmedExpense
         self.totalConfirmedCommitments = totalConfirmedCommitments
         self.finalAmount = finalAmount
+        self.budget = budget
+        self.budgetRemaining = budgetRemaining
         self.breakdown = breakdown
         self.missingData = missingData.sorted { $0.rawValue < $1.rawValue }
     }
@@ -149,7 +166,7 @@ struct SafeAvailableResponse: Codable, Equatable, Sendable {
     init(from decoder: Decoder) throws {
         try decoder.rejectingSafeAvailableUnknownKeys([
             "periodStart", "periodEnd", "availableBalance", "totalConfirmedIncome",
-            "totalConfirmedExpense", "totalConfirmedCommitments", "finalAmount", "breakdown", "missingData"
+            "totalConfirmedExpense", "totalConfirmedCommitments", "finalAmount", "budget", "budgetRemaining", "breakdown", "missingData"
         ])
         let container = try decoder.container(keyedBy: CodingKeys.self)
         try self.init(
@@ -160,6 +177,8 @@ struct SafeAvailableResponse: Codable, Equatable, Sendable {
             totalConfirmedExpense: container.decode(SafeAvailableAmount.self, forKey: .totalConfirmedExpense),
             totalConfirmedCommitments: container.decode(SafeAvailableAmount.self, forKey: .totalConfirmedCommitments),
             finalAmount: container.decode(SafeAvailableAmount.self, forKey: .finalAmount),
+            budget: container.decodeIfPresent(SafeAvailableAmount.self, forKey: .budget),
+            budgetRemaining: container.decodeIfPresent(SafeAvailableAmount.self, forKey: .budgetRemaining),
             breakdown: container.decode([SafeAvailableBreakdown].self, forKey: .breakdown),
             missingData: container.decode([SafeAvailableMissingData].self, forKey: .missingData)
         )
@@ -231,20 +250,108 @@ struct SafeAvailableResponse: Codable, Equatable, Sendable {
         income: SafeAvailableAmount,
         expense: SafeAvailableAmount,
         commitments: SafeAvailableAmount,
-        finalAmount: SafeAvailableAmount
+        finalAmount: SafeAvailableAmount,
+        budgetRemaining: SafeAvailableAmount?
     ) -> Bool {
         let (withIncome, incomeOverflow) = availableBalance.minor.addingReportingOverflow(income.minor)
         guard !incomeOverflow else { return false }
         let (afterExpense, expenseOverflow) = withIncome.subtractingReportingOverflow(expense.minor)
         guard !expenseOverflow else { return false }
-        let (expected, commitmentOverflow) = afterExpense.subtractingReportingOverflow(commitments.minor)
-        return !commitmentOverflow && expected == finalAmount.minor
+        let (financialAmount, commitmentOverflow) = afterExpense.subtractingReportingOverflow(commitments.minor)
+        guard !commitmentOverflow else { return false }
+        let expected = budgetRemaining.map { min(financialAmount, $0.minor) } ?? financialAmount
+        return expected == finalAmount.minor
+    }
+
+    private static func matchesBudget(
+        budget: SafeAvailableAmount?,
+        budgetRemaining: SafeAvailableAmount?,
+        expense: SafeAvailableAmount,
+        commitments: SafeAvailableAmount,
+        financialAmount: SafeAvailableAmount,
+        availableBalance: SafeAvailableAmount,
+        income: SafeAvailableAmount
+    ) -> Bool {
+        guard let budget else {
+            return budgetRemaining == nil
+        }
+        guard let budgetRemaining, budget.minor >= 0 else { return false }
+        let (afterExpense, expenseOverflow) = budget.minor.subtractingReportingOverflow(expense.minor)
+        guard !expenseOverflow else { return false }
+        let (expectedRemaining, commitmentOverflow) = afterExpense.subtractingReportingOverflow(commitments.minor)
+        guard !commitmentOverflow, expectedRemaining == budgetRemaining.minor else { return false }
+        let (withIncome, incomeOverflow) = availableBalance.minor.addingReportingOverflow(income.minor)
+        guard !incomeOverflow else { return false }
+        let (afterFinancialExpense, financialExpenseOverflow) = withIncome.subtractingReportingOverflow(expense.minor)
+        guard !financialExpenseOverflow else { return false }
+        let (financialAmountExpected, financialCommitmentOverflow) = afterFinancialExpense.subtractingReportingOverflow(commitments.minor)
+		guard !financialCommitmentOverflow else { return false }
+		let expectedFinal = min(financialAmountExpected, budgetRemaining.minor)
+		return financialAmount.minor == expectedFinal
     }
 
     private enum CodingKeys: String, CodingKey {
         case periodStart, periodEnd, availableBalance, totalConfirmedIncome, totalConfirmedExpense
-        case totalConfirmedCommitments, finalAmount, breakdown, missingData
+        case totalConfirmedCommitments, finalAmount, budget, budgetRemaining, breakdown, missingData
     }
+}
+
+struct MonthlyBudgetAmount: Codable, Equatable, Sendable {
+    let minor: Int64
+    let currency: Currency
+
+    init(minor: Int64, currency: Currency = .brl) throws {
+        guard minor >= 0, currency == .brl else { throw SafeAvailableModelError.invalid }
+        self.minor = minor
+        self.currency = currency
+    }
+
+    init(from decoder: Decoder) throws {
+        try decoder.rejectingSafeAvailableUnknownKeys(["minor", "currency"])
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        try self.init(
+            minor: container.decode(Int64.self, forKey: .minor),
+            currency: container.decode(Currency.self, forKey: .currency)
+        )
+    }
+
+    private enum CodingKeys: String, CodingKey { case minor, currency }
+}
+
+struct MonthlyBudgetRequest: Encodable, Equatable, Sendable {
+    let amount: MonthlyBudgetAmount
+}
+
+struct MonthlyBudget: Codable, Equatable, Sendable {
+    let month: String
+    let amount: MonthlyBudgetAmount
+
+    init(month: String, amount: MonthlyBudgetAmount) throws {
+        guard Self.isValidMonth(month) else { throw SafeAvailableModelError.invalid }
+        self.month = month
+        self.amount = amount
+    }
+
+    init(from decoder: Decoder) throws {
+        try decoder.rejectingSafeAvailableUnknownKeys(["month", "amount"])
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        try self.init(
+            month: container.decode(String.self, forKey: .month),
+            amount: container.decode(MonthlyBudgetAmount.self, forKey: .amount)
+        )
+    }
+
+    private static func isValidMonth(_ value: String) -> Bool {
+        let bytes = Array(value.utf8)
+		guard bytes.count == 7, bytes[4] == 45, value.prefix(4) != "0000" else { return false }
+        for index in bytes.indices where index != 4 {
+            guard (48...57).contains(bytes[index]) else { return false }
+        }
+        let month = Int(value.suffix(2)) ?? 0
+        return (1...12).contains(month)
+    }
+
+    private enum CodingKeys: String, CodingKey { case month, amount }
 }
 
 private struct SafeAvailableAnyCodingKey: CodingKey {

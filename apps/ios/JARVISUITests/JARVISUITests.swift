@@ -1021,6 +1021,37 @@ final class JARVISUITests: XCTestCase {
     }
 
     @MainActor
+    func testSafeAvailableMonthlyBudgetCapsFinalAmount() throws {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchEnvironment["JARVIS_IOS_API_MODE"] = "stub"
+        app.launch()
+        defer { app.terminate() }
+
+        XCTAssertTrue(element("tab.history", in: app).waitForExistence(timeout: 8), app.debugDescription)
+        element("tab.history", in: app).tap()
+        let entry = element("history.safeAvailable.entry", in: app)
+        XCTAssertTrue(entry.waitForExistence(timeout: 8), app.debugDescription)
+        entry.tap()
+
+        XCTAssertTrue(element("safeAvailable.screen", in: app).waitForExistence(timeout: 8), app.debugDescription)
+        let input = app.textFields["safeAvailable.budget.input"]
+        XCTAssertTrue(input.waitForExistence(timeout: 8), app.debugDescription)
+        input.tap()
+        input.typeText("70,00")
+        dismissKeyboard(in: app)
+        element("safeAvailable.budget.save", in: app).tap()
+
+        let budgetValue = element("safeAvailable.budget.value", in: app)
+        XCTAssertTrue(budgetValue.waitForExistence(timeout: 12), app.debugDescription)
+        XCTAssertTrue(budgetValue.label.contains("R$ 70,00"), app.debugDescription)
+        let finalAmount = element("safeAvailable.finalAmount", in: app)
+        XCTAssertTrue(finalAmount.waitForExistence(timeout: 12), app.debugDescription)
+        XCTAssertTrue(finalAmount.label.contains("R$ 15,00"), app.debugDescription)
+        XCTAssertFalse(element("safeAvailable.missingData", in: app).label.localizedCaseInsensitiveContains("orçamento"), app.debugDescription)
+    }
+
+    @MainActor
     func testSafeAvailableNegativeAmountAndRetry() throws {
         continueAfterFailure = false
         let app = XCUIApplication()

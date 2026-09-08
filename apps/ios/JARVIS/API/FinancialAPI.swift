@@ -29,6 +29,8 @@ protocol FinancialAPI {
     func scheduledCommitments(evaluationDate: RecurrenceCivilDate) async throws -> ScheduledCommitmentListResponse
     func cardStatement(creditCardID: String, statementDueOn: RecurrenceCivilDate) async throws -> CardStatement
     func safeAvailable(periodStart: RecurrenceCivilDate, periodEnd: RecurrenceCivilDate) async throws -> SafeAvailableResponse
+    func monthlyBudget(month: String) async throws -> MonthlyBudget
+    func replaceMonthlyBudget(month: String, amount: MonthlyBudgetAmount) async throws -> MonthlyBudget
 }
 
 extension FinancialAPI {
@@ -41,6 +43,14 @@ extension FinancialAPI {
     }
 
     func safeAvailable(periodStart _: RecurrenceCivilDate, periodEnd _: RecurrenceCivilDate) async throws -> SafeAvailableResponse {
+        throw FinancialAPIError.configuration
+    }
+
+    func monthlyBudget(month _: String) async throws -> MonthlyBudget {
+        throw FinancialAPIError.configuration
+    }
+
+    func replaceMonthlyBudget(month _: String, amount _: MonthlyBudgetAmount) async throws -> MonthlyBudget {
         throw FinancialAPIError.configuration
     }
 }
@@ -62,6 +72,7 @@ enum FinancialAPIError: Error, Equatable {
     case installmentPlanNotFound
     case installmentPlanAlreadyCancelled
     case installmentCancellationDateStale
+    case monthlyBudgetNotFound
     case invalidResponse
     case configuration
 
@@ -97,6 +108,8 @@ enum FinancialAPIError: Error, Equatable {
             "Este plano já está cancelado. Atualizamos os dados para você."
         case .installmentCancellationDateStale:
             "A data de cancelamento mudou. Atualize a tela e revise novamente."
+        case .monthlyBudgetNotFound:
+            "Não há orçamento definido para este mês."
         case .invalidResponse, .configuration:
             "Não foi possível concluir a operação. Tente novamente."
         }
@@ -478,6 +491,45 @@ final class URLSessionFinancialAPIClient: FinancialAPI {
         return try decode(data)
     }
 
+    func monthlyBudget(month: String) async throws -> MonthlyBudget {
+        guard Self.isValidCivilMonth(month) else { throw FinancialAPIError.invalidData }
+        let request = try monthlyBudgetRequest(month: month, method: "GET")
+        let (data, response) = try await perform(request)
+        try requireMonthlyBudgetStatus(response, expected: 200, data: data)
+        return try decode(data)
+    }
+
+    func replaceMonthlyBudget(month: String, amount: MonthlyBudgetAmount) async throws -> MonthlyBudget {
+        guard Self.isValidCivilMonth(month) else { throw FinancialAPIError.invalidData }
+        let request = try makeRequest(path: "v1/monthly-budgets/\(month)", method: "PUT", body: MonthlyBudgetRequest(amount: amount))
+        let (data, response) = try await perform(request)
+        try requireMonthlyBudgetStatus(response, expected: 200, data: data)
+        return try decode(data)
+    }
+
+    private func monthlyBudgetRequest(month: String, method: String) throws -> URLRequest {
+        guard Self.isValidCivilMonth(month) else { throw FinancialAPIError.invalidData }
+		guard var components = URLComponents(url: baseURL, resolvingAgainstBaseURL: false) else {
+			throw FinancialAPIError.configuration
+		}
+		let basePath = components.path.hasSuffix("/") ? String(components.path.dropLast()) : components.path
+		components.path = basePath + "/v1/monthly-budgets/" + month
+		components.query = nil
+		components.fragment = nil
+		guard let url = components.url else { throw FinancialAPIError.configuration }
+        return baseRequest(url: url, method: method)
+    }
+
+    private static func isValidCivilMonth(_ value: String) -> Bool {
+        let bytes = Array(value.utf8)
+        guard bytes.count == 7, bytes[4] == 45, value.prefix(4) != "0000" else { return false }
+        for index in bytes.indices where index != 4 {
+            guard (48...57).contains(bytes[index]) else { return false }
+        }
+        guard let month = Int(value.suffix(2)) else { return false }
+        return (1...12).contains(month)
+    }
+
     private func makeRequest<Body: Encodable>(path: String, method: String, body: Body) throws -> URLRequest {
         var request = baseRequest(url: baseURL.appendingPathComponent(path), method: method)
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -695,6 +747,22 @@ final class URLSessionFinancialAPIClient: FinancialAPI {
             switch (response.statusCode, code) {
             case (400, "INVALID_REQUEST"), (400, _):
                 throw FinancialAPIError.invalidData
+            case (500...599, _):
+                throw FinancialAPIError.serviceUnavailable
+            default:
+                throw FinancialAPIError.invalidResponse
+            }
+        }
+    }
+
+    private func requireMonthlyBudgetStatus(_ response: HTTPURLResponse, expected: Int, data: Data) throws {
+        guard response.statusCode == expected else {
+            let code = try? JSONDecoder().decode(APIErrorEnvelope.self, from: data).error.code
+            switch (response.statusCode, code) {
+            case (400, _):
+                throw FinancialAPIError.invalidData
+            case (404, "MONTHLY_BUDGET_NOT_FOUND"):
+                throw FinancialAPIError.monthlyBudgetNotFound
             case (500...599, _):
                 throw FinancialAPIError.serviceUnavailable
             default:

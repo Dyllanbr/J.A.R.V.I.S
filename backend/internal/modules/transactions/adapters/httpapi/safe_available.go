@@ -60,6 +60,8 @@ type safeAvailableResponse struct {
 	TotalConfirmedExpense    amountResponse                   `json:"totalConfirmedExpense"`
 	TotalConfirmedCommitment amountResponse                   `json:"totalConfirmedCommitments"`
 	FinalAmount              amountResponse                   `json:"finalAmount"`
+	Budget                   *amountResponse                  `json:"budget,omitempty"`
+	BudgetRemaining          *amountResponse                  `json:"budgetRemaining,omitempty"`
 	Breakdown                []safeAvailableBreakdownResponse `json:"breakdown"`
 	MissingData              []string                         `json:"missingData"`
 }
@@ -142,7 +144,7 @@ func newSafeAvailableResponse(result domain.SafeAvailableResult) safeAvailableRe
 	for _, value := range missing {
 		missingValues = append(missingValues, string(value))
 	}
-	return safeAvailableResponse{
+	response := safeAvailableResponse{
 		PeriodStart: result.Period().StartOn().String(), PeriodEnd: result.Period().EndOn().String(),
 		AvailableBalance:         newAmountResponse(result.AvailableBalance()),
 		TotalConfirmedIncome:     newAmountResponse(result.TotalConfirmedIncome()),
@@ -150,6 +152,15 @@ func newSafeAvailableResponse(result domain.SafeAvailableResult) safeAvailableRe
 		TotalConfirmedCommitment: newAmountResponse(result.TotalConfirmedCommitments()),
 		FinalAmount:              newAmountResponse(result.FinalAmount()), Breakdown: breakdown, MissingData: missingValues,
 	}
+	if budget, ok := result.Budget(); ok {
+		value := newAmountResponse(budget.Amount())
+		response.Budget = &value
+	}
+	if remaining, ok := result.BudgetRemaining(); ok {
+		value := newAmountResponse(remaining)
+		response.BudgetRemaining = &value
+	}
+	return response
 }
 
 func (handler *SafeAvailableHandler) writeError(response http.ResponseWriter, err error) {

@@ -446,7 +446,8 @@ final class CreditCardsViewModel {
         case .invalidData, .conflict, .notFound, .alreadyCancelled, .suggestionNotFound,
              .suggestionSuppressed, .creditCardNotFound, .creditCardAlreadyArchived, .idempotencyKeyRequired,
              .idempotencyKeyInvalid, .cardPurchaseConflict, .installmentPlanNotFound,
-             .installmentPlanAlreadyCancelled, .installmentCancellationDateStale, .configuration: false
+             .installmentPlanAlreadyCancelled, .installmentCancellationDateStale, .monthlyBudgetNotFound,
+             .configuration: false
         }
     }
 }

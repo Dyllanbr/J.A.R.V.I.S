@@ -504,7 +504,7 @@ final class RecurrencesViewModel {
              .suggestionNotFound, .suggestionSuppressed, .creditCardNotFound,
              .creditCardAlreadyArchived, .idempotencyKeyRequired, .idempotencyKeyInvalid,
              .cardPurchaseConflict, .installmentPlanNotFound, .installmentPlanAlreadyCancelled,
-             .installmentCancellationDateStale, .configuration:
+             .installmentCancellationDateStale, .monthlyBudgetNotFound, .configuration:
             false
         }
     }

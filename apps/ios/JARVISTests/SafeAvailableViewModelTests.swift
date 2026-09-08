@@ -112,6 +112,29 @@ final class SafeAvailableViewModelTests: XCTestCase {
         XCTAssertEqual(api.callCount, 1)
     }
 
+    func testMonthlyBudgetCanBeLoadedAndSavedThenRefreshesProjection() async throws {
+        let response = try Self.positiveResponse(
+            start: try RecurrenceCivilDate("2026-09-01"),
+            end: try RecurrenceCivilDate("2026-09-30")
+        )
+        let budget = try MonthlyBudget(
+            month: "2026-09",
+            amount: MonthlyBudgetAmount(minor: 7_000)
+        )
+        let api = SafeAvailableAPISpy(result: .success(response), monthlyBudget: budget)
+        let model = SafeAvailableViewModel(api: api, periodStart: response.periodStart, periodEnd: response.periodEnd)
+
+        await model.loadBudget()
+        XCTAssertEqual(model.budgetState, .loaded(budget))
+        XCTAssertEqual(model.budgetAmountText, "70,00")
+
+        model.budgetAmountText = "0,00"
+        await model.saveBudget()
+        XCTAssertEqual(api.monthlyBudgetCalls, ["GET:2026-09", "PUT:2026-09:0"])
+        XCTAssertEqual(model.budgetState, .loaded(try MonthlyBudget(month: "2026-09", amount: MonthlyBudgetAmount(minor: 0))))
+        XCTAssertEqual(api.callCount, 1)
+    }
+
     private static func positiveResponse(start: RecurrenceCivilDate, end: RecurrenceCivilDate) throws -> SafeAvailableResponse {
         try SafeAvailableResponse(
             periodStart: start,
@@ -175,17 +198,21 @@ private final class SafeAvailableAPISpy: FinancialAPI {
     let blocksUntilReleased: Bool
     private(set) var callCount = 0
     private(set) var periods: [(RecurrenceCivilDate, RecurrenceCivilDate)] = []
+    private(set) var monthlyBudgetCalls: [String] = []
+    var monthlyBudgetValue: MonthlyBudget?
     private var callStarted: CheckedContinuation<Void, Never>?
     private var releaseContinuation: CheckedContinuation<Void, Never>?
 
     init(
         result: Result<SafeAvailableResponse, Error>,
         yieldsBeforeResult: Bool = false,
-        blocksUntilReleased: Bool = false
+        blocksUntilReleased: Bool = false,
+        monthlyBudget: MonthlyBudget? = nil
     ) {
         self.result = result
         self.yieldsBeforeResult = yieldsBeforeResult
         self.blocksUntilReleased = blocksUntilReleased
+        self.monthlyBudgetValue = monthlyBudget
     }
 
     func safeAvailable(periodStart: RecurrenceCivilDate, periodEnd: RecurrenceCivilDate) async throws -> SafeAvailableResponse {
@@ -198,6 +225,19 @@ private final class SafeAvailableAPISpy: FinancialAPI {
             await withCheckedContinuation { continuation in releaseContinuation = continuation }
         }
         return try result.get()
+    }
+
+    func monthlyBudget(month: String) async throws -> MonthlyBudget {
+        monthlyBudgetCalls.append("GET:\(month)")
+        guard let monthlyBudgetValue else { throw FinancialAPIError.monthlyBudgetNotFound }
+        return monthlyBudgetValue
+    }
+
+    func replaceMonthlyBudget(month: String, amount: MonthlyBudgetAmount) async throws -> MonthlyBudget {
+        monthlyBudgetCalls.append("PUT:\(month):\(amount.minor)")
+        let budget = try MonthlyBudget(month: month, amount: amount)
+        monthlyBudgetValue = budget
+        return budget
     }
 
     func waitForCall() async {

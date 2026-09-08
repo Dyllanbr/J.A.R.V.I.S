@@ -78,6 +78,7 @@ final class StubFinancialAPI: FinancialAPI {
     private var cardPurchaseCreates: [String: StoredCardPurchase] = [:]
     private var installmentPlansByID: [String: InstallmentPlan] = [:]
     private var installmentPlanCancels: [String: StoredInstallmentPlanCancel] = [:]
+    private var monthlyBudgetsByMonth: [String: MonthlyBudget] = [:]
     private var nextSequence = 1
     private let timestampCodec = RFC3339DateCodec()
     private let suggestionScenario: SuggestionScenario
@@ -532,6 +533,19 @@ final class StubFinancialAPI: FinancialAPI {
         ])
     }
 
+    func monthlyBudget(month: String) async throws -> MonthlyBudget {
+        try await Task.sleep(for: .milliseconds(80))
+        guard let budget = monthlyBudgetsByMonth[month] else { throw FinancialAPIError.monthlyBudgetNotFound }
+        return budget
+    }
+
+    func replaceMonthlyBudget(month: String, amount: MonthlyBudgetAmount) async throws -> MonthlyBudget {
+        try await Task.sleep(for: .milliseconds(80))
+        let budget = try MonthlyBudget(month: month, amount: amount)
+        monthlyBudgetsByMonth[month] = budget
+        return budget
+    }
+
     func safeAvailable(
         periodStart: RecurrenceCivilDate,
         periodEnd: RecurrenceCivilDate
@@ -608,7 +622,28 @@ final class StubFinancialAPI: FinancialAPI {
         if commitment > 0 {
             lines.append(try SafeAvailableBreakdown(kind: .commitment, sourceID: "ipl_ui_synthetic", sequence: 1, dueOn: periodStart, amount: amount(commitment)))
         }
-        let final = balance + income - expense - commitment
+        let financialAmount = balance + income - expense - commitment
+        let month = String(periodStart.canonicalValue.prefix(7))
+        let budget: MonthlyBudget?
+        if String(periodEnd.canonicalValue.prefix(7)) == month {
+            budget = monthlyBudgetsByMonth[month]
+        } else {
+            budget = nil
+        }
+        let budgetValue = try budget.map { try amount($0.amount.minor) }
+        let budgetRemainingValue: SafeAvailableAmount?
+        let final: Int64
+        let missingData: [SafeAvailableMissingData]
+        if let budget {
+            let remaining = budget.amount.minor - expense - commitment
+            budgetRemainingValue = try amount(remaining)
+            final = min(financialAmount, remaining)
+            missingData = []
+        } else {
+            budgetRemainingValue = nil
+            final = financialAmount
+            missingData = [.budget]
+        }
         return try SafeAvailableResponse(
             periodStart: periodStart,
             periodEnd: periodEnd,
@@ -617,8 +652,10 @@ final class StubFinancialAPI: FinancialAPI {
             totalConfirmedExpense: amount(expense),
             totalConfirmedCommitments: amount(commitment),
             finalAmount: amount(final),
+            budget: budgetValue,
+            budgetRemaining: budgetRemainingValue,
             breakdown: lines,
-            missingData: [.budget]
+            missingData: missingData
         )
     }
 

@@ -9,10 +9,13 @@ import (
 
 var (
 	ErrMissingMonthlyBudgetStore   = errors.New("monthly budget: store is required")
+	ErrMissingMonthlyBudgetReader  = errors.New("monthly budget: reader is required")
 	ErrInvalidMonthlyBudgetOwnerID = errors.New("monthly budget: invalid owner id")
 	ErrInvalidMonthlyBudgetMonth   = errors.New("monthly budget: invalid month")
 	ErrInvalidMonthlyBudgetAmount  = errors.New("monthly budget: invalid amount")
 	ErrMonthlyBudgetPersistence    = errors.New("monthly budget: persistence failed")
+	ErrMonthlyBudgetLookup         = errors.New("monthly budget: lookup failed")
+	ErrMonthlyBudgetNotFound       = errors.New("monthly budget: not found")
 )
 
 // MonthlyBudgetStore is the future persistence boundary for replacing the
@@ -20,6 +23,13 @@ var (
 // no financial transaction or idempotency record is involved.
 type MonthlyBudgetStore interface {
 	ReplaceMonthlyBudget(context.Context, domain.MonthlyBudget) error
+}
+
+// MonthlyBudgetReader is the read-only boundary used by the HTTP query. A
+// missing row is represented explicitly by found=false and is not converted
+// to a zero-valued budget.
+type MonthlyBudgetReader interface {
+	ReadMonthlyBudget(context.Context, string, domain.CivilMonth) (domain.MonthlyBudget, bool, error)
 }
 
 type SetMonthlyBudgetInput struct {
@@ -85,4 +95,60 @@ func (useCase *SetMonthlyBudget) Execute(ctx context.Context, input SetMonthlyBu
 		return SetMonthlyBudgetResult{}, err
 	}
 	return SetMonthlyBudgetResult{Budget: budget}, nil
+}
+
+type GetMonthlyBudgetInput struct {
+	OwnerID string
+	Month   domain.CivilMonth
+}
+
+type GetMonthlyBudgetResult struct {
+	Budget domain.MonthlyBudget
+}
+
+// GetMonthlyBudget performs one owner-scoped read and keeps absence explicit
+// for the transport layer to map to a safe public response.
+type GetMonthlyBudget struct {
+	reader MonthlyBudgetReader
+}
+
+func NewGetMonthlyBudget(reader MonthlyBudgetReader) (*GetMonthlyBudget, error) {
+	if reader == nil {
+		return nil, ErrMissingMonthlyBudgetReader
+	}
+	return &GetMonthlyBudget{reader: reader}, nil
+}
+
+func (useCase *GetMonthlyBudget) Execute(ctx context.Context, input GetMonthlyBudgetInput) (GetMonthlyBudgetResult, error) {
+	if err := ctx.Err(); err != nil {
+		return GetMonthlyBudgetResult{}, err
+	}
+	if err := domain.ValidateUserID(input.OwnerID); err != nil {
+		return GetMonthlyBudgetResult{}, ErrInvalidMonthlyBudgetOwnerID
+	}
+	if input.Month.String() == "" {
+		return GetMonthlyBudgetResult{}, ErrInvalidMonthlyBudgetMonth
+	}
+	budget, found, err := useCase.reader.ReadMonthlyBudget(ctx, input.OwnerID, input.Month)
+	if err != nil {
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			return GetMonthlyBudgetResult{}, err
+		}
+		return GetMonthlyBudgetResult{}, newSafeOperationError(ErrMonthlyBudgetLookup, err)
+	}
+	if err := ctx.Err(); err != nil {
+		return GetMonthlyBudgetResult{}, err
+	}
+	if !found {
+		return GetMonthlyBudgetResult{}, ErrMonthlyBudgetNotFound
+	}
+	validated, err := domain.NewMonthlyBudget(domain.MonthlyBudgetParams{
+		OwnerID: input.OwnerID,
+		Month:   input.Month,
+		Amount:  budget.Amount(),
+	})
+	if err != nil || !validated.Equal(budget) {
+		return GetMonthlyBudgetResult{}, newSafeOperationError(ErrMonthlyBudgetLookup, domain.ErrInvalidMonthlyBudgetAmount)
+	}
+	return GetMonthlyBudgetResult{Budget: budget}, nil
 }

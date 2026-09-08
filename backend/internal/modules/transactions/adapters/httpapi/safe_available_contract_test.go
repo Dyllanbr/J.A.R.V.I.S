@@ -9,8 +9,8 @@ import (
 
 func TestSafeAvailableOpenAPIContractStructurallyMatchesRuntime(t *testing.T) {
 	document := loadOpenAPIContract(t)
-	if got := contractString(t, contractAt(t, document, "info", "version"), "info.version"); got != "0.11.0" {
-		t.Fatalf("info.version = %q, want 0.11.0", got)
+	if got := contractString(t, contractAt(t, document, "info", "version"), "info.version"); got != "0.12.0" {
+		t.Fatalf("info.version = %q, want 0.12.0", got)
 	}
 	paths := contractObject(t, contractAt(t, document, "paths"), "paths")
 	const path = "/v1/safe-available"
@@ -62,13 +62,15 @@ func TestSafeAvailableOpenAPIContractStructurallyMatchesRuntime(t *testing.T) {
 	})
 	responseProperties := contractObject(t, contractAt(t, schemas["SafeAvailableResponse"].(map[string]any), "properties"), "SafeAvailableResponse.properties")
 	assertExactStrings(t, mapKeys(responseProperties), []string{
-		"periodStart", "periodEnd", "availableBalance", "totalConfirmedIncome", "totalConfirmedExpense", "totalConfirmedCommitments", "finalAmount", "breakdown", "missingData",
+		"periodStart", "periodEnd", "availableBalance", "totalConfirmedIncome", "totalConfirmedExpense", "totalConfirmedCommitments", "finalAmount", "budget", "budgetRemaining", "breakdown", "missingData",
 	}, "SafeAvailableResponse properties")
 	assertRef(t, responseProperties["periodStart"], "schemas", "CivilDate")
 	assertRef(t, responseProperties["periodEnd"], "schemas", "CivilDate")
 	for _, name := range []string{"availableBalance", "totalConfirmedIncome", "totalConfirmedExpense", "totalConfirmedCommitments", "finalAmount"} {
 		assertRef(t, responseProperties[name], "schemas", "SafeAvailableAmount")
 	}
+	assertRef(t, responseProperties["budget"], "schemas", "MonthlyBudgetAmount")
+	assertRef(t, responseProperties["budgetRemaining"], "schemas", "SafeAvailableAmount")
 	assertRef(t, contractAt(t, responseProperties, "breakdown", "items"), "schemas", "SafeAvailableBreakdown")
 	assertRef(t, contractAt(t, responseProperties, "missingData", "items"), "schemas", "SafeAvailableMissingData")
 
