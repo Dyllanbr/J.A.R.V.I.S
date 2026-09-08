@@ -1306,6 +1306,89 @@ final class JARVISUITests: XCTestCase {
     }
 
     @MainActor
+    func testRealAPIMonthlyBudgetLifecycle() throws {
+        continueAfterFailure = false
+        let launched = try launchApp()
+        guard try testConfiguration().mode == .real else {
+            throw XCTSkip("This scenario requires the official real API/PostgreSQL harness")
+        }
+        let app = launched.app
+        defer { app.terminate() }
+
+        let phaseDescription = Bundle(for: Self.self)
+            .infoDictionary?["JARVIS_IOS_E2E_SUGGESTION_DESCRIPTION"] as? String
+        let phase = phaseDescription == "__monthly_budget_setup__" ? "setup" :
+            phaseDescription == "__monthly_budget_read__" ? "read" : "invalid"
+        guard phase != "invalid" else {
+            XCTFail("Unsupported monthly budget phase")
+            return
+        }
+
+        if phase == "setup" {
+            let incomeDescription = "\(launched.description)_budget_income"
+            XCTAssertTrue(element("tab.register", in: app).waitForExistence(timeout: 8), app.debugDescription)
+            selectIncome(in: app)
+            selectRegisterCategory("income.salary", in: app)
+            let incomeField = app.textFields["register.description"]
+            XCTAssertTrue(incomeField.waitForExistence(timeout: 8), app.debugDescription)
+            incomeField.tap()
+            incomeField.typeText(incomeDescription)
+            let amountField = app.textFields["register.amount"]
+            XCTAssertTrue(amountField.exists, app.debugDescription)
+            amountField.tap()
+            amountField.typeText("1000,00")
+            dismissKeyboard(in: app)
+            element("register.review", in: app).tap()
+            XCTAssertTrue(element("review.confirm", in: app).waitForExistence(timeout: 8), app.debugDescription)
+            element("review.confirm", in: app).tap()
+            XCTAssertTrue(element("register.success", in: app).waitForExistence(timeout: 10), app.debugDescription)
+
+            element("tab.history", in: app).tap()
+            let entry = element("history.safeAvailable.entry", in: app)
+            XCTAssertTrue(entry.waitForExistence(timeout: 10), app.debugDescription)
+            entry.tap()
+            XCTAssertTrue(element("safeAvailable.screen", in: app).waitForExistence(timeout: 10), app.debugDescription)
+            let budgetInput = app.textFields["safeAvailable.budget.input"]
+            XCTAssertTrue(budgetInput.waitForExistence(timeout: 8), app.debugDescription)
+            budgetInput.tap()
+            budgetInput.typeText("70,00")
+            dismissKeyboard(in: app)
+            element("safeAvailable.budget.save", in: app).tap()
+            let budgetValue = element("safeAvailable.budget.value", in: app)
+            XCTAssertTrue(budgetValue.waitForExistence(timeout: 12), app.debugDescription)
+            XCTAssertTrue(budgetValue.label.contains("R$ 70,00"), app.debugDescription)
+            return
+        }
+
+        XCTAssertTrue(element("tab.history", in: app).waitForExistence(timeout: 10), app.debugDescription)
+        element("tab.history", in: app).tap()
+        let entry = element("history.safeAvailable.entry", in: app)
+        XCTAssertTrue(entry.waitForExistence(timeout: 10), app.debugDescription)
+        entry.tap()
+        XCTAssertTrue(element("safeAvailable.screen", in: app).waitForExistence(timeout: 10), app.debugDescription)
+        let budgetValue = element("safeAvailable.budget.value", in: app)
+        XCTAssertTrue(budgetValue.waitForExistence(timeout: 12), app.debugDescription)
+        XCTAssertTrue(budgetValue.label.contains("R$ 70,00"), app.debugDescription)
+        XCTAssertFalse(
+            element("safeAvailable.missingData", in: app).label.localizedCaseInsensitiveContains("orçamento"),
+            app.debugDescription
+        )
+        let finalAmount = element("safeAvailable.finalAmount", in: app)
+        XCTAssertTrue(finalAmount.waitForExistence(timeout: 15), app.debugDescription)
+        XCTAssertTrue(finalAmount.label.contains("R$ -441,40"), app.debugDescription)
+        let breakdownLabels = app.descendants(matching: .any)
+            .matching(NSPredicate(format: "identifier BEGINSWITH %@", "safeAvailable.breakdown."))
+            .allElementsBoundByAccessibilityElement
+            .map(\.label)
+        XCTAssertEqual(breakdownLabels.count, 11, app.debugDescription)
+        XCTAssertEqual(
+            breakdownLabels.filter { $0.contains("Receita confirmada") && $0.contains("R$ 1000,00") }.count,
+            1,
+            app.debugDescription
+        )
+    }
+
+    @MainActor
     func testCardStatementMixedFlowExposesLineAndTotalIdentifiers() throws {
         continueAfterFailure = false
         let launched = try launchApp()
