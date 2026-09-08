@@ -13,4 +13,6 @@ make smoke
 
 O lifecycle compartilhado recusa porta ocupada, usa timeouts de curl, acompanha o PID, imprime logs em falha e valida shutdown gracioso. `JARVIS_SMOKE_HOST` e `JARVIS_SMOKE_PORT` permitem alterar o endereço do harness. Como a suíte usa apenas o cliente HTTP do Playwright, binários de navegador não são instalados nesta fase.
 
-O comando oficial financeiro é `make test-integration`. Ele cria banco e owners exclusivamente sintéticos, aplica migrations 001–008, inicia a API com `JARVIS_FINANCIAL_API_TESTS=true` e remove processo, container e volume. Não execute a suíte financeira contra dados pessoais. Fluxos Maestro permanecem planejados e não são exercitados por esta suíte.
+Safe Available e Monthly Budget possuem cobertura própria nos testes Go, no contrato HTTP e no harness iOS real; não são atribuídos ao Playwright quando a suíte não os exercita.
+
+O comando oficial financeiro é `make test-integration`. Ele cria banco e owners exclusivamente sintéticos, aplica migrations 001–009, inicia a API com `JARVIS_FINANCIAL_API_TESTS=true` e remove processo, container e volume. Não execute a suíte financeira contra dados pessoais. Fluxos Maestro permanecem planejados e não são exercitados por esta suíte.

@@ -1,6 +1,6 @@
 # J.A.R.V.I.S.
 
-Monorepo do J.A.R.V.I.S., um assessor financeiro pessoal em construção. Os Incrementos 1, 2, 3A, 3B, 3C, 4A e 4B estão verificados dentro de seus escopos e possuem evidências de auditoria e CI correspondentes.
+Monorepo do J.A.R.V.I.S., um assessor financeiro pessoal em construção. Os Incrementos 1, 2, 3A, 3B, 3C, 4A, 4B e 5 estão verificados dentro de seus escopos e possuem evidências de auditoria e CI correspondentes.
 
 > “O J.A.R.V.I.S. é uma plataforma de organização, acompanhamento, análise e aconselhamento financeiro pessoal. Ele não inicia, autoriza ou executa transações financeiras ou pagamentos.”
 
@@ -19,6 +19,8 @@ Implementado:
 - projeto iOS 17/SwiftUI com seletor Despesa/Receita, Category opcional, preview/revisão/confirmação, sucesso e histórico misto com filtros locais;
 - CreditCard e CardPurchase no backend, com compra à vista ou parcelada, InstallmentPlan, schedule derivado, replay e idempotência;
 - fluxos iOS de compra no cartão e consulta/cancelamento de InstallmentPlan, com preview, revisão, confirmação explícita e E2E real;
+- projeção read-only de Scheduled Commitments e Disponível Seguro, com período civil explícito, breakdown determinístico e compromissos de InstallmentPlan/Recurrence;
+- orçamento mensal owner-scoped em BRL, com substituição por mês e integração opcional ao cálculo de Disponível Seguro;
 - XCTest/XCUITest e integração automatizada Simulator → API → PostgreSQL para os fluxos verificados de Expense, Income, CreditCard, CardPurchase e InstallmentPlan;
 - health check operacional, configuração e shutdown gracioso;
 - testes nativos Go e smoke de API com Playwright/TypeScript;
@@ -124,7 +126,7 @@ cd backend
 go run ./cmd/api
 ```
 
-Esse owner vem do servidor e não é autenticação. O contrato expõe `GET /v1/categories`, `POST /v1/transactions/preview`, `POST /v1/transactions` e `GET /v1/transactions?month=YYYY-MM`. Preview e registro usam o discriminador explícito `EXPENSE` ou `INCOME`; Expense exige `paymentMethod`, enquanto Income não possui esse campo. `categoryId` é opcional, precisa existir no catálogo e ser aplicável ao tipo. O POST mutável deve ser chamado pelo canal somente depois de apresentar o preview e obter confirmação explícita. `origin=IOS` e `America/Sao_Paulo` são atribuídos pelo servidor; o cliente não envia `userId`, origin ou timezone.
+Esse owner vem do servidor e não é autenticação. O contrato expõe `GET /v1/categories`, `POST /v1/transactions/preview`, `POST /v1/transactions`, `GET /v1/transactions?month=YYYY-MM`, `GET /v1/safe-available`, `PUT/GET /v1/monthly-budgets/{month}` e as rotas de cartões, parcelas e recorrências. Preview e registro usam o discriminador explícito `EXPENSE` ou `INCOME`; Expense exige `paymentMethod`, enquanto Income não possui esse campo. `categoryId` é opcional, precisa existir no catálogo e ser aplicável ao tipo. O POST mutável deve ser chamado pelo canal somente depois de apresentar o preview e obter confirmação explícita. `origin=IOS` e `America/Sao_Paulo` são atribuídos pelo servidor; o cliente não envia `userId`, origin ou timezone.
 
 ## Aplicativo iOS
 
@@ -136,7 +138,7 @@ make verify-ios
 make test-ios-integration
 ```
 
-O gate iOS é separado de `make verify`, que continua reproduzível no ambiente cross-platform do backend. XCUITest com stub cobre regressão de UI; a integração local real é fail-closed, gerencia PostgreSQL, migrations, owner/fixtures sintéticos, API e Simulator, passa pelo app/URLSession e exige no banco, para cada tipo, exatamente uma transaction, um audit event e um registro idempotente concluído. Income também deve manter `payment_method` nulo. Instruções de configuração e as limitações de segurança estão em [`apps/ios/README.md`](apps/ios/README.md).
+O gate iOS é separado de `make verify`, que continua reproduzível no ambiente cross-platform do backend. XCUITest com stub cobre regressão de UI; a integração local real é fail-closed, gerencia PostgreSQL, migrations, owner/fixtures sintéticos, API e Simulator, passa pelo app/URLSession e exige pós-condições para os fluxos financeiros, incluindo leituras de Safe Available e Monthly Budget sem writes. Instruções de configuração e as limitações de segurança estão em [`apps/ios/README.md`](apps/ios/README.md).
 
 ## Smoke test
 
@@ -154,4 +156,4 @@ As regras permanentes estão em [AGENTS.md](AGENTS.md). A [Definition of Done](d
 
 ## Limitações atuais
 
-A API financeira é um contexto local single-owner temporário, sem autenticação, autorização multiusuário, rate limiting distribuído ou uso real aprovado. O app iOS não persiste dados localmente, e o retry idempotente pendente não sobrevive a restart. O histórico retorna itens Expense/Income e seus `categoryId` opcionais: filtros de tipo/Category são locais no iOS, sem totais, saldo, orçamento ou Disponível Seguro. O catálogo atual contém somente categorias do sistema; não há categorias customizadas, CRUD ou reclassificação após o registro. O Incremento 4 ainda não cobre Statement/faturas completas, projeções gerais, orçamento, Disponível Seguro, metas, Face ID, passkeys, PIN, WhatsApp funcional, Open Finance, OpenAI, IA, MCP, agentes de produto, cloud ou Terraform funcional. Compras no cartão registram fatos ocorridos e compromissos de parcelas, mas não executam pagamentos nem criam Expenses futuras. Dispositivo físico/LAN permanece planejado até existir proteção apropriada. Audit events existem apenas junto ao novo registro; preview, replay e leitura não geram eventos. A retenção de metadata de idempotência e outcomes de commit indeterminado exigem política operacional antes de uso real. As baselines LGPD e WCAG não são alegações de conformidade.
+A API financeira é um contexto local single-owner temporário, sem autenticação, autorização multiusuário, rate limiting distribuído ou uso real aprovado. O app iOS não persiste dados localmente, e o retry idempotente pendente não sobrevive a restart. O histórico retorna itens Expense/Income e seus `categoryId` opcionais; filtros de tipo/Category são locais no iOS e o histórico não calcula totais. Safe Available e Monthly Budget são endpoints separados, com período/mês explícitos, leitura determinística e sem escrita financeira. O catálogo atual contém somente categorias do sistema; não há categorias customizadas, CRUD ou reclassificação após o registro. O Incremento 4 ainda não cobre Statement/faturas completas nem projeções adicionais além das capacidades verificadas. Permanecem planejados metas, Face ID, passkeys, PIN, WhatsApp funcional, Open Finance, OpenAI, IA, MCP, agentes de produto, cloud ou Terraform funcional. Compras no cartão registram fatos ocorridos e compromissos de parcelas, mas não executam pagamentos nem criam Expenses futuras. Dispositivo físico/LAN permanece planejado até existir proteção apropriada. Audit events existem apenas junto ao novo registro; preview, replay e leitura não geram eventos. A retenção de metadata de idempotência e outcomes de commit indeterminado exigem política operacional antes de uso real. As baselines LGPD e WCAG não são alegações de conformidade.

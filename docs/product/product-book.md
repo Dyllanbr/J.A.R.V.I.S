@@ -1,7 +1,7 @@
 # Product Book do J.A.R.V.I.S.
 
 - Maturidade documental: **Proposed**
-- Estado das capacidades: **misto** — Incrementos 1, 2, 3A, 3B e 3C **Verified**; demais capacidades futuras **Planned**
+- Estado das capacidades: **misto** — Incrementos 1, 2, 3A, 3B, 3C e 5, além das subcapacidades 4A e 4B, **Verified**; demais capacidades futuras **Planned**
 
 ## Propósito do documento
 
@@ -121,7 +121,7 @@ O Incremento 2 está **Verified**, após implementação, auditoria global indep
 - suporta no iOS o fluxo Despesa/Receita e a consulta mista;
 - possui testes de domínio, aplicação, PostgreSQL, HTTP, contrato, iOS e E2E real correspondentes.
 
-Income significa registrar que dinheiro entrou. Não significa receber dinheiro, cobrar alguém, executar depósito, iniciar Pix, movimentar conta ou conectar banco. O histórico atual não calcula totais, saldo, orçamento ou Disponível Seguro.
+Income significa registrar que dinheiro entrou. Não significa receber dinheiro, cobrar alguém, executar depósito, iniciar Pix, movimentar conta ou conectar banco. O histórico mensal continua sendo uma lista de itens; o cálculo de Safe Available é uma projeção separada, com entradas e período explícitos.
 
 ## Estado atual — Incremento 3A
 
@@ -185,7 +185,7 @@ A detecção é determinística; nenhuma IA ou LLM decide se uma despesa é reco
 
 A auditoria final independente foi concluída com P0=0, P1=0, P2=0 e P3=0.
 
-Projeções, orçamento, Disponível Seguro, alertas, Personal Financial Model e nudges contextuais que utilizem esses sinais continuam capacidades futuras **Planned**.
+Projeções adicionais, alertas, Personal Financial Model e nudges contextuais que utilizem esses sinais continuam capacidades futuras **Planned**. Orçamento e Disponível Seguro são tratados no Incremento 5.
 
 Detalhes e evidências permanecem nas fontes especializadas de [arquitetura](../architecture/overview.md), [ADRs](../adr/README.md), [segurança](../security/baseline.md), [privacidade](../privacy/README.md), [acessibilidade](../accessibility/baseline.md), [QA](../qa/testing-strategy.md) e [performance](../performance/baseline.md).
 
@@ -206,7 +206,23 @@ O Incremento 4B representa compras vinculadas a um cartão ativo:
 
 `CardPurchase` é um comando de orquestração da aplicação, não um aggregate persistido. `InstallmentPlan` é uma obrigação confirmada derivada da compra. Nenhuma dessas capacidades executa pagamento, cria movimentação financeira ou conclui automaticamente uma compra sem confirmação explícita.
 
-O restante do horizonte de cartões e compromissos continua planejado. Statement/faturas completas, projeções gerais, orçamento, Disponível Seguro e outros compromissos futuros não estão incluídos nestas subcapacidades.
+O restante do horizonte de cartões e compromissos continua planejado. Statement/faturas completas, projeções adicionais e outros compromissos futuros não estão incluídos nestas subcapacidades.
+
+## Estado atual — Incremento 5
+
+O Incremento 5 — Orçamento mensal e Disponível Seguro está **Verified**, após implementação, integração real, auditoria e quality gates correspondentes.
+
+O sistema agora:
+
+- calcula Safe Available para um período civil explícito, combinando saldo disponível, receitas confirmadas, despesas confirmadas e compromissos confirmados;
+- aplica a fórmula determinística `saldo + receitas − despesas − compromissos`, sem margem oculta;
+- mantém breakdown ordenado e dados ausentes explícitos, incluindo o marcador `BUDGET` quando não há orçamento;
+- persiste um orçamento mensal BRL por owner e mês civil `YYYY-MM`, com valor zero permitido, valores negativos rejeitados e substituição idempotente;
+- limita o resultado ao menor valor entre o cálculo financeiro e `orçamento − despesas − compromissos` quando o orçamento cobre o período;
+- expõe leitura e substituição pelos endpoints aprovados, com owner definido no servidor;
+- suporta a experiência iOS e o E2E real Simulator → URLSession → API Go → PostgreSQL, sem criar Expenses futuras, pagamentos ou lançamentos.
+
+O incremento não implementa categorias de orçamento, rollover, metas, alertas, pagamentos, baixa financeira, Statement completo ou qualquer fórmula de Disponível Seguro baseada em dados não confirmados.
 
 ## Visão futura
 
@@ -215,8 +231,6 @@ As capacidades a seguir estão **Planned**. A presença nesta visão não define
 - categorias customizadas e reclassificação;
 - Statement/faturas completas;
 - compromissos futuros além dos InstallmentPlans implementados;
-- orçamento;
-- Disponível Seguro;
 - metas;
 - simulador “Posso comprar?”;
 - autenticação;
@@ -306,9 +320,9 @@ A divisão pretendida é:
 
 O Personal Financial Model é visão futura e não uma implementação atual.
 
-## Disponível Seguro — conceito estratégico
+## Disponível Seguro — capacidade verificada e limites
 
-Disponível Seguro é uma capacidade futura **Planned**. Ele não representa apenas o saldo atual: considera compromissos conhecidos e proteções financeiras antes de apresentar uma referência para decisão.
+Disponível Seguro é uma capacidade **Verified** do Incremento 5. Ele combina somente entradas confirmadas fornecidas pelo snapshot e mantém cada componente explicável; não é promessa de garantia nem autorização para gastar.
 
 O conceito deve:
 
@@ -319,18 +333,17 @@ O conceito deve:
 - evitar aparência de garantia absoluta;
 - manter a decisão sob responsabilidade do usuário.
 
-Exemplo meramente ilustrativo, sem representar cálculo implementado ou recomendação:
+Exemplo da decomposição implementada, com valores meramente ilustrativos:
 
 ```text
-Saldo: R$ 3.420,00
-- contas previstas: R$ 1.180,00
-- fatura: R$ 720,00
-- meta protegida: R$ 500,00
-- margem de segurança: R$ 177,70
-= Disponível Seguro: R$ 842,30
+Saldo disponível: R$ 3.420,00
++ receitas confirmadas: R$ 850,00
+- despesas confirmadas: R$ 720,00
+- compromissos confirmados: R$ 1.180,00
+= Disponível Seguro financeiro: R$ 2.370,00
 ```
 
-Fórmula, tratamento de incerteza, dados necessários e critérios serão definidos em documentação e roadmap próprios.
+Quando o orçamento mensal está disponível para todo o período, o resultado também expõe o limite restante do orçamento. Metas protegidas, pagamentos, faturas completas e outras fontes de incerteza permanecem fora do Incremento 5.
 
 ## Experiência integrada
 
@@ -338,7 +351,7 @@ Fórmula, tratamento de incerteza, dados necessários e critérios serão defini
 
 > “A interface pode mostrar dados. O assessor deve compreender contexto.”
 
-Histórico, orçamento, metas, Disponível Seguro, simulações e conversa devem futuramente funcionar como perspectivas do mesmo sistema financeiro pessoal, não como miniapps independentes. Cada canal pode adaptar a interação, mas deve preservar contexto autorizado, linguagem coerente, controles e continuidade.
+Histórico, orçamento, Disponível Seguro, metas, simulações e conversa devem funcionar como perspectivas do mesmo sistema financeiro pessoal, não como miniapps independentes. Cada canal pode adaptar a interação, mas deve preservar contexto autorizado, linguagem coerente, controles e continuidade.
 
 ## Foco financeiro
 
