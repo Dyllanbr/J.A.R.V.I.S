@@ -609,6 +609,119 @@ final class JARVISUITests: XCTestCase {
     }
 
     @MainActor
+    func testPurchaseSimulationShowsExplicitImpactWithoutPersisting() throws {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchEnvironment["JARVIS_IOS_API_MODE"] = "stub"
+        app.launch()
+        defer { app.terminate() }
+
+        XCTAssertTrue(element("tab.cards", in: app).waitForExistence(timeout: 8))
+        element("tab.cards", in: app).tap()
+        let cardsContent = app.descendants(matching: .any)
+            .matching(NSPredicate(format: "identifier == %@ OR identifier == %@", "card.empty", "card.list"))
+            .firstMatch
+        XCTAssertTrue(cardsContent.waitForExistence(timeout: 10), app.debugDescription)
+        if element("card.empty", in: app).exists {
+            element("card.create", in: app).tap()
+            fillCreditCardForm(in: app, name: "Cartão simulação")
+            element("card.review", in: app).tap()
+            XCTAssertTrue(element("card.review.screen", in: app).waitForExistence(timeout: 10), app.debugDescription)
+            element("card.confirm", in: app).tap()
+            XCTAssertTrue(element("card.success", in: app).waitForExistence(timeout: 12), app.debugDescription)
+            element("card.new", in: app).tap()
+        }
+        XCTAssertTrue(element("card.list", in: app).waitForExistence(timeout: 10), app.debugDescription)
+        let card = app.descendants(matching: .any)
+            .matching(NSPredicate(format: "identifier BEGINSWITH %@", "card.item.card_"))
+            .firstMatch
+        XCTAssertTrue(card.waitForExistence(timeout: 10), app.debugDescription)
+        card.tap()
+        XCTAssertTrue(element("card.detail", in: app).waitForExistence(timeout: 10), app.debugDescription)
+
+        let simulationLink = app.descendants(matching: .any)
+            .matching(NSPredicate(format: "identifier BEGINSWITH %@", "card.purchaseSimulation.card_"))
+            .firstMatch
+        XCTAssertTrue(simulationLink.waitForExistence(timeout: 8), app.debugDescription)
+        simulationLink.tap()
+        XCTAssertTrue(element("purchaseSimulation.screen", in: app).waitForExistence(timeout: 8), app.debugDescription)
+
+        let amount = app.textFields["purchaseSimulation.amount"]
+        XCTAssertTrue(amount.waitForExistence(timeout: 8), app.debugDescription)
+        amount.tap()
+        amount.typeText("12,00")
+        dismissKeyboard(in: app)
+        element("purchaseSimulation.simulate", in: app).tap()
+
+        XCTAssertTrue(element("purchaseSimulation.result", in: app).waitForExistence(timeout: 12), app.debugDescription)
+        XCTAssertTrue(element("purchaseSimulation.projected", in: app).label.contains("R$"), app.debugDescription)
+        XCTAssertTrue(element("purchaseSimulation.impact", in: app).exists, app.debugDescription)
+        XCTAssertTrue(element("purchaseSimulation.baseline", in: app).exists, app.debugDescription)
+        XCTAssertTrue(
+            app.staticTexts.matching(NSPredicate(format: "label == %@", "Simulação não persistida"))
+                .firstMatch.waitForExistence(timeout: 8),
+            app.debugDescription
+        )
+    }
+
+    @MainActor
+    func testRealAPIPurchaseSimulationLifecycle() throws {
+        continueAfterFailure = false
+        let launched = try launchApp()
+        guard try testConfiguration().mode == .real else {
+            throw XCTSkip("This scenario requires the official real API/PostgreSQL harness")
+        }
+        let app = launched.app
+        defer { app.terminate() }
+        let cardName = "(launched.description)_simulation_card"
+
+        XCTAssertTrue(element("tab.cards", in: app).waitForExistence(timeout: 8), app.debugDescription)
+        element("tab.cards", in: app).tap()
+        let cardsContent = app.descendants(matching: .any)
+            .matching(NSPredicate(format: "identifier == %@ OR identifier == %@", "card.empty", "card.list"))
+            .firstMatch
+        XCTAssertTrue(cardsContent.waitForExistence(timeout: 12), app.debugDescription)
+        element("card.create", in: app).tap()
+        fillCreditCardForm(in: app, name: cardName)
+        element("card.review", in: app).tap()
+        XCTAssertTrue(element("card.review.screen", in: app).waitForExistence(timeout: 10), app.debugDescription)
+        element("card.confirm", in: app).tap()
+        XCTAssertTrue(element("card.success", in: app).waitForExistence(timeout: 12), app.debugDescription)
+        element("card.new", in: app).tap()
+        XCTAssertTrue(element("card.list", in: app).waitForExistence(timeout: 12), app.debugDescription)
+
+        let card = app.descendants(matching: .any)
+            .matching(NSPredicate(format: "identifier BEGINSWITH %@ AND label CONTAINS %@", "card.item.card_", cardName))
+            .firstMatch
+        XCTAssertTrue(card.waitForExistence(timeout: 12), app.debugDescription)
+        card.tap()
+        XCTAssertTrue(element("card.detail", in: app).waitForExistence(timeout: 10), app.debugDescription)
+        let simulation = app.descendants(matching: .any)
+            .matching(NSPredicate(format: "identifier BEGINSWITH %@", "card.purchaseSimulation.card_"))
+            .firstMatch
+        XCTAssertTrue(simulation.waitForExistence(timeout: 8), app.debugDescription)
+        simulation.tap()
+        XCTAssertTrue(element("purchaseSimulation.screen", in: app).waitForExistence(timeout: 8), app.debugDescription)
+
+        let amount = app.textFields["purchaseSimulation.amount"]
+        XCTAssertTrue(amount.waitForExistence(timeout: 8), app.debugDescription)
+        amount.tap()
+        amount.typeText("12,00")
+        dismissKeyboard(in: app)
+        element("purchaseSimulation.simulate", in: app).tap()
+        XCTAssertTrue(element("purchaseSimulation.result", in: app).waitForExistence(timeout: 15), app.debugDescription)
+        XCTAssertTrue(element("purchaseSimulation.baseline", in: app).exists, app.debugDescription)
+        XCTAssertTrue(element("purchaseSimulation.projected", in: app).exists, app.debugDescription)
+        XCTAssertTrue(element("purchaseSimulation.impact", in: app).exists, app.debugDescription)
+        XCTAssertTrue(element("purchaseSimulation.commitments", in: app).exists, app.debugDescription)
+        XCTAssertTrue(
+            app.staticTexts.matching(NSPredicate(format: "label == %@", "Simulação não persistida"))
+                .firstMatch.waitForExistence(timeout: 8),
+            app.debugDescription
+        )
+    }
+
+    @MainActor
     func testCardPurchaseReviewConfirmAndInstallmentPlanCancellation() throws {
         continueAfterFailure = false
         let app = XCUIApplication()

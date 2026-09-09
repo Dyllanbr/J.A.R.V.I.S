@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: J.A.R.V.I.S. API
-  version: 0.12.0
+  version: 0.13.0
   description: >-
     API da fundação e dos incrementos financeiros de despesas, receitas,
     categorias, recorrências manuais, sugestões determinísticas e referências organizacionais de cartões. Criar uma transaction registra no
@@ -840,6 +840,42 @@ paths:
                 $ref: "#/components/schemas/SafeAvailableResponse"
         "400":
           $ref: "#/components/responses/InvalidRequest"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowed"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /v1/purchase-simulations:
+    post:
+      operationId: simulatePurchase
+      summary: Simula o impacto de uma compra sem gravá-la
+      description: >-
+        Calcula uma projeção somente leitura para uma compra à vista ou
+        parcelada usando o snapshot financeiro confirmado do owner server-side.
+        A simulação não cria Expense, InstallmentPlan, pagamento, auditoria ou
+        reserva de idempotência.
+      tags: [Transactions]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PurchaseSimulationRequest"
+      responses:
+        "200":
+          description: Projeção determinística com comparação ao estado confirmado
+          headers:
+            Cache-Control:
+              $ref: "#/components/headers/CacheControl"
+            X-Content-Type-Options:
+              $ref: "#/components/headers/ContentTypeOptions"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PurchaseSimulationResponse"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "404":
+          $ref: "#/components/responses/CreditCardNotFound"
         "405":
           $ref: "#/components/responses/MethodNotAllowed"
         "500":
@@ -1724,6 +1760,67 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/SafeAvailableMissingData"
+    PurchaseSimulationRequest:
+      type: object
+      additionalProperties: false
+      required: [creditCardId, amount, purchaseOn, purchaseMode, periodStart, periodEnd]
+      properties:
+        creditCardId:
+          $ref: "#/components/schemas/CreditCardId"
+        amount:
+          $ref: "#/components/schemas/Money"
+        purchaseOn:
+          $ref: "#/components/schemas/CivilDate"
+        purchaseMode:
+          $ref: "#/components/schemas/PurchaseSimulationMode"
+        installmentCount:
+          type: integer
+          minimum: 2
+          maximum: 120
+          description: Obrigatório quando purchaseMode é INSTALLMENT; omitido para ONE_TIME.
+        periodStart:
+          $ref: "#/components/schemas/CivilDate"
+        periodEnd:
+          $ref: "#/components/schemas/CivilDate"
+    PurchaseSimulationMode:
+      type: string
+      enum: [ONE_TIME, INSTALLMENT]
+    PurchaseSimulationAssumption:
+      type: string
+      enum: [NOT_PERSISTED, NO_EXPENSE_CREATED]
+    PurchaseSimulationResponse:
+      type: object
+      additionalProperties: false
+      required: [creditCardId, purchaseOn, purchaseMode, periodStart, periodEnd, baseline, projected, impact, hypotheticalCommitments, assumptions]
+      properties:
+        creditCardId:
+          $ref: "#/components/schemas/CreditCardId"
+        purchaseOn:
+          $ref: "#/components/schemas/CivilDate"
+        purchaseMode:
+          $ref: "#/components/schemas/PurchaseSimulationMode"
+        installmentCount:
+          type: integer
+          minimum: 2
+          maximum: 120
+        periodStart:
+          $ref: "#/components/schemas/CivilDate"
+        periodEnd:
+          $ref: "#/components/schemas/CivilDate"
+        baseline:
+          $ref: "#/components/schemas/SafeAvailableResponse"
+        projected:
+          $ref: "#/components/schemas/SafeAvailableResponse"
+        impact:
+          $ref: "#/components/schemas/SafeAvailableAmount"
+        hypotheticalCommitments:
+          type: array
+          items:
+            $ref: "#/components/schemas/SafeAvailableBreakdown"
+        assumptions:
+          type: array
+          items:
+            $ref: "#/components/schemas/PurchaseSimulationAssumption"
     InstallmentSummary:
       type: object
       additionalProperties: false

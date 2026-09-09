@@ -4,17 +4,20 @@ struct CreditCardsView: View {
     @Bindable var model: CreditCardsViewModel
     @Bindable var purchaseModel: CardPurchaseViewModel
     @Bindable var plansModel: InstallmentPlansViewModel
+    @Bindable var simulationModel: PurchaseSimulationViewModel
     private let statementAPI: any FinancialAPI
     @State private var navigationPath: [String] = []
 
     init(
         model: CreditCardsViewModel,
         purchaseModel: CardPurchaseViewModel,
-        plansModel: InstallmentPlansViewModel
+        plansModel: InstallmentPlansViewModel,
+        simulationModel: PurchaseSimulationViewModel
     ) {
         self.model = model
         self.purchaseModel = purchaseModel
         self.plansModel = plansModel
+        self.simulationModel = simulationModel
         statementAPI = AppConfiguration.financialAPI()
     }
 
@@ -27,6 +30,7 @@ struct CreditCardsView: View {
                         model: model,
                         purchaseModel: purchaseModel,
                         plansModel: plansModel,
+                        simulationModel: simulationModel,
                         cardID: id,
                         statementAPI: statementAPI,
                         onPurchaseFinished: { navigationPath.removeAll() }
@@ -206,6 +210,7 @@ private struct CreditCardDetailView: View {
     @Bindable var model: CreditCardsViewModel
     @Bindable var purchaseModel: CardPurchaseViewModel
     @Bindable var plansModel: InstallmentPlansViewModel
+    @Bindable var simulationModel: PurchaseSimulationViewModel
     let cardID: String
     let statementAPI: any FinancialAPI
     let onPurchaseFinished: () -> Void
@@ -217,6 +222,7 @@ private struct CreditCardDetailView: View {
         model: CreditCardsViewModel,
         purchaseModel: CardPurchaseViewModel,
         plansModel: InstallmentPlansViewModel,
+        simulationModel: PurchaseSimulationViewModel,
         cardID: String,
         statementAPI: any FinancialAPI,
         onPurchaseFinished: @escaping () -> Void
@@ -224,6 +230,7 @@ private struct CreditCardDetailView: View {
         self.model = model
         self.purchaseModel = purchaseModel
         self.plansModel = plansModel
+        self.simulationModel = simulationModel
         self.cardID = cardID
         self.statementAPI = statementAPI
         self.onPurchaseFinished = onPurchaseFinished
@@ -287,6 +294,14 @@ private struct CreditCardDetailView: View {
             }
             if card.status == .active {
                 Section {
+                    NavigationLink {
+                        PurchaseSimulationView(model: simulationModel, card: card)
+                            .environment(\.locale, Locale(identifier: "pt_BR"))
+                    } label: {
+                        Text("Simular compra")
+                    }
+                    .frame(minHeight: 44)
+                    .accessibilityIdentifier("card.purchaseSimulation.\(card.id)")
                     NavigationLink {
                         CardPurchaseView(
                             model: purchaseModel,

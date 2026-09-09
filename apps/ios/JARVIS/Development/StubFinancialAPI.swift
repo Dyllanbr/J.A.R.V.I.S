@@ -595,6 +595,71 @@ final class StubFinancialAPI: FinancialAPI {
         }
     }
 
+    func simulatePurchase(_ request: PurchaseSimulationRequest) async throws -> PurchaseSimulationResponse {
+        try await Task.sleep(for: .milliseconds(80))
+        let baseline = try await safeAvailable(periodStart: request.periodStart, periodEnd: request.periodEnd)
+        let simulatedMinor: Int64
+        switch request.purchaseMode {
+        case .oneTime:
+            simulatedMinor = request.amount.minor
+        case .installment:
+            guard let count = request.installmentCount else { throw FinancialAPIError.invalidData }
+            simulatedMinor = max(1, request.amount.minor / Int64(count))
+        }
+        let line = try SafeAvailableBreakdown(
+            kind: .commitment,
+            sourceID: "sim_ui_synthetic",
+            sequence: 1,
+            dueOn: request.periodStart,
+            amount: try SafeAvailableAmount(minor: simulatedMinor)
+        )
+        let (totalCommitments, totalOverflow) = baseline.totalConfirmedCommitments.minor.addingReportingOverflow(simulatedMinor)
+        guard !totalOverflow else { throw FinancialAPIError.invalidResponse }
+        let (withIncome, incomeOverflow) = baseline.availableBalance.minor.addingReportingOverflow(baseline.totalConfirmedIncome.minor)
+        let (afterExpense, expenseOverflow) = withIncome.subtractingReportingOverflow(baseline.totalConfirmedExpense.minor)
+        let (financialFinal, commitmentOverflow) = afterExpense.subtractingReportingOverflow(totalCommitments)
+        guard !incomeOverflow, !expenseOverflow, !commitmentOverflow else { throw FinancialAPIError.invalidResponse }
+        var budgetRemaining: SafeAvailableAmount?
+        var finalMinor = financialFinal
+        if let budget = baseline.budget {
+            let (afterBudgetExpense, budgetExpenseOverflow) = budget.minor.subtractingReportingOverflow(baseline.totalConfirmedExpense.minor)
+            let (remainingMinor, budgetCommitmentOverflow) = afterBudgetExpense.subtractingReportingOverflow(totalCommitments)
+            guard !budgetExpenseOverflow, !budgetCommitmentOverflow else { throw FinancialAPIError.invalidResponse }
+            budgetRemaining = try SafeAvailableAmount(minor: remainingMinor)
+            finalMinor = min(financialFinal, remainingMinor)
+        }
+        var breakdown = baseline.breakdown
+        breakdown.append(line)
+        let projected = try SafeAvailableResponse(
+            periodStart: baseline.periodStart,
+            periodEnd: baseline.periodEnd,
+            availableBalance: baseline.availableBalance,
+            totalConfirmedIncome: baseline.totalConfirmedIncome,
+            totalConfirmedExpense: baseline.totalConfirmedExpense,
+            totalConfirmedCommitments: try SafeAvailableAmount(minor: totalCommitments),
+            finalAmount: try SafeAvailableAmount(minor: finalMinor),
+            budget: baseline.budget,
+            budgetRemaining: budgetRemaining,
+            breakdown: breakdown,
+            missingData: baseline.missingData
+        )
+        let (impactMinor, impactOverflow) = finalMinor.subtractingReportingOverflow(baseline.finalAmount.minor)
+        guard !impactOverflow else { throw FinancialAPIError.invalidResponse }
+        return try PurchaseSimulationResponse(
+            creditCardID: request.creditCardID,
+            purchaseOn: request.purchaseOn,
+            purchaseMode: request.purchaseMode,
+            installmentCount: request.installmentCount,
+            periodStart: request.periodStart,
+            periodEnd: request.periodEnd,
+            baseline: baseline,
+            projected: projected,
+            impact: try SafeAvailableAmount(minor: impactMinor),
+            hypotheticalCommitments: [line],
+            assumptions: [.notPersisted, .noExpenseCreated]
+        )
+    }
+
     private func makeSafeAvailable(
         periodStart: RecurrenceCivilDate,
         periodEnd: RecurrenceCivilDate,

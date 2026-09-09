@@ -81,7 +81,8 @@ cat >"$inner_script" <<'JARVIS_INNER'
       -only-testing:JARVISUITests/JARVISUITests/testRecurrencePreviewConfirmListAndCancel \
       -only-testing:JARVISUITests/JARVISUITests/testRealAPIRecurrenceSuggestionRequiresExplicitConfirmation \
       -only-testing:JARVISUITests/JARVISUITests/testCreditCardPreviewConfirmDetailAndArchive \
-      -only-testing:JARVISUITests/JARVISUITests/testRealAPICardPurchaseAndInstallmentPlanLifecycle
+      -only-testing:JARVISUITests/JARVISUITests/testRealAPICardPurchaseAndInstallmentPlanLifecycle \
+      -only-testing:JARVISUITests/JARVISUITests/testRealAPIPurchaseSimulationLifecycle
     rm -rf "$real_api_temporary_dir"
     trap - EXIT INT TERM
     safe_available_temporary_dir="$(mktemp -d -t jarvis-safe-available.XXXXXX)"
