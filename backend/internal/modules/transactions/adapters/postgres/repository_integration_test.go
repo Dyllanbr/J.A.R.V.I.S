@@ -379,14 +379,20 @@ func TestDatabaseIdentifierConstraintsMatchDomainBoundaries(t *testing.T) {
 	}{
 		{name: "exactly 128 ASCII bytes", value: strings.Repeat("x", 128)},
 		{name: "multibyte within 128 bytes", value: "id_" + strings.Repeat("é", 60)},
+		{name: "emoji", value: "id_💳"},
+		{name: "combining character", value: "id_Cafe\u0301"},
+		{name: "internal ASCII whitespace", value: "id internal space"},
+		{name: "internal Unicode whitespace", value: "id\u00a0internal\u2003space"},
 	}
 	invalidIDs := []struct {
 		name  string
 		value string
 	}{
 		{name: "129 bytes", value: strings.Repeat("x", 129)},
+		{name: "129 bytes with multibyte rune", value: "id_" + strings.Repeat("é", 63)},
 		{name: "leading ASCII space", value: " exp_test_space"},
 		{name: "leading tab", value: "\texp_test_tab"},
+		{name: "internal tab", value: "exp_test_\tinternal"},
 		{name: "trailing newline", value: "exp_test_newline\n"},
 		{name: "trailing carriage return", value: "exp_test_carriage\r"},
 		{name: "leading NBSP", value: "\u00a0exp_test_nbsp"},
