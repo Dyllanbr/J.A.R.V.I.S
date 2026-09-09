@@ -24,7 +24,7 @@ func TestMonthlyBudgetPostgresMigrationAndOwnerScopedReplacement(t *testing.T) {
 	defer cancel()
 
 	withConnection(t, ctx, pool, func(connection *pgx.Conn) {
-		assertMigrationVersion(t, ctx, connection, 10)
+		assertMigrationVersion(t, ctx, connection, 11)
 	})
 	assertTableExists(t, ctx, pool, "monthly_budgets", true)
 
