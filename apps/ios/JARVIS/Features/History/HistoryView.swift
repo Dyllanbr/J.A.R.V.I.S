@@ -3,6 +3,7 @@ import SwiftUI
 struct HistoryView: View {
     @Bindable var model: HistoryViewModel
     let scheduledCommitments: ScheduledCommitmentsViewModel
+    let financialGoals: FinancialGoalsViewModel
 
     private let moneyFormatter = BRLMoneyFormatter()
     private let displayFormatter = FinancialDisplayFormatter()
@@ -12,6 +13,7 @@ struct HistoryView: View {
             VStack(spacing: 0) {
                 monthNavigation
                 scheduledCommitmentsEntry
+                financialGoalsEntry
                 filters
                 categoryCatalogStatus
                 content
@@ -50,6 +52,36 @@ struct HistoryView: View {
         .jarvisCard(padding: 14)
         .padding(.horizontal)
         .accessibilityIdentifier("history.scheduledCommitments.entry")
+    }
+
+    private var financialGoalsEntry: some View {
+        NavigationLink {
+            FinancialGoalsView(model: financialGoals)
+        } label: {
+            HStack(spacing: 12) {
+                Image(systemName: "target")
+                    .font(.title3.weight(.semibold))
+                    .foregroundStyle(JARVISDesign.accent)
+                    .frame(width: 32, height: 32)
+                    .background(JARVISDesign.accent.opacity(0.12), in: Circle())
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Metas financeiras")
+                        .font(.body.weight(.semibold))
+                    Text("Declarações sem movimentação")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(.tertiary)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .buttonStyle(.plain)
+        .jarvisCard(padding: 14)
+        .padding(.horizontal)
+        .accessibilityIdentifier("history.financialGoals.entry")
     }
 
     private var filters: some View {

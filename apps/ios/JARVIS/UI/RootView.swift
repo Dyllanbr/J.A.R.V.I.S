@@ -188,7 +188,8 @@ private struct NativeTabContainer: UIViewControllerRepresentable {
                 HistorySafeAvailableEntryView(
                     model: model.history,
                     scheduledCommitments: model.scheduledCommitments,
-                    safeAvailable: model.safeAvailable
+                    safeAvailable: model.safeAvailable,
+                    financialGoals: model.financialGoals
                 )
                     .environment(\.locale, Locale(identifier: "pt_BR"))
             )

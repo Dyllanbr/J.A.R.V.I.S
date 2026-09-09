@@ -31,6 +31,9 @@ protocol FinancialAPI {
     func safeAvailable(periodStart: RecurrenceCivilDate, periodEnd: RecurrenceCivilDate) async throws -> SafeAvailableResponse
     func monthlyBudget(month: String) async throws -> MonthlyBudget
     func replaceMonthlyBudget(month: String, amount: MonthlyBudgetAmount) async throws -> MonthlyBudget
+    func financialGoals() async throws -> FinancialGoalsResponse
+    func replaceFinancialGoal(id: String, title: String, targetAmount: FinancialGoalAmount) async throws -> FinancialGoal
+    func replaceProtectedValue(id: String, label: String, amount: ProtectedValueAmount) async throws -> ProtectedValue
     func simulatePurchase(_ request: PurchaseSimulationRequest) async throws -> PurchaseSimulationResponse
 }
 
@@ -52,6 +55,18 @@ extension FinancialAPI {
     }
 
     func replaceMonthlyBudget(month _: String, amount _: MonthlyBudgetAmount) async throws -> MonthlyBudget {
+        throw FinancialAPIError.configuration
+    }
+
+    func financialGoals() async throws -> FinancialGoalsResponse {
+        throw FinancialAPIError.configuration
+    }
+
+    func replaceFinancialGoal(id _: String, title _: String, targetAmount _: FinancialGoalAmount) async throws -> FinancialGoal {
+        throw FinancialAPIError.configuration
+    }
+
+    func replaceProtectedValue(id _: String, label _: String, amount _: ProtectedValueAmount) async throws -> ProtectedValue {
         throw FinancialAPIError.configuration
     }
 
@@ -512,6 +527,52 @@ final class URLSessionFinancialAPIClient: FinancialAPI {
         return try decode(data)
     }
 
+    func financialGoals() async throws -> FinancialGoalsResponse {
+        var request = baseRequest(url: baseURL.appendingPathComponent("v1/financial-goals"), method: "GET")
+        request.cachePolicy = .reloadIgnoringLocalCacheData
+        let (data, response) = try await perform(request)
+        try requireFinancialGoalsStatus(response, expected: 200, data: data)
+        return try decode(data)
+    }
+
+    func replaceFinancialGoal(
+        id: String,
+        title: String,
+        targetAmount: FinancialGoalAmount
+    ) async throws -> FinancialGoal {
+        guard Self.isValidPathIdentifier(id), !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            throw FinancialAPIError.invalidData
+        }
+        let body = FinancialGoalRequest(title: title, targetAmount: targetAmount)
+        let request = try makePathRequest(
+            components: ["v1", "financial-goals"], pathSegment: id,
+            method: "PUT",
+            body: body
+        )
+        let (data, response) = try await perform(request)
+        try requireFinancialGoalsStatus(response, expected: 200, data: data)
+        return try decode(data)
+    }
+
+    func replaceProtectedValue(
+        id: String,
+        label: String,
+        amount: ProtectedValueAmount
+    ) async throws -> ProtectedValue {
+        guard Self.isValidPathIdentifier(id), !label.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            throw FinancialAPIError.invalidData
+        }
+        let body = ProtectedValueRequest(label: label, amount: amount)
+        let request = try makePathRequest(
+            components: ["v1", "protected-values"], pathSegment: id,
+            method: "PUT",
+            body: body
+        )
+        let (data, response) = try await perform(request)
+        try requireFinancialGoalsStatus(response, expected: 200, data: data)
+        return try decode(data)
+    }
+
     func simulatePurchase(_ requestBody: PurchaseSimulationRequest) async throws -> PurchaseSimulationResponse {
         let request = try makeRequest(path: "v1/purchase-simulations", method: "POST", body: requestBody)
         let (data, response) = try await perform(request)
@@ -552,6 +613,39 @@ final class URLSessionFinancialAPIClient: FinancialAPI {
         }
         return request
     }
+
+    private func makePathRequest<Body: Encodable>(components: [String], pathSegment: String, method: String, body: Body) throws -> URLRequest {
+        guard let encodedSegment = pathSegment.addingPercentEncoding(withAllowedCharacters: Self.pathSegmentCharacters),
+              var urlComponents = URLComponents(url: baseURL, resolvingAgainstBaseURL: false)
+        else { throw FinancialAPIError.configuration }
+        let basePath = urlComponents.percentEncodedPath.hasSuffix("/")
+            ? String(urlComponents.percentEncodedPath.dropLast())
+            : urlComponents.percentEncodedPath
+        urlComponents.percentEncodedPath = basePath + "/" + components.joined(separator: "/") + "/" + encodedSegment
+        urlComponents.query = nil
+        urlComponents.fragment = nil
+        guard let url = urlComponents.url else { throw FinancialAPIError.configuration }
+        var request = baseRequest(url: url, method: method)
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        do {
+            request.httpBody = try JSONEncoder().encode(body)
+        } catch {
+            throw FinancialAPIError.invalidData
+        }
+        return request
+    }
+
+    private static func isValidPathIdentifier(_ value: String) -> Bool {
+        let bytes = Array(value.utf8)
+        return (1...128).contains(bytes.count)
+            && bytes.allSatisfy { (33...126).contains($0) }
+    }
+
+    private static let pathSegmentCharacters: CharacterSet = {
+        var characters = CharacterSet.alphanumerics
+        characters.insert(charactersIn: "-._~")
+        return characters
+    }()
 
     private func validateIdempotencyKey(_ key: String) throws {
         let bytes = Array(key.utf8)
@@ -776,6 +870,19 @@ final class URLSessionFinancialAPIClient: FinancialAPI {
             case (404, "MONTHLY_BUDGET_NOT_FOUND"):
                 throw FinancialAPIError.monthlyBudgetNotFound
             case (500...599, _):
+                throw FinancialAPIError.serviceUnavailable
+            default:
+                throw FinancialAPIError.invalidResponse
+            }
+        }
+    }
+
+    private func requireFinancialGoalsStatus(_ response: HTTPURLResponse, expected: Int, data: Data) throws {
+        guard response.statusCode == expected else {
+            switch response.statusCode {
+            case 400:
+                throw FinancialAPIError.invalidData
+            case 500...599:
                 throw FinancialAPIError.serviceUnavailable
             default:
                 throw FinancialAPIError.invalidResponse

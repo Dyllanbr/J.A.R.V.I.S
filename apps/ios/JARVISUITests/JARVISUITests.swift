@@ -1111,6 +1111,72 @@ final class JARVISUITests: XCTestCase {
     }
 
     @MainActor
+    func testFinancialGoalsDeclarationFlowShowsDeterministicData() throws {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchEnvironment["JARVIS_IOS_API_MODE"] = "stub"
+        app.launch()
+        defer { app.terminate() }
+
+        XCTAssertTrue(element("tab.history", in: app).waitForExistence(timeout: 8), app.debugDescription)
+        element("tab.history", in: app).tap()
+        let entry = element("history.financialGoals.entry", in: app)
+        XCTAssertTrue(entry.waitForExistence(timeout: 8), app.debugDescription)
+        entry.tap()
+
+        XCTAssertTrue(element("financialGoals.view", in: app).waitForExistence(timeout: 8), app.debugDescription)
+        let goal = element("financialGoals.goal.goal_ui_synthetic_001", in: app)
+        let protectedValue = element("financialGoals.protectedValue.value_ui_synthetic_001", in: app)
+        XCTAssertTrue(goal.waitForExistence(timeout: 10), app.debugDescription)
+        XCTAssertTrue(protectedValue.waitForExistence(timeout: 10), app.debugDescription)
+        XCTAssertTrue(goal.label.contains("Viagem sintética"), app.debugDescription)
+        XCTAssertTrue(goal.label.contains("R$ 2500,00"), app.debugDescription)
+        XCTAssertTrue(protectedValue.label.contains("Reserva de segurança"), app.debugDescription)
+        XCTAssertTrue(protectedValue.label.contains("R$ 1000,00"), app.debugDescription)
+        XCTAssertTrue(element("financialGoals.disclaimer", in: app).exists, app.debugDescription)
+        XCTAssertTrue(element("tab.register", in: app).exists, app.debugDescription)
+        XCTAssertTrue(element("tab.history", in: app).exists, app.debugDescription)
+        XCTAssertTrue(element("tab.recurrences", in: app).exists, app.debugDescription)
+        XCTAssertTrue(element("tab.cards", in: app).exists, app.debugDescription)
+    }
+
+    @MainActor
+    func testFinancialGoalsEmptyStateIsAccessible() {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchEnvironment["JARVIS_IOS_API_MODE"] = "stub"
+        app.launchEnvironment["JARVIS_IOS_FINANCIAL_GOALS_SCENARIO"] = "empty"
+        app.launch()
+        defer { app.terminate() }
+
+        XCTAssertTrue(element("tab.history", in: app).waitForExistence(timeout: 8), app.debugDescription)
+        element("tab.history", in: app).tap()
+        element("history.financialGoals.entry", in: app).tap()
+        XCTAssertTrue(element("financialGoals.empty", in: app).waitForExistence(timeout: 10), app.debugDescription)
+        XCTAssertFalse(element("financialGoals.goal.goal_ui_synthetic_001", in: app).exists)
+    }
+
+    @MainActor
+    func testFinancialGoalsFailureExposesSafeRetry() {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchEnvironment["JARVIS_IOS_API_MODE"] = "stub"
+        app.launchEnvironment["JARVIS_IOS_FINANCIAL_GOALS_SCENARIO"] = "error"
+        app.launch()
+        defer { app.terminate() }
+
+        XCTAssertTrue(element("tab.history", in: app).waitForExistence(timeout: 8), app.debugDescription)
+        element("tab.history", in: app).tap()
+        element("history.financialGoals.entry", in: app).tap()
+        XCTAssertTrue(element("financialGoals.error", in: app).waitForExistence(timeout: 10), app.debugDescription)
+        XCTAssertTrue(element("financialGoals.retry", in: app).waitForExistence(timeout: 8), app.debugDescription)
+        element("financialGoals.retry", in: app).tap()
+        XCTAssertTrue(element("financialGoals.error", in: app).waitForExistence(timeout: 8), app.debugDescription)
+        XCTAssertFalse(app.staticTexts.matching(NSPredicate(format: "label CONTAINS[c] 'sql' OR label CONTAINS[c] 'pgx'"))
+            .firstMatch.exists)
+    }
+
+    @MainActor
     func testSafeAvailablePositiveBreakdownAndBudgetMarker() throws {
         continueAfterFailure = false
         let app = XCUIApplication()
