@@ -1177,6 +1177,58 @@ final class JARVISUITests: XCTestCase {
     }
 
     @MainActor
+    func testRealAPIFinancialGoalsDeclarationLifecycle() throws {
+        continueAfterFailure = false
+        let launched = try launchApp()
+        guard try testConfiguration().mode == .real else {
+            throw XCTSkip("This scenario requires the official real API/PostgreSQL harness")
+        }
+        let app = launched.app
+        defer { app.terminate() }
+
+        XCTAssertTrue(element("tab.history", in: app).waitForExistence(timeout: 8), app.debugDescription)
+        element("tab.history", in: app).tap()
+        let entry = element("history.financialGoals.entry", in: app)
+        XCTAssertTrue(entry.waitForExistence(timeout: 10), app.debugDescription)
+        entry.tap()
+
+        XCTAssertTrue(element("financialGoals.view", in: app).waitForExistence(timeout: 10), app.debugDescription)
+        let goal = element("financialGoals.goal.goal_e2e_decl_001", in: app)
+        let protectedValue = element("financialGoals.protectedValue.value_e2e_decl_001", in: app)
+        XCTAssertTrue(goal.waitForExistence(timeout: 12), app.debugDescription)
+        XCTAssertTrue(protectedValue.waitForExistence(timeout: 12), app.debugDescription)
+        XCTAssertTrue(goal.label.contains("Reserva beta"), app.debugDescription)
+        XCTAssertTrue(goal.label.contains("R$ 2500,00"), app.debugDescription)
+        XCTAssertTrue(protectedValue.label.contains("Proteção beta"), app.debugDescription)
+        XCTAssertTrue(protectedValue.label.contains("R$ 1000,00"), app.debugDescription)
+        XCTAssertTrue(element("financialGoals.disclaimer", in: app).exists, app.debugDescription)
+        XCTAssertTrue(element("tab.register", in: app).exists, app.debugDescription)
+        XCTAssertTrue(element("tab.history", in: app).exists, app.debugDescription)
+        XCTAssertTrue(element("tab.recurrences", in: app).exists, app.debugDescription)
+        XCTAssertTrue(element("tab.cards", in: app).exists, app.debugDescription)
+    }
+
+    @MainActor
+    func testRealAPIFinancialGoalsIsolatedOwnerIsEmpty() throws {
+        continueAfterFailure = false
+        let launched = try launchApp()
+        guard try testConfiguration().mode == .real else {
+            throw XCTSkip("This scenario requires the official real API/PostgreSQL harness")
+        }
+        let app = launched.app
+        defer { app.terminate() }
+
+        XCTAssertTrue(element("tab.history", in: app).waitForExistence(timeout: 8), app.debugDescription)
+        element("tab.history", in: app).tap()
+        let entry = element("history.financialGoals.entry", in: app)
+        XCTAssertTrue(entry.waitForExistence(timeout: 10), app.debugDescription)
+        entry.tap()
+        XCTAssertTrue(element("financialGoals.empty", in: app).waitForExistence(timeout: 12), app.debugDescription)
+        XCTAssertFalse(element("financialGoals.goal.goal_e2e_decl_001", in: app).exists, app.debugDescription)
+        XCTAssertFalse(element("financialGoals.protectedValue.value_e2e_decl_001", in: app).exists, app.debugDescription)
+    }
+
+    @MainActor
     func testSafeAvailablePositiveBreakdownAndBudgetMarker() throws {
         continueAfterFailure = false
         let app = XCUIApplication()

@@ -44,7 +44,7 @@ jobs:
   ios:
     name: iOS build and tests
     runs-on: macos-15
-    timeout-minutes: 25
+    timeout-minutes: 40
 
     steps:
       - name: Check out repository
