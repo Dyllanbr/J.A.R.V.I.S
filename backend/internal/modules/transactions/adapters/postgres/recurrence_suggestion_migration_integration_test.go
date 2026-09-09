@@ -121,6 +121,9 @@ func TestMigration006FreshSchemaConstraintsSafeDownAndReapply(t *testing.T) {
 			t.Fatalf("migration 006 reapply failed: %v", err)
 		}
 		if err := migrations.Down(ctx, connection); err != nil {
+			t.Fatalf("migration 010 DOWN after migration 006 reapply failed: %v", err)
+		}
+		if err := migrations.Down(ctx, connection); err != nil {
 			t.Fatalf("migration 009 DOWN after migration 006 reapply failed: %v", err)
 		}
 		if err := migrations.Down(ctx, connection); err != nil {
@@ -151,6 +154,9 @@ func TestMigration006UpgradeFrom005PreservesExistingFinancialAndRecurrenceData(t
 	withConnection(t, ctx, pool, func(connection *pgx.Conn) {
 		if err := migrations.Up(ctx, connection); err != nil {
 			t.Fatalf("migration 005 to 006 failed: %v", err)
+		}
+		if err := migrations.Down(ctx, connection); err != nil {
+			t.Fatalf("migration 010 DOWN after migration 006 upgrade failed: %v", err)
 		}
 		if err := migrations.Down(ctx, connection); err != nil {
 			t.Fatalf("migration 009 DOWN after migration 006 upgrade failed: %v", err)

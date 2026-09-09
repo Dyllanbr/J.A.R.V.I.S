@@ -34,7 +34,7 @@ func TestMigrationsUpDownAndReapply(t *testing.T) {
 		if err := migrations.Up(ctx, connection); err != nil {
 			t.Fatal("migration UP failed")
 		}
-		assertMigrationVersion(t, ctx, connection, 9)
+		assertMigrationVersion(t, ctx, connection, 10)
 	})
 	assertTablesExist(t, ctx, pool, true)
 	assertTableExists(t, ctx, pool, "idempotency_records", true)
@@ -59,6 +59,10 @@ func TestMigrationsUpDownAndReapply(t *testing.T) {
 	withConnection(t, ctx, pool, func(connection *pgx.Conn) {
 		if err := migrations.Up(ctx, connection); err != nil {
 			t.Fatal("reapplying migration UP failed")
+		}
+		assertMigrationVersion(t, ctx, connection, 10)
+		if err := migrations.Down(ctx, connection); err != nil {
+			t.Fatal("migration 010 DOWN failed")
 		}
 		assertMigrationVersion(t, ctx, connection, 9)
 		if err := migrations.Down(ctx, connection); err != nil {
@@ -108,7 +112,7 @@ func TestMigrationsUpDownAndReapply(t *testing.T) {
 		if err := migrations.Up(ctx, connection); err != nil {
 			t.Fatal("migration UP after DOWN failed")
 		}
-		assertMigrationVersion(t, ctx, connection, 9)
+		assertMigrationVersion(t, ctx, connection, 10)
 	})
 	assertTablesExist(t, ctx, pool, true)
 	assertTableExists(t, ctx, pool, "idempotency_records", true)
