@@ -242,7 +242,7 @@ O objetivo é evoluir da organização para o apoio estruturado à decisão. A d
 
 O simulador “Posso comprar?” da Issue #61 está **Verified** dentro do escopo entregue. Ele aceita uma compra à vista ou parcelada e um período civil explícito, calcula a comparação entre o Safe Available confirmado e a projeção hipotética, expõe impacto e premissas e não persiste Expense, InstallmentPlan, pagamento ou auditoria. O endpoint e a experiência iOS reutilizam os contratos e a composição existentes.
 
-As declarações backend de metas e valores protegidos foram implementadas nas Stages 1–3. Experiência iOS, progresso, comparação de alternativas além da simulação implementada e contextualização por preferências individuais continuam **Planned**. A simulação não executa a compra nem movimenta dinheiro.
+As declarações backend de metas e valores protegidos foram implementadas nas Stages 1–3, e a Stage 4 adicionou uma experiência iOS de consulta com estados explícitos e acessibilidade. E2E iOS dedicado, progresso, comparação de alternativas além da simulação implementada e contextualização por preferências individuais continuam **Planned**. A simulação não executa a compra nem movimenta dinheiro.
 
 A separação conceitual permanece:
 

@@ -23,6 +23,7 @@ Implementado:
 - orçamento mensal owner-scoped em BRL, com substituição por mês e integração opcional ao cálculo de Disponível Seguro;
 - simulador “Posso comprar?” do Incremento 6, somente leitura, com impacto hipotético, compromissos derivados e premissas explícitas, sem persistência;
 - declarações owner-scoped de metas financeiras e valores protegidos, com leitura combinada e substituição idempotente no backend, sem progresso ou efeito financeiro;
+- consulta iOS de metas financeiras e valores protegidos pela FinancialAPI existente, com estados explícitos, acessibilidade e sem movimentação financeira;
 - XCTest/XCUITest e integração automatizada Simulator → API → PostgreSQL para os fluxos verificados de Expense, Income, CreditCard, CardPurchase, InstallmentPlan e simulação de compra;
 - health check operacional, configuração e shutdown gracioso;
 - testes nativos Go e smoke de API com Playwright/TypeScript;
