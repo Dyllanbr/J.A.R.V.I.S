@@ -346,7 +346,7 @@ func New(
 	monthlyBudgetRoutes := httpapi.NewMonthlyBudget(cfg.OwnerID, setMonthlyBudget, getMonthlyBudget)
 	financialGoalsRoutes := httpapi.NewFinancialGoals(cfg.OwnerID, listFinancialGoals, replaceFinancialGoal, replaceProtectedValue)
 	purchaseSimulationRoutes := httpapi.NewPurchaseSimulation(cfg.OwnerID, simulatePurchase)
-	applicationInstance.server = httpserver.New(
+	server := httpserver.New(
 		cfg.HTTPAddress,
 		logger,
 		financialRoutes,
@@ -362,6 +362,25 @@ func New(
 		financialGoalsRoutes,
 		purchaseSimulationRoutes,
 	)
+	if cfg.AuthenticationEnabled {
+		authenticationRepository, err := transactionspostgres.NewAuthenticationRepository(pool, postgresConfig.OperationTimeout)
+		if err != nil {
+			pool.Close()
+			return nil, err
+		}
+		authenticatePrincipal, err := application.NewAuthenticatePrincipal(authenticationRepository)
+		if err != nil {
+			pool.Close()
+			return nil, err
+		}
+		authenticationMiddleware, err := httpapi.NewAuthenticationMiddleware(cfg.OwnerID, authenticatePrincipal)
+		if err != nil {
+			pool.Close()
+			return nil, err
+		}
+		server.Handler = authenticationMiddleware.Wrap(server.Handler)
+	}
+	applicationInstance.server = server
 	return applicationInstance, nil
 }
 

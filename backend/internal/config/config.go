@@ -17,16 +17,18 @@ const (
 )
 
 var (
-	ErrInvalidFinancialAPIEnabled = errors.New("JARVIS_FINANCIAL_API_ENABLED: must be true or false")
-	ErrMissingOwnerID             = errors.New("JARVIS_OWNER_ID: is required when the financial API is enabled")
+	ErrInvalidFinancialAPIEnabled   = errors.New("JARVIS_FINANCIAL_API_ENABLED: must be true or false")
+	ErrInvalidAuthenticationEnabled = errors.New("JARVIS_AUTHENTICATION_ENABLED: must be true or false")
+	ErrMissingOwnerID               = errors.New("JARVIS_OWNER_ID: is required when the financial API is enabled")
 )
 
 // Config contains the process configuration required by the foundation.
 type Config struct {
-	HTTPAddress         string
-	ShutdownTimeout     time.Duration
-	FinancialAPIEnabled bool
-	OwnerID             string
+	HTTPAddress           string
+	ShutdownTimeout       time.Duration
+	FinancialAPIEnabled   bool
+	AuthenticationEnabled bool
+	OwnerID               string
 }
 
 // FromEnv loads and validates configuration from environment variables.
@@ -63,6 +65,14 @@ func FromEnv() (Config, error) {
 		return Config{}, ErrInvalidFinancialAPIEnabled
 	}
 	if cfg.FinancialAPIEnabled {
+		switch enabled := os.Getenv("JARVIS_AUTHENTICATION_ENABLED"); enabled {
+		case "", "false":
+			cfg.AuthenticationEnabled = false
+		case "true":
+			cfg.AuthenticationEnabled = true
+		default:
+			return Config{}, ErrInvalidAuthenticationEnabled
+		}
 		cfg.OwnerID = os.Getenv("JARVIS_OWNER_ID")
 		if cfg.OwnerID == "" {
 			return Config{}, ErrMissingOwnerID
