@@ -1,7 +1,7 @@
 # Product Book do J.A.R.V.I.S.
 
 - Maturidade documental: **Proposed**
-- Estado das capacidades: **misto** — Incrementos 1, 2, 3A, 3B, 3C e 5, além das subcapacidades 4A e 4B, **Verified**; demais capacidades futuras **Planned**
+- Estado das capacidades: **misto** — Incrementos 1, 2, 3A, 3B, 3C e 5, além das subcapacidades 4A e 4B e do simulador “Posso comprar?” do Incremento 6, **Verified**; demais capacidades futuras **Planned**
 
 ## Propósito do documento
 
@@ -224,6 +224,18 @@ O sistema agora:
 
 O incremento não implementa categorias de orçamento, rollover, metas, alertas, pagamentos, baixa financeira, Statement completo ou qualquer fórmula de Disponível Seguro baseada em dados não confirmados.
 
+## Estado atual — Simulador “Posso comprar?” do Incremento 6
+
+O simulador está **Verified** dentro do escopo entregue. Ele:
+
+- recebe uma compra hipotética à vista ou parcelada, cartão ativo e período civil explícito;
+- compara o Safe Available confirmado com o impacto dos compromissos hipotéticos dentro do período;
+- apresenta valor projetado, impacto e compromissos derivados com premissas explícitas;
+- não cria Expense, InstallmentPlan, pagamento, auditoria ou reserva de idempotência;
+- preserva owner server-side, valores em minor units/BRL e a composição FinancialAPI existente.
+
+Metas financeiras, valores protegidos, margem pessoal e aconselhamento contextual permanecem **Planned**. O usuário continua responsável pela decisão e o simulador não executa compras nem movimenta dinheiro.
+
 ## Visão futura
 
 As capacidades a seguir estão **Planned**. A presença nesta visão não define ordem, prazo, escopo técnico nem compromisso de entrega:
@@ -231,8 +243,7 @@ As capacidades a seguir estão **Planned**. A presença nesta visão não define
 - categorias customizadas e reclassificação;
 - Statement/faturas completas;
 - compromissos futuros além dos InstallmentPlans implementados;
-- metas;
-- simulador “Posso comprar?”;
+- metas e valores protegidos;
 - autenticação;
 - passkeys;
 - Face ID;

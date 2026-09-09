@@ -34,6 +34,8 @@ O backend é um único processo Go organizado como monólito modular. Por padrã
 | API REST/OpenAPI, cliente iOS e E2E real de cartões/parcelas | Verificados pelas subcapacidades 4A/4B |
 | `SafeAvailable`, `MonthlyBudget`, migration 009 e leitura owner-scoped | Verificados pelo Incremento 5 |
 | API REST/OpenAPI, cliente iOS e E2E real de orçamento/Disponível Seguro | Verificados pelo Incremento 5 |
+| `PurchaseSimulation` Domain/Application e leitura combinada | Verificados pelo simulador do Incremento 6 |
+| API REST/OpenAPI, cliente iOS e E2E real de simulação de compra | Verificados pelo simulador do Incremento 6 |
 | Terraform/nuvem | Planejado, sem configuração |
 
 ## Direção de dependências
@@ -75,6 +77,8 @@ A migration 009 adiciona `monthly_budgets`, com chave owner-scoped `(user_id, mo
 
 `SafeAvailable` é uma projeção read-only calculada em memória a partir de um snapshot consistente. O cálculo usa período civil explícito, saldo disponível, receitas e despesas confirmadas e compromissos derivados de `InstallmentPlan` e `Recurrence`: `saldo + receitas − despesas − compromissos`. Quando há orçamento cobrindo o período, o resultado é limitado por `orçamento − despesas − compromissos`; quando não há orçamento, a ausência é retornada explicitamente como `BUDGET`. Nenhuma leitura cria `Expense`, pagamento ou evento de auditoria.
 
+`PurchaseSimulation` é uma projeção read-only sobre esse snapshot. A aplicação valida uma compra hipotética à vista ou parcelada, reutiliza o ciclo e o schedule civil do cartão, adiciona apenas linhas efêmeras de compromisso dentro do período e calcula baseline, projected, impact e assumptions. O adapter PostgreSQL lê cartão e snapshot financeiro numa única transação; a simulação não grava `Expense`, `InstallmentPlan`, auditoria ou idempotência.
+
 Os adapters HTTP e PostgreSQL expõem somente os contratos aprovados para cartões, planos, SafeAvailable e MonthlyBudget. As camadas permanecem separadas: Domain define as invariantes e projeções; Application orquestra preview, registro, replay, cancelamento e cálculos por ports mínimas; HTTP traduz requests/responses; PostgreSQL executa persistência owner-scoped e atômica; `randomid` gera identificadores opacos quando necessário. A composição conecta essas camadas sem dependências invertidas.
 
 O cliente iOS segue uma direção igualmente curta:
@@ -83,7 +87,7 @@ O cliente iOS segue uma direção igualmente curta:
 SwiftUI Views -> View Models -> FinancialAPI -> URLSession -> backend
 ```
 
-Para as subcapacidades 4A/4B e o Incremento 5, a composição real segue `SwiftUI → FinancialAPI → API Go → PostgreSQL`. O cliente suporta CreditCard, compra à vista, compra parcelada, InstallmentPlan, SafeAvailable e MonthlyBudget, incluindo os fluxos explícitos de cada contrato. O owner permanece definido no servidor; o app não executa pagamentos e não persiste parcelas futuras como Expenses.
+Para as subcapacidades 4A/4B, o Incremento 5 e a subcapacidade 6A, a composição real segue `SwiftUI → FinancialAPI → API Go → PostgreSQL`. O cliente suporta CreditCard, compra à vista, compra parcelada, InstallmentPlan, SafeAvailable, MonthlyBudget e simulação de compra, incluindo os fluxos explícitos de cada contrato. O owner permanece definido no servidor; o app não executa pagamentos e não persiste parcelas futuras como Expenses.
 
 Views não montam JSON; features dependem da abstração pequena `FinancialAPI`, e o cliente concreto concentra DTOs/HTTP discriminados por `EXPENSE`/`INCOME` e os contratos próprios de `Recurrence` e `RecurrenceSuggestion`. A composição fica em `JARVISApp`/`AppModel`, sem singleton ou container de DI. `CategoryCatalogModel` pertence ao `AppModel`, mantém uma única Task compartilhada de catálogo e não transfere ownership do fetch para as Tasks efêmeras das Views. Parsing BRL inteiro, codec temporal e data civil de Recurrence têm responsabilidades nomeadas. O preview devolvido pelo servidor congela a semântica revisada antes da confirmação; alterações no draft invalidam respostas antigas por geração. A mesma chave idempotente permanece em memória durante retries transitórios; edição ou troca de tipo inicia nova tentativa, e erros determinísticos `400`/`409` retornam à edição em vez de oferecer retry infinito.
 
@@ -91,7 +95,7 @@ Views não montam JSON; features dependem da abstração pequena `FinancialAPI`,
 
 `RecurrenceSuggestionsViewModel` mantém coordenação equivalente para listagem, preview e dismiss, coalescendo ações repetidas e impedindo respostas antigas de ressuscitar sugestões removidas ou substituir evidência mais nova. A área iOS continua com três tabs: sugestões aparecem acima das recorrências confirmadas dentro de `tab.recurrences`. Revisar uma sugestão usa o preview server-side e só entra no fluxo canônico de criação após `Confirm`; “Agora não” exige decisão explícita e persiste somente a suppression.
 
-O harness iOS possui dois modos explícitos: stub `DEBUG` para regressão de UI e real para Simulator → app → URLSession → backend → PostgreSQL. O modo real não possui fallback e exige uma pós-condição no banco. Em `RootView`, um `UITabBarController` nativo hospeda Register, History e Recurrences em controllers SwiftUI separados; cada controller possui seu próprio `UITabBarItem` e identifier semântico, sem associação por posição, copy, símbolo ou temporização. O terceiro tab usa `tab.recurrences` e preserva a mesma estratégia de instrumentação acessível das áreas anteriores.
+O harness iOS possui dois modos explícitos: stub `DEBUG` para regressão de UI e real para Simulator → app → URLSession → backend → PostgreSQL. O modo real não possui fallback e exige uma pós-condição no banco. Em `RootView`, um `UITabBarController` nativo hospeda Register, History e Recurrences em controllers SwiftUI separados; cada controller possui seu próprio `UITabBarItem` e identifier semântico, sem associação por posição, copy, símbolo ou temporização. O terceiro tab usa `tab.recurrences` e preserva a mesma estratégia de instrumentação acessível das áreas anteriores. A simulação de compra é acessada pela área de Cartões e não cria uma nova tab.
 
 Domínio e casos de uso não poderão importar HTTP, SQL, SDKs de IA ou integrações. Interfaces deverão nascer de necessidades reais dos casos de uso; não serão criadas antecipadamente. Handlers traduzirão entrada e saída e não conterão regras de negócio nem SQL.
 

@@ -9,7 +9,7 @@ Backend Go em monólito modular. O processo permanece health-only por padrão; q
 - `internal/config`: configuração explícita por ambiente.
 - `internal/platform/httpserver`: adaptador HTTP e limites do servidor.
 - `internal/modules/transactions/domain`: `Money`, `CategoryID` opcional, os agregados separados `Expense`/`Income`, `CreditCard` e `InstallmentPlan`, e os read models de SafeAvailable/MonthlyBudget, sem infraestrutura.
-- `internal/modules/transactions/application`: catálogo de categorias, preview, registro confirmado/idempotente, CardPurchase, cancelamento de InstallmentPlan, projeção mensal mista, SafeAvailable e MonthlyBudget com portas consumidoras mínimas.
+- `internal/modules/transactions/application`: catálogo de categorias, preview, registro confirmado/idempotente, CardPurchase, cancelamento de InstallmentPlan, projeção mensal mista, SafeAvailable, MonthlyBudget e PurchaseSimulation com portas consumidoras mínimas.
 - `internal/modules/transactions/adapters/httpapi`: DTOs, decoding estrito e mapeamento HTTP fino.
 - `internal/modules/transactions/adapters/postgres`: catálogo read-only, persistência Expense/Income/CreditCard/InstallmentPlan/MonthlyBudget, command stores idempotentes e readers mensais/SafeAvailable.
 - `internal/modules/transactions/adapters/randomid`: geração criptográfica de IDs opacos de Expense, Income, CreditCard e InstallmentPlan.
@@ -21,6 +21,8 @@ Os Incrementos 1 — Despesas, 2 — Receitas, 3A, 3B, 3C e 5 — Orçamento e D
 O Incremento 4B acrescenta compra à vista ou parcelada vinculada a CreditCard, Expense total, InstallmentPlan, schedule derivado, preview/review/confirm, listagem/detalhe, cancellation preview/cancelamento, replay e idempotência. A persistência correspondente está na migration 008; parcelas futuras não são inseridas como novas Expenses e nenhuma operação movimenta dinheiro.
 
 O Incremento 5 acrescenta o cálculo read-only de SafeAvailable para período civil explícito e o MonthlyBudget owner-scoped por mês `YYYY-MM`. A fórmula financeira é `saldo + receitas − despesas − compromissos`; com orçamento cobrindo todo o período, o resultado é limitado pelo restante do orçamento. A migration 009 persiste somente o orçamento mensal, e nenhuma leitura cria Expense futura ou movimentação financeira.
+
+O simulador “Posso comprar?” do Incremento 6 acrescenta `PurchaseSimulation`: uma leitura hipotética de compra à vista ou parcelada que compara baseline e impacto projetado usando o snapshot financeiro confirmado. O endpoint é `POST /v1/purchase-simulations`; a operação é owner-scoped pelo servidor, não persiste Expense, InstallmentPlan, auditoria ou idempotência e não movimenta dinheiro. Metas e valores protegidos continuam planejados no Incremento 6.
 
 O módulo Go usa o caminho local `jarvis/backend` enquanto o repositório não possui URL canônica. Uma URL de módulo pública deve ser decidida antes da primeira publicação externa.
 

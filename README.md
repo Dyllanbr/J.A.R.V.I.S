@@ -1,6 +1,6 @@
 # J.A.R.V.I.S.
 
-Monorepo do J.A.R.V.I.S., um assessor financeiro pessoal em construção. Os Incrementos 1, 2, 3A, 3B, 3C, 4A, 4B e 5 estão verificados dentro de seus escopos e possuem evidências de auditoria e CI correspondentes.
+Monorepo do J.A.R.V.I.S., um assessor financeiro pessoal em construção. Os Incrementos 1, 2, 3A, 3B, 3C, 4A, 4B e 5 estão verificados dentro de seus escopos; o simulador “Posso comprar?” do Incremento 6 também está verificado com evidências de auditoria e CI correspondentes.
 
 > “O J.A.R.V.I.S. é uma plataforma de organização, acompanhamento, análise e aconselhamento financeiro pessoal. Ele não inicia, autoriza ou executa transações financeiras ou pagamentos.”
 
@@ -21,7 +21,8 @@ Implementado:
 - fluxos iOS de compra no cartão e consulta/cancelamento de InstallmentPlan, com preview, revisão, confirmação explícita e E2E real;
 - projeção read-only de Scheduled Commitments e Disponível Seguro, com período civil explícito, breakdown determinístico e compromissos de InstallmentPlan/Recurrence;
 - orçamento mensal owner-scoped em BRL, com substituição por mês e integração opcional ao cálculo de Disponível Seguro;
-- XCTest/XCUITest e integração automatizada Simulator → API → PostgreSQL para os fluxos verificados de Expense, Income, CreditCard, CardPurchase e InstallmentPlan;
+- simulador “Posso comprar?” do Incremento 6, somente leitura, com impacto hipotético, compromissos derivados e premissas explícitas, sem persistência;
+- XCTest/XCUITest e integração automatizada Simulator → API → PostgreSQL para os fluxos verificados de Expense, Income, CreditCard, CardPurchase, InstallmentPlan e simulação de compra;
 - health check operacional, configuração e shutdown gracioso;
 - testes nativos Go e smoke de API com Playwright/TypeScript;
 - contrato OpenAPI 3.1 validado semanticamente;
