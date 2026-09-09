@@ -1,6 +1,6 @@
 # Backend
 
-Backend Go em monólito modular. O processo permanece health-only por padrão; quando habilitado explicitamente, compõe os endpoints financeiros para despesas, receitas, cartões, compromissos, orçamento e Disponível Seguro com PostgreSQL e um owner temporário derivado pelo servidor.
+Backend Go em monólito modular. O processo permanece health-only por padrão; quando habilitado explicitamente, compõe os endpoints financeiros para despesas, receitas, cartões, compromissos, orçamento e Disponível Seguro com PostgreSQL e um owner temporário derivado pelo servidor. A autenticação HTTP por sessão é opt-in e não substitui os fluxos de emissão, recovery ou multiusuário ainda planejados.
 
 ## Pacotes
 
@@ -11,6 +11,7 @@ Backend Go em monólito modular. O processo permanece health-only por padrão; q
 - `internal/modules/transactions/domain`: `Money`, `CategoryID` opcional, os agregados separados `Expense`/`Income`, `CreditCard` e `InstallmentPlan`, e os read models de SafeAvailable/MonthlyBudget/FinancialGoal/ProtectedValue, sem infraestrutura.
 - `internal/modules/transactions/application`: catálogo de categorias, preview, registro confirmado/idempotente, CardPurchase, cancelamento de InstallmentPlan, projeção mensal mista, SafeAvailable, MonthlyBudget, PurchaseSimulation e declarações de metas/valores protegidos com portas consumidoras mínimas.
 - `internal/modules/transactions/adapters/httpapi`: DTOs, decoding estrito e mapeamento HTTP fino.
+- `internal/modules/transactions/adapters/httpapi`: DTOs, decoding estrito, mapeamento HTTP fino e fronteira opt-in de autenticação.
 - `internal/modules/transactions/adapters/postgres`: catálogo read-only, persistência Expense/Income/CreditCard/InstallmentPlan/MonthlyBudget/FinancialGoal/ProtectedValue, command stores idempotentes e readers mensais/SafeAvailable.
 - `internal/modules/transactions/adapters/randomid`: geração criptográfica de IDs opacos de Expense, Income, CreditCard e InstallmentPlan.
 - `internal/platform/postgres`: configuração, pool e migrations fora do domínio.
@@ -31,7 +32,8 @@ O módulo Go usa o caminho local `jarvis/backend` enquanto o repositório não p
 - `JARVIS_HTTP_ADDRESS`: padrão `127.0.0.1:8080`; portas de 1 a 65535. Porta `0` é reservada a harnesses controlados de teste.
 - `JARVIS_SHUTDOWN_TIMEOUT`: padrão `10s`, maior que zero e no máximo `30s`.
 - `JARVIS_FINANCIAL_API_ENABLED`: `false`/ausente mantém health-only; `true` habilita a composição financeira.
-- `JARVIS_OWNER_ID`: obrigatório e validado quando a API financeira está habilitada; é contexto single-owner temporário, não autenticação.
+- `JARVIS_AUTHENTICATION_ENABLED`: `false`/ausente preserva o comportamento local atual; `true` exige um bearer opaco validado por sessão e vinculado ao owner server-side.
+- `JARVIS_OWNER_ID`: obrigatório e validado quando a API financeira está habilitada; é o owner server-side do contexto single-owner temporário, ao qual o principal autenticado opt-in deve corresponder.
 
 Configuração carregada somente por comandos/adapters PostgreSQL explícitos:
 
@@ -43,7 +45,7 @@ Configuração carregada somente por comandos/adapters PostgreSQL explícitos:
 
 Valores inválidos geram erros categóricos sem repetir o conteúdo bruto. O modo health-only não carrega configuração PostgreSQL; quando o modo financeiro está habilitado, o pool é obrigatório, usado pelos adapters e fechado no shutdown.
 
-O servidor define timeouts para headers, leitura, escrita e conexões ociosas. O primeiro `SIGINT`/`SIGTERM` inicia shutdown gracioso; um segundo sinal volta ao comportamento padrão. O endpoint `GET /healthz` é exclusivamente operacional e não expõe dependências internas.
+O servidor define timeouts para headers, leitura, escrita e conexões ociosas. O primeiro `SIGINT`/`SIGTERM` inicia shutdown gracioso; um segundo sinal volta ao comportamento padrão. O endpoint `GET /healthz` é exclusivamente operacional e não expõe dependências internas. Com autenticação habilitada, `/healthz` permanece público, as demais rotas exigem uma única credencial bearer válida e o subject autenticado precisa coincidir com `JARVIS_OWNER_ID`; respostas 401/403 são sanitizadas.
 
 ## Persistência local
 
