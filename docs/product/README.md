@@ -64,7 +64,7 @@ Uma declaração de visão não comprova planejamento detalhado. Um item planeja
 - [Princípios de design](design-principles.md) — direção visual, experiência, acessibilidade e critérios para um futuro design system; **Proposed**, capacidade **Planned**.
 - [Roadmap estratégico](roadmap.md) — sequência de evolução, resultados, dependências e gates sem duplicar o backlog; **Proposed**, capacidades em estado **misto**.
 
-Os Incrementos 1 — Despesas, 2 — Receitas, 3A — Categorias e filtros do histórico, 3B — Recorrências confirmadas e assinaturas e 3C — Detecção e sugestão de recorrências estão **Verified**, assim como as subcapacidades 4A — CreditCard e 4B — CardPurchase + InstallmentPlan e o Incremento 5 — Orçamento mensal e Disponível Seguro. Todas possuem implementação mergeada e evidências compatíveis com os quality gates aplicáveis. O restante do Incremento 4 e a visão futura continuam separados como capacidades planejadas no Product Book.
+Os Incrementos 1 — Despesas, 2 — Receitas, 3A — Categorias e filtros do histórico, 3B — Recorrências confirmadas e assinaturas e 3C — Detecção e sugestão de recorrências estão **Verified**, assim como as subcapacidades 4A — CreditCard e 4B — CardPurchase + InstallmentPlan, o Incremento 5 — Orçamento mensal e Disponível Seguro e o simulador “Posso comprar?” do Incremento 6. Todas possuem implementação mergeada e evidências compatíveis com os quality gates aplicáveis. Metas e valores protegidos do Incremento 6, o restante do Incremento 4 e a visão futura continuam separados como capacidades planejadas no Product Book.
 
 ## Regra de manutenção
 

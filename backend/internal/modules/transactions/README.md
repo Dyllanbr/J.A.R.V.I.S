@@ -22,6 +22,7 @@
 | `CardPurchase`, `InstallmentPlan`, migration 008 e cancelamento | VERIFICADO | Incremento 4B mergeado no PR #75, com auditoria Stage 4 aprovada |
 | `SafeAvailable` e projeção de compromissos/lançamentos confirmados | VERIFICADO | Incremento 5 com snapshot read-only, HTTP, iOS e E2E real |
 | `MonthlyBudget`, migration 009 e substituição owner/mês | VERIFICADO | Incremento 5 com PostgreSQL, contrato e pós-condições E2E |
+| `PurchaseSimulation` e simulação read-only de compra | VERIFICADO | Incremento 6 com snapshot combinado, HTTP, iOS e E2E real |
 | Demais canais | PLANEJADO | não implementados |
 
 O estado **VERIFICADO** depende de quality gate e revisão independente conforme a Definition of Done; não é atribuído autonomamente por esta implementação.
@@ -49,6 +50,8 @@ Os dois Previews reutilizam normalização/canonicalização sem ID, Clock ou pe
 `CategoryCatalog` é uma port pequena para lookup/listagem. Preview e Record consultam o catálogo somente quando `CategoryID` está presente e falham fechados para ID desconhecido, tipo incompatível ou catálogo indisponível. `ListCategories` apenas projeta o catálogo read-only. `MonthlyTransaction` carrega `CategoryID` opcional sem display name, totais, agrupamento ou lógica de escrita.
 
 `CardPurchase` é um comando de orquestração da aplicação, não um aggregate persistido. `PreviewCardPurchase` calcula ciclo do cartão e parcelas sem ID, Clock ou persistência; `RecordCardPurchase` exige confirmação explícita, mantém replay/idempotência e delega a escrita atômica à port específica. `ListInstallmentPlans`, detalhe, cancellation preview e `CancelInstallmentPlan` permanecem owner-scoped; o cancelamento não altera a Expense.
+
+`PurchaseSimulation` é um caso de uso somente leitura que consome uma porta de snapshot combinada para cartão e dados financeiros confirmados. A compra hipotética pode ser à vista ou parcelada; o resultado reutiliza `SafeAvailable` e acrescenta apenas compromissos efêmeros no período explícito. Não há ID, Clock, store, auditoria, idempotência ou Expense futura.
 
 ## Adapter PostgreSQL
 
