@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: J.A.R.V.I.S. API
-  version: 0.13.0
+  version: 0.14.0
   description: >-
     API da fundação e dos incrementos financeiros de despesas, receitas,
     categorias, recorrências manuais, sugestões determinísticas e referências organizacionais de cartões. Criar uma transaction registra no
@@ -952,6 +952,112 @@ paths:
           $ref: "#/components/responses/MethodNotAllowed"
         "500":
           $ref: "#/components/responses/InternalError"
+  /v1/financial-goals:
+    get:
+      operationId: listFinancialGoals
+      summary: Lista metas financeiras e valores protegidos declarados
+      description: >-
+        Retorna as declarações owner-scoped de metas financeiras e valores
+        protegidos. A leitura é somente declarativa: não calcula progresso,
+        não altera Safe Available, não executa pagamentos e não movimenta
+        dinheiro. A lista pode ser vazia.
+      tags: [Transactions]
+      responses:
+        "200":
+          description: Declarações do owner, em ordem determinística
+          headers:
+            Cache-Control:
+              $ref: "#/components/headers/CacheControl"
+            X-Content-Type-Options:
+              $ref: "#/components/headers/ContentTypeOptions"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FinancialGoalsResponse"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowed"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /v1/financial-goals/{goalId}:
+    put:
+      operationId: replaceFinancialGoal
+      summary: Substitui uma meta financeira declarada
+      description: >-
+        Substitui de forma idempotente a declaração owner-scoped identificada
+        pelo path. A operação não registra progresso, despesa, pagamento,
+        auditoria ou efeito no Safe Available.
+      tags: [Transactions]
+      parameters:
+        - name: goalId
+          in: path
+          required: true
+          schema:
+            $ref: "#/components/schemas/FinancialGoalId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FinancialGoalRequest"
+      responses:
+        "200":
+          description: Meta financeira substituída
+          headers:
+            Cache-Control:
+              $ref: "#/components/headers/CacheControl"
+            X-Content-Type-Options:
+              $ref: "#/components/headers/ContentTypeOptions"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FinancialGoal"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowed"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /v1/protected-values/{valueId}:
+    put:
+      operationId: replaceProtectedValue
+      summary: Substitui um valor protegido declarado
+      description: >-
+        Substitui de forma idempotente a declaração owner-scoped identificada
+        pelo path. O valor é apenas uma declaração e não reserva saldo, altera
+        Safe Available ou executa movimentação financeira.
+      tags: [Transactions]
+      parameters:
+        - name: valueId
+          in: path
+          required: true
+          schema:
+            $ref: "#/components/schemas/ProtectedValueId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProtectedValueRequest"
+      responses:
+        "200":
+          description: Valor protegido substituído
+          headers:
+            Cache-Control:
+              $ref: "#/components/headers/CacheControl"
+            X-Content-Type-Options:
+              $ref: "#/components/headers/ContentTypeOptions"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProtectedValue"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowed"
+        "500":
+          $ref: "#/components/responses/InternalError"
   /v1/transactions:
     post:
       operationId: recordTransaction
@@ -1433,6 +1539,103 @@ components:
           $ref: "#/components/schemas/CivilMonth"
         amount:
           $ref: "#/components/schemas/MonthlyBudgetAmount"
+    FinancialGoalId:
+      type: string
+      minLength: 1
+      maxLength: 128
+      description: Identificador opaco da declaração de meta financeira.
+    ProtectedValueId:
+      type: string
+      minLength: 1
+      maxLength: 128
+      description: Identificador opaco da declaração de valor protegido.
+    FinancialGoalAmount:
+      type: object
+      additionalProperties: false
+      required: [minor, currency]
+      properties:
+        minor:
+          type: integer
+          format: int64
+          minimum: 1
+          description: Meta BRL exata em centavos; deve ser positiva.
+        currency:
+          type: string
+          const: BRL
+    ProtectedValueAmount:
+      type: object
+      additionalProperties: false
+      required: [minor, currency]
+      properties:
+        minor:
+          type: integer
+          format: int64
+          minimum: 0
+          description: Valor protegido BRL exato em centavos; zero é permitido.
+        currency:
+          type: string
+          const: BRL
+    FinancialGoalRequest:
+      type: object
+      additionalProperties: false
+      required: [title, targetAmount]
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 200
+        targetAmount:
+          $ref: "#/components/schemas/FinancialGoalAmount"
+    ProtectedValueRequest:
+      type: object
+      additionalProperties: false
+      required: [label, amount]
+      properties:
+        label:
+          type: string
+          minLength: 1
+          maxLength: 200
+        amount:
+          $ref: "#/components/schemas/ProtectedValueAmount"
+    FinancialGoal:
+      type: object
+      additionalProperties: false
+      required: [id, title, targetAmount]
+      properties:
+        id:
+          $ref: "#/components/schemas/FinancialGoalId"
+        title:
+          type: string
+          minLength: 1
+          maxLength: 200
+        targetAmount:
+          $ref: "#/components/schemas/FinancialGoalAmount"
+    ProtectedValue:
+      type: object
+      additionalProperties: false
+      required: [id, label, amount]
+      properties:
+        id:
+          $ref: "#/components/schemas/ProtectedValueId"
+        label:
+          type: string
+          minLength: 1
+          maxLength: 200
+        amount:
+          $ref: "#/components/schemas/ProtectedValueAmount"
+    FinancialGoalsResponse:
+      type: object
+      additionalProperties: false
+      required: [goals, protectedValues]
+      properties:
+        goals:
+          type: array
+          items:
+            $ref: "#/components/schemas/FinancialGoal"
+        protectedValues:
+          type: array
+          items:
+            $ref: "#/components/schemas/ProtectedValue"
     CreditCardId:
       type: string
       pattern: "^card_[0-9a-f]{32}$"
