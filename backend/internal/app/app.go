@@ -318,12 +318,33 @@ func New(
 		pool.Close()
 		return nil, err
 	}
+	financialGoalsRepository, err := transactionspostgres.NewFinancialGoalsRepository(pool, postgresConfig.OperationTimeout)
+	if err != nil {
+		pool.Close()
+		return nil, err
+	}
+	listFinancialGoals, err := application.NewListFinancialGoals(financialGoalsRepository)
+	if err != nil {
+		pool.Close()
+		return nil, err
+	}
+	replaceFinancialGoal, err := application.NewReplaceFinancialGoal(financialGoalsRepository)
+	if err != nil {
+		pool.Close()
+		return nil, err
+	}
+	replaceProtectedValue, err := application.NewReplaceProtectedValue(financialGoalsRepository)
+	if err != nil {
+		pool.Close()
+		return nil, err
+	}
 	cardPurchaseRoutes := httpapi.NewCardPurchase(cfg.OwnerID, previewCardPurchase, recordCardPurchase)
 	cardStatementRoutes := httpapi.NewCardStatement(cfg.OwnerID, getCardStatement)
 	installmentPlanRoutes := httpapi.NewInstallmentPlan(cfg.OwnerID, listInstallmentPlans, getInstallmentPlan, previewInstallmentCancellation, cancelInstallmentPlan)
 	scheduledCommitmentRoutes := httpapi.NewScheduledCommitments(cfg.OwnerID, listScheduledCommitments)
 	safeAvailableRoutes := httpapi.NewSafeAvailable(cfg.OwnerID, calculateSafeAvailable)
 	monthlyBudgetRoutes := httpapi.NewMonthlyBudget(cfg.OwnerID, setMonthlyBudget, getMonthlyBudget)
+	financialGoalsRoutes := httpapi.NewFinancialGoals(cfg.OwnerID, listFinancialGoals, replaceFinancialGoal, replaceProtectedValue)
 	purchaseSimulationRoutes := httpapi.NewPurchaseSimulation(cfg.OwnerID, simulatePurchase)
 	applicationInstance.server = httpserver.New(
 		cfg.HTTPAddress,
@@ -338,6 +359,7 @@ func New(
 		scheduledCommitmentRoutes,
 		safeAvailableRoutes,
 		monthlyBudgetRoutes,
+		financialGoalsRoutes,
 		purchaseSimulationRoutes,
 	)
 	return applicationInstance, nil
