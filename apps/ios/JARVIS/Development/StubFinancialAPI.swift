@@ -34,6 +34,12 @@ final class StubFinancialAPI: FinancialAPI {
         case error
     }
 
+    private enum FinancialGoalsScenario: String {
+        case normal
+        case empty
+        case error
+    }
+
     private struct StoredRecurrenceCreate {
         let request: RecurrenceRequest
         let recurrence: Recurrence
@@ -88,6 +94,7 @@ final class StubFinancialAPI: FinancialAPI {
     private var cardStatementErrorDelivered = false
     private let safeAvailableScenario: SafeAvailableScenario
     private var safeAvailableErrorDelivered = false
+    private let financialGoalsScenario: FinancialGoalsScenario
 
     init(environment: [String: String] = ProcessInfo.processInfo.environment) {
         suggestionScenario = SuggestionScenario(
@@ -103,6 +110,9 @@ final class StubFinancialAPI: FinancialAPI {
         safeAvailableScenario = SafeAvailableScenario(
             rawValue: environment["JARVIS_IOS_SAFE_AVAILABLE_SCENARIO"] ?? "positive"
         ) ?? .positive
+        financialGoalsScenario = FinancialGoalsScenario(
+            rawValue: environment["JARVIS_IOS_FINANCIAL_GOALS_SCENARIO"] ?? "normal"
+        ) ?? .normal
         let active = Recurrence(
             id: "rec_ui_synthetic_active",
             description: "Academia sintética",
@@ -658,6 +668,51 @@ final class StubFinancialAPI: FinancialAPI {
             hypotheticalCommitments: [line],
             assumptions: [.notPersisted, .noExpenseCreated]
         )
+    }
+
+    func financialGoals() async throws -> FinancialGoalsResponse {
+        try await Task.sleep(for: .milliseconds(80))
+        switch financialGoalsScenario {
+        case .error:
+            throw FinancialAPIError.serviceUnavailable
+        case .empty:
+            return try FinancialGoalsResponse(goals: [], protectedValues: [])
+        case .normal:
+            return try FinancialGoalsResponse(
+                goals: [
+                    try FinancialGoal(
+                        id: "goal_ui_synthetic_001",
+                        title: "Viagem sintética",
+                        targetAmount: try FinancialGoalAmount(minor: 250_000)
+                    )
+                ],
+                protectedValues: [
+                    try ProtectedValue(
+                        id: "value_ui_synthetic_001",
+                        label: "Reserva de segurança",
+                        amount: try ProtectedValueAmount(minor: 100_000)
+                    )
+                ]
+            )
+        }
+    }
+
+    func replaceFinancialGoal(
+        id: String,
+        title: String,
+        targetAmount: FinancialGoalAmount
+    ) async throws -> FinancialGoal {
+        try await Task.sleep(for: .milliseconds(80))
+        return try FinancialGoal(id: id, title: title, targetAmount: targetAmount)
+    }
+
+    func replaceProtectedValue(
+        id: String,
+        label: String,
+        amount: ProtectedValueAmount
+    ) async throws -> ProtectedValue {
+        try await Task.sleep(for: .milliseconds(80))
+        return try ProtectedValue(id: id, label: label, amount: amount)
     }
 
     private func makeSafeAvailable(

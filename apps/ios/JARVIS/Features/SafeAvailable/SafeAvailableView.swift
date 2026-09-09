@@ -242,6 +242,7 @@ struct HistorySafeAvailableEntryView: View {
     @Bindable var model: HistoryViewModel
     let scheduledCommitments: ScheduledCommitmentsViewModel
     @Bindable var safeAvailable: SafeAvailableViewModel
+    let financialGoals: FinancialGoalsViewModel
     @State private var isPresentingSafeAvailable = false
 
     var body: some View {
@@ -270,7 +271,11 @@ struct HistorySafeAvailableEntryView: View {
             .padding(.horizontal)
             .padding(.top, 8)
             .accessibilityIdentifier("history.safeAvailable.entry")
-            HistoryView(model: model, scheduledCommitments: scheduledCommitments)
+            HistoryView(
+                model: model,
+                scheduledCommitments: scheduledCommitments,
+                financialGoals: financialGoals
+            )
         }
         .sheet(isPresented: $isPresentingSafeAvailable) {
             NavigationStack {

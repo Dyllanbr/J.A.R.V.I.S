@@ -197,6 +197,10 @@ class FinancialAPISpy: FinancialAPI {
     var installmentPlanDetailRequests: [String] = []
     var installmentPlanCancellationPreviewRequests: [String] = []
     var installmentPlanCancelRequests: [(id: String, expected: RecurrenceCivilDate, key: String)] = []
+    var financialGoalsRequestCount = 0
+    var financialGoalsResult: Result<FinancialGoalsResponse, Error> = .success(try! FinancialGoalsResponse(goals: [], protectedValues: []))
+    var financialGoalReplacementRequests: [(id: String, title: String, amount: FinancialGoalAmount)] = []
+    var protectedValueReplacementRequests: [(id: String, label: String, amount: ProtectedValueAmount)] = []
     var blockInstallmentPlanCancellationPreview = false
     private var cancellationPreviewStartWaiter: CheckedContinuation<Void, Never>?
     private var cancellationPreviewRelease: CheckedContinuation<Void, Never>?
@@ -402,6 +406,29 @@ class FinancialAPISpy: FinancialAPI {
         installmentPlanCancelRequests.append((id, expectedCancelledOn, idempotencyKey))
         guard !installmentPlanCancelResults.isEmpty else { throw FinancialAPIError.serviceUnavailable }
         return try installmentPlanCancelResults.removeFirst().get()
+    }
+
+    func financialGoals() async throws -> FinancialGoalsResponse {
+        financialGoalsRequestCount += 1
+        return try financialGoalsResult.get()
+    }
+
+    func replaceFinancialGoal(
+        id: String,
+        title: String,
+        targetAmount: FinancialGoalAmount
+    ) async throws -> FinancialGoal {
+        financialGoalReplacementRequests.append((id, title, targetAmount))
+        return try FinancialGoal(id: id, title: title, targetAmount: targetAmount)
+    }
+
+    func replaceProtectedValue(
+        id: String,
+        label: String,
+        amount: ProtectedValueAmount
+    ) async throws -> ProtectedValue {
+        protectedValueReplacementRequests.append((id, label, amount))
+        return try ProtectedValue(id: id, label: label, amount: amount)
     }
 
     func waitForInstallmentPlanCancellationPreviewStart() async {

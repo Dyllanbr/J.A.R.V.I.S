@@ -120,6 +120,7 @@ final class AppModel {
     let scheduledCommitments: ScheduledCommitmentsViewModel
     let safeAvailable: SafeAvailableViewModel
     let purchaseSimulation: PurchaseSimulationViewModel
+    let financialGoals: FinancialGoalsViewModel
 
     init(api: any FinancialAPI, now: Date = Date()) {
         let categories = CategoryCatalogModel(api: api)
@@ -145,6 +146,7 @@ final class AppModel {
         scheduledCommitments = ScheduledCommitmentsViewModel(api: api)
         safeAvailable = SafeAvailableViewModel(api: api)
         purchaseSimulation = PurchaseSimulationViewModel(api: api, now: now)
+        financialGoals = FinancialGoalsViewModel(api: api)
         registration = RegistrationViewModel(
             api: api,
             categories: categories,
