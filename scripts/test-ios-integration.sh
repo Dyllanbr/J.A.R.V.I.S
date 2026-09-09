@@ -122,9 +122,95 @@ SELECT (SELECT count(*) FROM transactions) || ':' || COALESCE((SELECT sum(amount
        (SELECT count(*) FROM installment_plan_audit_events) || '|' ||
        (SELECT count(*) FROM installment_plan_idempotency_records) || '|' ||
        (SELECT count(*) FROM card_purchase_idempotency_records) || '|' ||
-       (SELECT count(*) FROM monthly_budgets) || ':' || COALESCE((SELECT sum(amount_minor) FROM monthly_budgets), 0);
+       (SELECT count(*) FROM monthly_budgets) || ':' || COALESCE((SELECT sum(amount_minor) FROM monthly_budgets), 0) || '|' ||
+       (SELECT count(*) FROM financial_goals) || ':' || COALESCE((SELECT sum(target_amount_minor) FROM financial_goals), 0) || '|' ||
+       (SELECT count(*) FROM protected_values) || ':' || COALESCE((SELECT sum(amount_minor) FROM protected_values), 0);
 SQL
     }
+    financial_goals_base_url="${JARVIS_IOS_E2E_BASE_URL:?real API base URL is required}"
+    financial_goals_goal_id="goal_e2e_decl_001"
+    financial_goals_value_id="value_e2e_decl_001"
+    financial_goals_seed() {
+      local goal_status value_status
+      goal_status="$(curl --silent --show-error --output "$safe_available_temporary_dir/financial-goal-seed.json" --write-out '%{http_code}' \
+        --connect-timeout 2 --max-time 5 -X PUT \
+        -H 'Accept: application/json' -H 'Content-Type: application/json' \
+        --data '{"title":"Reserva beta","targetAmount":{"minor":250000,"currency":"BRL"}}' \
+        "$financial_goals_base_url/v1/financial-goals/$financial_goals_goal_id")"
+      if [[ "$goal_status" != 200 ]]; then
+        echo "Financial goal fixture returned HTTP $goal_status." >&2
+        return 1
+      fi
+      value_status="$(curl --silent --show-error --output "$safe_available_temporary_dir/protected-value-seed.json" --write-out '%{http_code}' \
+        --connect-timeout 2 --max-time 5 -X PUT \
+        -H 'Accept: application/json' -H 'Content-Type: application/json' \
+        --data '{"label":"Proteção beta","amount":{"minor":100000,"currency":"BRL"}}' \
+        "$financial_goals_base_url/v1/protected-values/$financial_goals_value_id")"
+      if [[ "$value_status" != 200 ]]; then
+        echo "Protected value fixture returned HTTP $value_status." >&2
+        return 1
+      fi
+      node - "$safe_available_temporary_dir/financial-goal-seed.json" "$safe_available_temporary_dir/protected-value-seed.json" <<'NODE'
+const fs = require('fs');
+const goal = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
+const value = JSON.parse(fs.readFileSync(process.argv[3], 'utf8'));
+if (goal.id !== 'goal_e2e_decl_001' || goal.title !== 'Reserva beta' || goal.targetAmount?.minor !== 250000 || goal.targetAmount?.currency !== 'BRL') process.exit(1);
+if (value.id !== 'value_e2e_decl_001' || value.label !== 'Proteção beta' || value.amount?.minor !== 100000 || value.amount?.currency !== 'BRL') process.exit(1);
+NODE
+    }
+    financial_goals_capture_response() {
+      local label="$1"
+      local output_file="$2"
+      local status
+      status="$(curl --silent --show-error --output "$output_file" --write-out '%{http_code}' \
+        --connect-timeout 2 --max-time 5 -H 'Accept: application/json' \
+        "$financial_goals_base_url/v1/financial-goals")"
+      if [[ "$status" != 200 ]]; then
+        echo "Financial goals $label request returned HTTP $status." >&2
+        return 1
+      fi
+    }
+    financial_goals_assert_loaded() {
+      node - "$1" <<'NODE'
+const fs = require('fs');
+const body = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
+if (!body || !Array.isArray(body.goals) || body.goals.length !== 1 || !Array.isArray(body.protectedValues) || body.protectedValues.length !== 1) process.exit(1);
+if (body.goals[0].id !== 'goal_e2e_decl_001' || body.goals[0].targetAmount?.minor !== 250000) process.exit(1);
+if (body.protectedValues[0].id !== 'value_e2e_decl_001' || body.protectedValues[0].amount?.minor !== 100000) process.exit(1);
+NODE
+    }
+    financial_goals_assert_empty() {
+      node - "$1" <<'NODE'
+const fs = require('fs');
+const body = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
+if (!body || !Array.isArray(body.goals) || body.goals.length !== 0 || !Array.isArray(body.protectedValues) || body.protectedValues.length !== 0) process.exit(1);
+if (JSON.stringify(body).includes('goal_e2e_decl_001') || JSON.stringify(body).includes('value_e2e_decl_001') || JSON.stringify(body).includes('Reserva beta') || JSON.stringify(body).includes('Proteção beta')) process.exit(1);
+NODE
+    }
+    financial_goals_xcodebuild_arguments=(
+      test
+      -project "$repository_root/apps/ios/JARVIS.xcodeproj"
+      -scheme JARVIS
+      -destination "platform=iOS Simulator,name=iPhone 15,OS=17.5"
+      -derivedDataPath "$safe_available_temporary_dir/DerivedData"
+      -parallel-testing-enabled NO
+      -maximum-concurrent-test-simulator-destinations 1
+      -enableCodeCoverage YES
+      CODE_SIGNING_ALLOWED=NO
+      JARVIS_IOS_TEST_MODE=real
+      "JARVIS_IOS_E2E_BASE_URL=$JARVIS_IOS_E2E_BASE_URL"
+      "JARVIS_IOS_E2E_DESCRIPTION=$JARVIS_IOS_E2E_DESCRIPTION"
+      "JARVIS_IOS_E2E_SUGGESTION_DESCRIPTION=${JARVIS_IOS_E2E_SUGGESTION_DESCRIPTION:-}"
+      "JARVIS_IOS_E2E_SUGGESTION_STARTS_ON=${JARVIS_IOS_E2E_SUGGESTION_STARTS_ON:-}"
+    )
+    financial_goals_loaded_xcodebuild_arguments=(
+      "${financial_goals_xcodebuild_arguments[@]}"
+      -only-testing:JARVISUITests/JARVISUITests/testRealAPIFinancialGoalsDeclarationLifecycle
+    )
+    financial_goals_empty_xcodebuild_arguments=(
+      "${financial_goals_xcodebuild_arguments[@]}"
+      -only-testing:JARVISUITests/JARVISUITests/testRealAPIFinancialGoalsIsolatedOwnerIsEmpty
+    )
     xcodebuild_arguments=(
       test
       -project "$repository_root/apps/ios/JARVIS.xcodeproj"
@@ -182,6 +268,8 @@ SQL
       -resultBundlePath "$safe_available_temporary_dir/MonthlyBudgetSetup.xcresult" \
       JARVIS_IOS_E2E_SUGGESTION_DESCRIPTION=__monthly_budget_setup__
 
+    echo "Seeding financial-goal declarations through the real API (owner A)."
+    financial_goals_seed
     safe_available_counts_before="$(safe_available_db_fingerprint)"
     printf '%s\n' "$safe_available_counts_before" >"$safe_available_temporary_dir/safe-available-baseline"
     export JARVIS_INTEGRATION_SAFE_AVAILABLE_BASELINE_FILE="$safe_available_temporary_dir/safe-available-baseline"
@@ -192,6 +280,18 @@ SQL
     xcodebuild "${monthly_budget_xcodebuild_arguments[@]}" \
       -resultBundlePath "$safe_available_temporary_dir/MonthlyBudgetRead.xcresult" \
       JARVIS_IOS_E2E_SUGGESTION_DESCRIPTION=__monthly_budget_read__
+
+    financial_goals_a_before="$safe_available_temporary_dir/financial-goals-a-before.json"
+    financial_goals_a_after="$safe_available_temporary_dir/financial-goals-a-after.json"
+    financial_goals_capture_response "owner A before isolation" "$financial_goals_a_before"
+    financial_goals_assert_loaded "$financial_goals_a_before"
+    echo "Running dedicated financial-goal declaration real-api XCUITest for owner A."
+    xcodebuild "${financial_goals_loaded_xcodebuild_arguments[@]}" \
+      -resultBundlePath "$safe_available_temporary_dir/FinancialGoalsReadA.xcresult" \
+      JARVIS_IOS_E2E_SUGGESTION_DESCRIPTION=__financial_goals_read_a__
+    financial_goals_capture_response "owner A replay" "$financial_goals_a_after"
+    cmp -s "$financial_goals_a_before" "$financial_goals_a_after"
+    financial_goals_assert_loaded "$financial_goals_a_after"
 
     if [[ "${JARVIS_IOS_OWNER_ISOLATION_MODE:-false}" == true ]]; then
       owner_b="${JARVIS_INTEGRATION_OWNER_B_ID:?owner B is required for isolation}"
@@ -375,6 +475,17 @@ NODE
       safe_available_start_switch_api "$owner_b"
       safe_available_capture_response "owner B" "$safe_available_b"
       safe_available_assert_owner_b_response "$safe_available_b"
+      financial_goals_b="$safe_available_temporary_dir/financial-goals-b.json"
+      financial_goals_b_replay="$safe_available_temporary_dir/financial-goals-b-replay.json"
+      financial_goals_capture_response "owner B" "$financial_goals_b"
+      financial_goals_assert_empty "$financial_goals_b"
+      echo "Running dedicated financial-goal declaration isolation XCUITest for owner B."
+      xcodebuild "${financial_goals_empty_xcodebuild_arguments[@]}" \
+        -resultBundlePath "$safe_available_temporary_dir/FinancialGoalsReadB.xcresult" \
+        JARVIS_IOS_E2E_SUGGESTION_DESCRIPTION=__financial_goals_read_b__
+      financial_goals_capture_response "owner B replay" "$financial_goals_b_replay"
+      cmp -s "$financial_goals_b" "$financial_goals_b_replay"
+      financial_goals_assert_empty "$financial_goals_b_replay"
       budget_b_status="$(curl --silent --show-error --output "$safe_available_temporary_dir/budget-b.json" --write-out '%{http_code}' \
         --connect-timeout 2 --max-time 5 -H 'Accept: application/json' \
         "$safe_available_base_url/v1/monthly-budgets/$safe_available_budget_month")"
@@ -393,6 +504,12 @@ NODE
       safe_available_start_switch_api "$JARVIS_INTEGRATION_OWNER_ID"
       safe_available_capture_response "owner A after switch" "$safe_available_a_after"
       safe_available_assert_owner_a_budget_response "$safe_available_a_before" "$safe_available_a_after"
+      financial_goals_capture_response "owner A after switch" "$safe_available_temporary_dir/financial-goals-a-after-switch.json"
+      cmp -s "$financial_goals_a_before" "$safe_available_temporary_dir/financial-goals-a-after-switch.json"
+      financial_goals_assert_loaded "$safe_available_temporary_dir/financial-goals-a-after-switch.json"
+      xcodebuild "${financial_goals_loaded_xcodebuild_arguments[@]}" \
+        -resultBundlePath "$safe_available_temporary_dir/FinancialGoalsReadAAfterSwitch.xcresult" \
+        JARVIS_IOS_E2E_SUGGESTION_DESCRIPTION=__financial_goals_read_a_after_switch__
       budget_a_status="$(curl --silent --show-error --output "$safe_available_temporary_dir/budget-a.json" --write-out '%{http_code}' \
         --connect-timeout 2 --max-time 5 -H 'Accept: application/json' \
         "$safe_available_base_url/v1/monthly-budgets/$safe_available_budget_month")"

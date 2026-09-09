@@ -57,7 +57,9 @@ SELECT (SELECT count(*) FROM transactions) || ':' || COALESCE((SELECT sum(amount
        (SELECT count(*) FROM installment_plan_audit_events) || '|' ||
        (SELECT count(*) FROM installment_plan_idempotency_records) || '|' ||
        (SELECT count(*) FROM card_purchase_idempotency_records) || '|' ||
-       (SELECT count(*) FROM monthly_budgets) || ':' || COALESCE((SELECT sum(amount_minor) FROM monthly_budgets), 0);
+       (SELECT count(*) FROM monthly_budgets) || ':' || COALESCE((SELECT sum(amount_minor) FROM monthly_budgets), 0) || '|' ||
+       (SELECT count(*) FROM financial_goals) || ':' || COALESCE((SELECT sum(target_amount_minor) FROM financial_goals), 0) || '|' ||
+       (SELECT count(*) FROM protected_values) || ':' || COALESCE((SELECT sum(amount_minor) FROM protected_values), 0);
 SQL
 }
 
@@ -781,6 +783,33 @@ if [[ "$budget_counts" != "1|1|1|1" ]]; then
   exit 1
 fi
 
+financial_goal_counts="$(
+  docker compose \
+    --project-name "$JARVIS_INTEGRATION_COMPOSE_PROJECT_NAME" \
+    --file "$JARVIS_INTEGRATION_COMPOSE_FILE" \
+    exec -T postgres \
+    psql --quiet --tuples-only --no-align --set=ON_ERROR_STOP=1 \
+    --set=owner_id="$JARVIS_INTEGRATION_OWNER_ID" \
+    --set=goal_id=goal_e2e_decl_001 \
+    --set=value_id=value_e2e_decl_001 \
+    --username "$JARVIS_POSTGRES_USER" \
+    --dbname "$JARVIS_POSTGRES_DB" <<'SQL'
+SELECT
+  (SELECT count(*) FROM financial_goals
+   WHERE user_id = :'owner_id' AND id = :'goal_id'
+     AND title = 'Reserva beta' AND target_amount_minor = 250000 AND currency = 'BRL')
+  || '|' ||
+  (SELECT count(*) FROM protected_values
+   WHERE user_id = :'owner_id' AND id = :'value_id'
+     AND label = 'Proteção beta' AND amount_minor = 100000 AND currency = 'BRL');
+SQL
+)"
+financial_goal_counts="${financial_goal_counts//[[:space:]]/}"
+if [[ "$financial_goal_counts" != "1|1" ]]; then
+  echo "Financial-goal declaration postcondition failed (goal|protected value=$financial_goal_counts)." >&2
+  exit 1
+fi
+
 verify_snapshot_pair() {
   local label="$1"
   local before_file="$2"
@@ -823,4 +852,4 @@ if [[ -n "${JARVIS_INTEGRATION_SAFE_AVAILABLE_BASELINE_FILE:-}" ]]; then
   echo "Monthly budget read baseline passed: all financial table counts and aggregate totals unchanged by A/B/repeated GETs."
 fi
 
-echo "iOS real integration PostgreSQL postconditions passed for legacy flows, CardPurchase/InstallmentPlan, SafeAvailable sources and monthly budget with no projection writes or future Expenses."
+echo "iOS real integration PostgreSQL postconditions passed for legacy flows, CardPurchase/InstallmentPlan, SafeAvailable sources, monthly budget and financial-goal declarations with no read-side writes or future Expenses."
