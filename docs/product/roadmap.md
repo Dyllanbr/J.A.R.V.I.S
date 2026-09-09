@@ -55,7 +55,7 @@ Essa progressão não transforma o J.A.R.V.I.S. em banco nem em executor de tran
 | Incremento 4A — CreditCard | **Verified** | Cartões owner-scoped, com ciclo de vida e operações explícitas |
 | Incremento 4B — CardPurchase + InstallmentPlan | **Verified** | Compras no cartão à vista ou parceladas e compromissos derivados |
 | Incremento 5 — Orçamento e Disponível Seguro | **Verified** | Resposta explicável sobre quanto pode ser gasto |
-| Incremento 6 — Metas e “Posso comprar?” | **Planned** | Apoio estruturado a decisões financeiras |
+| Incremento 6 — Metas e “Posso comprar?” | **Implemented** | Apoio estruturado a decisões financeiras |
 | Simulador “Posso comprar?” (Issue #61) | **Verified** | Simulação hipotética read-only e impacto explícito |
 | Incremento 7 — Identidade, autenticação e Trust Center | **Planned** | Base de confiança para uso pessoal real e multiusuário |
 | Incremento 8 — WhatsApp | **Planned** | Conveniência com continuidade e autoridade preservada no app |
@@ -231,7 +231,7 @@ Statement/faturas completas, pagamentos, baixa financeira, metas, alertas, marge
 
 ## Incremento 6 — Metas e “Posso comprar?”
 
-**Estado: Planned.**
+**Estado: Implemented (backend parcial).**
 
 O objetivo é evoluir da organização para o apoio estruturado à decisão. A direção inclui:
 
@@ -242,7 +242,7 @@ O objetivo é evoluir da organização para o apoio estruturado à decisão. A d
 
 O simulador “Posso comprar?” da Issue #61 está **Verified** dentro do escopo entregue. Ele aceita uma compra à vista ou parcelada e um período civil explícito, calcula a comparação entre o Safe Available confirmado e a projeção hipotética, expõe impacto e premissas e não persiste Expense, InstallmentPlan, pagamento ou auditoria. O endpoint e a experiência iOS reutilizam os contratos e a composição existentes.
 
-Metas financeiras e valores protegidos, comparação de alternativas além da simulação implementada e contextualização por preferências individuais continuam **Planned**. A simulação não executa a compra nem movimenta dinheiro.
+As declarações backend de metas e valores protegidos foram implementadas nas Stages 1–3. Experiência iOS, progresso, comparação de alternativas além da simulação implementada e contextualização por preferências individuais continuam **Planned**. A simulação não executa a compra nem movimenta dinheiro.
 
 A separação conceitual permanece:
 

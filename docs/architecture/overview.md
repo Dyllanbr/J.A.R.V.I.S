@@ -36,6 +36,9 @@ O backend é um único processo Go organizado como monólito modular. Por padrã
 | API REST/OpenAPI, cliente iOS e E2E real de orçamento/Disponível Seguro | Verificados pelo Incremento 5 |
 | `PurchaseSimulation` Domain/Application e leitura combinada | Verificados pelo simulador do Incremento 6 |
 | API REST/OpenAPI, cliente iOS e E2E real de simulação de compra | Verificados pelo simulador do Incremento 6 |
+| `FinancialGoal`/`ProtectedValue` Domain/Application e leitura combinada | Implementados nas Stages 1–2 do Incremento 6 |
+| Migration 010 e adapter PostgreSQL owner-scoped | Implementados na Stage 2 do Incremento 6 |
+| API REST/OpenAPI de declarações financeiras | Implementada na Stage 3 do Incremento 6; iOS e E2E ainda planejados |
 | Terraform/nuvem | Planejado, sem configuração |
 
 ## Direção de dependências
