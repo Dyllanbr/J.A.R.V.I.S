@@ -10,6 +10,7 @@ struct RecurrencesView: View {
         NavigationStack {
             content
                 .navigationTitle("Recorrências")
+                .tint(JARVISDesign.accent)
                 .toolbar {
                     ToolbarItem(placement: .primaryAction) {
                         Button {
@@ -113,6 +114,8 @@ struct RecurrencesView: View {
                 recurrenceSection
             }
             .listStyle(.insetGrouped)
+            .scrollContentBackground(.hidden)
+            .background(JARVISDesign.canvas)
             .refreshable {
                 async let recurrences: Void = model.refresh()
                 async let suggestions: Void = suggestionsModel.refresh()
@@ -261,7 +264,10 @@ struct RecurrencesView: View {
                     .accessibilityIdentifier("recurrence.suggestion.action.error.\(suggestion.id)")
             }
         }
-        .padding(.vertical, 6)
+        .jarvisCard(padding: 16)
+        .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
+        .listRowSeparator(.hidden)
+        .listRowBackground(Color.clear)
         .accessibilityElement(children: .contain)
         .accessibilityLabel(
             "Sugestão de possível recorrência, \(suggestion.description), "
@@ -326,7 +332,10 @@ struct RecurrencesView: View {
                 }
             }
         }
-        .padding(.vertical, 6)
+        .jarvisCard(padding: 16)
+        .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
+        .listRowSeparator(.hidden)
+        .listRowBackground(Color.clear)
         .accessibilityElement(children: .contain)
         .accessibilityLabel(
             "\(recurrence.description), "
@@ -448,11 +457,14 @@ private struct RecurrenceCreateView: View {
                     }
                     .frame(minHeight: 44)
                 }
+                .buttonStyle(JARVISPrimaryButtonStyle())
                 .disabled(model.isCreationBusy)
                 .accessibilityIdentifier("recurrence.review")
             }
         }
         .scrollDismissesKeyboard(.immediately)
+        .scrollContentBackground(.hidden)
+        .background(JARVISDesign.canvas)
         .accessibilityIdentifier("recurrence.create.screen")
     }
 
@@ -515,12 +527,14 @@ private struct RecurrenceCreateView: View {
                         }
                         .frame(minHeight: 44)
                     }
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(JARVISPrimaryButtonStyle())
                     .disabled(model.isCreationBusy)
                     .accessibilityIdentifier("recurrence.confirm")
                 }
             }
         }
+        .scrollContentBackground(.hidden)
+        .background(JARVISDesign.canvas)
         .accessibilityIdentifier("recurrence.review.screen")
     }
 

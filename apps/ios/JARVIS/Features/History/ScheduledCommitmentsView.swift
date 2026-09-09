@@ -15,6 +15,7 @@ struct ScheduledCommitmentsView: View {
                 .accessibilityIdentifier("scheduledCommitments.screen")
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(JARVISDesign.canvas)
         .navigationTitle("Compromissos futuros")
         .navigationBarTitleDisplayMode(.inline)
             .task {
@@ -58,7 +59,7 @@ struct ScheduledCommitmentsView: View {
                 Button("Tentar novamente") {
                     Task { await model.retry() }
                 }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(JARVISPrimaryButtonStyle())
                 .frame(minHeight: 44)
                 .accessibilityIdentifier("scheduledCommitments.retry")
             }
@@ -78,6 +79,8 @@ struct ScheduledCommitmentsView: View {
                     commitmentRow(item)
                 }
                 .listStyle(.plain)
+                .scrollContentBackground(.hidden)
+                .background(JARVISDesign.canvas)
                 .refreshable {
                     await model.refresh()
                 }
@@ -113,7 +116,10 @@ struct ScheduledCommitmentsView: View {
             .font(.subheadline)
             .foregroundStyle(.secondary)
         }
-        .padding(.vertical, 6)
+        .jarvisCard(padding: 14)
+        .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
+        .listRowSeparator(.hidden)
+        .listRowBackground(Color.clear)
         .accessibilityElement(children: .combine)
         .accessibilityLabel(
             "\(item.source.accessibilityName), \(item.source.sequenceLabel) \(item.sequence), "

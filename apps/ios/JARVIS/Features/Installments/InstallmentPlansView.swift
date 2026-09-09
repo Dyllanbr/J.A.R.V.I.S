@@ -33,6 +33,9 @@ struct InstallmentPlansView: View {
             }
         }
         .navigationTitle("Planos de parcelas")
+        .tint(JARVISDesign.accent)
+        .scrollContentBackground(.hidden)
+        .background(JARVISDesign.canvas)
         .task { await model.loadIfNeeded() }
         .refreshable { await model.load() }
         .accessibilityIdentifier("installmentPlans.list")
@@ -53,6 +56,8 @@ private struct InstallmentPlanDetailView: View {
             }
         }
         .navigationTitle("Plano de parcelas")
+        .scrollContentBackground(.hidden)
+        .background(JARVISDesign.canvas)
         .task { await model.loadDetail(id: planID) }
     }
 

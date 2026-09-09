@@ -17,6 +17,7 @@ struct RegisterView: View {
         NavigationStack {
             content
                 .navigationTitle(navigationTitle)
+                .tint(JARVISDesign.accent)
         }
         .task {
             await model.loadCategoriesIfNeeded()
@@ -76,7 +77,7 @@ struct RegisterView: View {
                             )
                             .frame(maxWidth: .infinity)
                         }
-                        .buttonStyle(.bordered)
+                        .buttonStyle(JARVISChoiceButtonStyle(isSelected: model.transactionType == type))
                         .accessibilityAddTraits(model.transactionType == type ? .isSelected : [])
                         .accessibilityHint(
                             model.transactionType == type
@@ -182,12 +183,15 @@ struct RegisterView: View {
                     }
                     .frame(minHeight: 44)
                 }
+                .buttonStyle(JARVISPrimaryButtonStyle())
                 .disabled(model.isBusy)
                 .accessibilityIdentifier(model.transactionType == .expense && model.paymentMethod == .credit ? "register.cardPurchase" : "register.review")
             }
         }
         .accessibilityIdentifier("register.screen")
         .scrollDismissesKeyboard(.immediately)
+        .scrollContentBackground(.hidden)
+        .background(JARVISDesign.canvas)
     }
 
     private func review(_ reviewed: ReviewedTransaction) -> some View {
@@ -258,7 +262,7 @@ struct RegisterView: View {
                         }
                         .frame(minHeight: 44)
                     }
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(JARVISPrimaryButtonStyle())
                     .disabled(model.isBusy)
                     .accessibilityIdentifier(
                         model.state.isRetryable ? "review.retry" : "review.confirm"
@@ -267,6 +271,8 @@ struct RegisterView: View {
             }
         }
         .accessibilityIdentifier("review.screen")
+        .scrollContentBackground(.hidden)
+        .background(JARVISDesign.canvas)
     }
 
     @ViewBuilder

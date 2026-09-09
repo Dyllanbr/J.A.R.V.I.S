@@ -16,6 +16,7 @@ struct HistoryView: View {
                 categoryCatalogStatus
                 content
             }
+            .background(JARVISDesign.canvas)
             .navigationTitle("Histórico")
         }
         .task(id: model.refreshRevision) {
@@ -30,10 +31,23 @@ struct HistoryView: View {
         NavigationLink {
             ScheduledCommitmentsView(model: scheduledCommitments)
         } label: {
-            Label("Compromissos futuros", systemImage: "calendar.badge.clock")
-                .frame(maxWidth: .infinity, alignment: .leading)
+            HStack(spacing: 12) {
+                Image(systemName: "calendar.badge.clock")
+                    .font(.title3.weight(.semibold))
+                    .foregroundStyle(JARVISDesign.accent)
+                    .frame(width: 32, height: 32)
+                    .background(JARVISDesign.accent.opacity(0.12), in: Circle())
+                Text("Compromissos futuros")
+                    .font(.body.weight(.semibold))
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(.tertiary)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .frame(minHeight: 44)
+        .buttonStyle(.plain)
+        .jarvisCard(padding: 14)
         .padding(.horizontal)
         .accessibilityIdentifier("history.scheduledCommitments.entry")
     }
@@ -82,6 +96,8 @@ struct HistoryView: View {
         }
         .padding(.horizontal)
         .padding(.bottom, 8)
+        .jarvisCard(padding: 14)
+        .padding(.horizontal)
     }
 
     @ViewBuilder
@@ -140,6 +156,8 @@ struct HistoryView: View {
             .accessibilityIdentifier("history.nextMonth")
         }
         .padding(.horizontal)
+        .jarvisCard(padding: 8)
+        .padding(.horizontal)
     }
 
     @ViewBuilder
@@ -174,6 +192,8 @@ struct HistoryView: View {
                     transactionRow(transaction)
                 }
                 .listStyle(.plain)
+                .scrollContentBackground(.hidden)
+                .background(JARVISDesign.canvas)
                 .refreshable { await model.load() }
                 .accessibilityIdentifier("history.list")
             }
@@ -211,6 +231,7 @@ struct HistoryView: View {
                 Spacer()
                 Text(moneyFormatter.string(minorUnits: expense.amount.minor))
                     .font(.headline)
+                    .foregroundStyle(JARVISDesign.negative)
             }
             HStack {
                 Text("Saída · \(expense.paymentMethod.displayName)")
@@ -232,6 +253,8 @@ struct HistoryView: View {
                 + "\(displayFormatter.dateTime(expense.occurredAt))"
         )
         .accessibilityIdentifier("history.expense.\(expense.id)")
+        .listRowSeparator(.hidden)
+        .listRowBackground(JARVISDesign.surface)
     }
 
     private func incomeRow(_ income: Income) -> some View {
@@ -242,6 +265,7 @@ struct HistoryView: View {
                 Spacer()
                 Text(moneyFormatter.string(minorUnits: income.amount.minor))
                     .font(.headline)
+                    .foregroundStyle(JARVISDesign.positive)
             }
             HStack {
                 Text("Entrada")
@@ -262,5 +286,7 @@ struct HistoryView: View {
                 + displayFormatter.dateTime(income.occurredAt)
         )
         .accessibilityIdentifier("history.income.\(income.id)")
+        .listRowSeparator(.hidden)
+        .listRowBackground(JARVISDesign.surface)
     }
 }
