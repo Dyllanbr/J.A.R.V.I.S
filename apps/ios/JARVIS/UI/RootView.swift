@@ -209,7 +209,8 @@ private struct NativeTabContainer: UIViewControllerRepresentable {
                 CreditCardsView(
                     model: model.creditCards,
                     purchaseModel: model.cardPurchases,
-                    plansModel: model.installmentPlans
+                    plansModel: model.installmentPlans,
+                    simulationModel: model.purchaseSimulation
                 )
                     .environment(\.locale, Locale(identifier: "pt_BR"))
             )

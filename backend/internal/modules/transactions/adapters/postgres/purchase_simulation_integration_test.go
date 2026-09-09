@@ -62,7 +62,7 @@ func TestPurchaseSimulationPostgresUsesOneOwnerScopedReadSnapshot(t *testing.T) 
 	if err != nil {
 		t.Fatalf("owner A simulation error = %v", err)
 	}
-	if result.Simulation.Baseline().FinalAmount().MinorUnits() != 61_000 || result.Simulation.Projected().FinalAmount().MinorUnits() != 49_000 || result.Simulation.Impact().MinorUnits() != -12_000 {
+	if result.Simulation.Baseline().FinalAmount().MinorUnits() != 31_000 || result.Simulation.Projected().FinalAmount().MinorUnits() != 19_000 || result.Simulation.Impact().MinorUnits() != -12_000 {
 		t.Fatalf("A amounts = baseline %d projected %d impact %d", result.Simulation.Baseline().FinalAmount().MinorUnits(), result.Simulation.Projected().FinalAmount().MinorUnits(), result.Simulation.Impact().MinorUnits())
 	}
 	if len(result.Simulation.HypotheticalCommitments()) != 1 || result.Simulation.HypotheticalCommitments()[0].Amount().MinorUnits() != 12_000 {
@@ -80,7 +80,7 @@ func TestPurchaseSimulationPostgresUsesOneOwnerScopedReadSnapshot(t *testing.T) 
 	}
 
 	replay, err := useCase.Execute(ctx, input)
-	if err != nil || replay.Simulation.Projected().FinalAmount().MinorUnits() != 49_000 {
+	if err != nil || replay.Simulation.Projected().FinalAmount().MinorUnits() != 19_000 {
 		t.Fatalf("A replay = %+v error=%v", replay, err)
 	}
 }

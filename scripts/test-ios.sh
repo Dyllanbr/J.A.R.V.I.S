@@ -158,6 +158,7 @@ case "$mode" in
     test_filters+=(
       "-only-testing:JARVISUITests/JARVISUITests/testCreditCardPreviewConfirmDetailAndArchive"
       "-only-testing:JARVISUITests/JARVISUITests/testCreditCardFailureExposesSafeRetry"
+      "-only-testing:JARVISUITests/JARVISUITests/testPurchaseSimulationShowsExplicitImpactWithoutPersisting"
     )
     ;;
   --tab-regression)
@@ -191,6 +192,7 @@ case "$mode" in
         "-only-testing:JARVISUITests/JARVISUITests/testRealAPIRecurrenceSuggestionRequiresExplicitConfirmation"
         "-only-testing:JARVISUITests/JARVISUITests/testCreditCardPreviewConfirmDetailAndArchive"
         "-only-testing:JARVISUITests/JARVISUITests/testRealAPICardPurchaseAndInstallmentPlanLifecycle"
+        "-only-testing:JARVISUITests/JARVISUITests/testRealAPIPurchaseSimulationLifecycle"
       )
     fi
     ;;

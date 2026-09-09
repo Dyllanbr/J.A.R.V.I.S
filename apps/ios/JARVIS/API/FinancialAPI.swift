@@ -31,6 +31,7 @@ protocol FinancialAPI {
     func safeAvailable(periodStart: RecurrenceCivilDate, periodEnd: RecurrenceCivilDate) async throws -> SafeAvailableResponse
     func monthlyBudget(month: String) async throws -> MonthlyBudget
     func replaceMonthlyBudget(month: String, amount: MonthlyBudgetAmount) async throws -> MonthlyBudget
+    func simulatePurchase(_ request: PurchaseSimulationRequest) async throws -> PurchaseSimulationResponse
 }
 
 extension FinancialAPI {
@@ -51,6 +52,10 @@ extension FinancialAPI {
     }
 
     func replaceMonthlyBudget(month _: String, amount _: MonthlyBudgetAmount) async throws -> MonthlyBudget {
+        throw FinancialAPIError.configuration
+    }
+
+    func simulatePurchase(_: PurchaseSimulationRequest) async throws -> PurchaseSimulationResponse {
         throw FinancialAPIError.configuration
     }
 }
@@ -507,6 +512,13 @@ final class URLSessionFinancialAPIClient: FinancialAPI {
         return try decode(data)
     }
 
+    func simulatePurchase(_ requestBody: PurchaseSimulationRequest) async throws -> PurchaseSimulationResponse {
+        let request = try makeRequest(path: "v1/purchase-simulations", method: "POST", body: requestBody)
+        let (data, response) = try await perform(request)
+        try requirePurchaseSimulationStatus(response, expected: 200, data: data)
+        return try decode(data)
+    }
+
     private func monthlyBudgetRequest(month: String, method: String) throws -> URLRequest {
         guard Self.isValidCivilMonth(month) else { throw FinancialAPIError.invalidData }
 		guard var components = URLComponents(url: baseURL, resolvingAgainstBaseURL: false) else {
@@ -763,6 +775,22 @@ final class URLSessionFinancialAPIClient: FinancialAPI {
                 throw FinancialAPIError.invalidData
             case (404, "MONTHLY_BUDGET_NOT_FOUND"):
                 throw FinancialAPIError.monthlyBudgetNotFound
+            case (500...599, _):
+                throw FinancialAPIError.serviceUnavailable
+            default:
+                throw FinancialAPIError.invalidResponse
+            }
+        }
+    }
+
+    private func requirePurchaseSimulationStatus(_ response: HTTPURLResponse, expected: Int, data: Data) throws {
+        guard response.statusCode == expected else {
+            let code = try? JSONDecoder().decode(APIErrorEnvelope.self, from: data).error.code
+            switch (response.statusCode, code) {
+            case (400, _):
+                throw FinancialAPIError.invalidData
+            case (404, "CREDIT_CARD_NOT_FOUND"):
+                throw FinancialAPIError.creditCardNotFound
             case (500...599, _):
                 throw FinancialAPIError.serviceUnavailable
             default:

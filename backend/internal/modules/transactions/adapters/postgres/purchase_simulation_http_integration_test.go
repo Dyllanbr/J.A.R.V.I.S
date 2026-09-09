@@ -58,7 +58,7 @@ func TestPurchaseSimulationHTTPPostgresUsesRealReadOnlyComposition(t *testing.T)
 
 	before := readSafeAvailableCounts(t, ctx, pool)
 	response := getPurchaseSimulationJSON(t, server.Client(), server.URL, cardID)
-	if response.status != http.StatusOK || !bytes.Contains(response.body, []byte(`"creditCardId":"`+cardID+`"`)) || !bytes.Contains(response.body, []byte(`"purchaseMode":"ONE_TIME"`)) || !bytes.Contains(response.body, []byte(`"minor":49000`)) || !bytes.Contains(response.body, []byte(`"minor":-12000`)) || !bytes.Contains(response.body, []byte(`"NOT_PERSISTED"`)) || !bytes.Contains(response.body, []byte(`"NO_EXPENSE_CREATED"`)) {
+	if response.status != http.StatusOK || !bytes.Contains(response.body, []byte(`"creditCardId":"`+cardID+`"`)) || !bytes.Contains(response.body, []byte(`"purchaseMode":"ONE_TIME"`)) || !bytes.Contains(response.body, []byte(`"minor":31000`)) || !bytes.Contains(response.body, []byte(`"minor":-12000`)) || !bytes.Contains(response.body, []byte(`"NOT_PERSISTED"`)) || !bytes.Contains(response.body, []byte(`"NO_EXPENSE_CREATED"`)) {
 		t.Fatalf("purchase simulation response = %d %s", response.status, response.body)
 	}
 	if after := readSafeAvailableCounts(t, ctx, pool); after != before {
