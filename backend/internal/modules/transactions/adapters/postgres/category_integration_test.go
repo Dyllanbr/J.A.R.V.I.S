@@ -201,6 +201,9 @@ func TestMigration004PreservesVersion3LegacyDataReplayAndDown(t *testing.T) {
 			t.Fatal("migration UP failed")
 		}
 		if err := migrations.Down(ctx, connection); err != nil {
+			t.Fatal("migration 011 DOWN failed")
+		}
+		if err := migrations.Down(ctx, connection); err != nil {
 			t.Fatal("migration 010 DOWN failed")
 		}
 		if err := migrations.Down(ctx, connection); err != nil {
@@ -253,7 +256,7 @@ func TestMigration004PreservesVersion3LegacyDataReplayAndDown(t *testing.T) {
 		if err := migrations.Up(ctx, connection); err != nil {
 			t.Fatal("migration 003 to 004 failed")
 		}
-		assertMigrationVersion(t, ctx, connection, 10)
+		assertMigrationVersion(t, ctx, connection, 11)
 	})
 	assertAllTransactionsUncategorized(t, ctx, pool, 2)
 	if !bytes.Equal(beforeExpenseFingerprint, storedFingerprint(t, ctx, pool, "CREATE_EXPENSE", expenseInput.IdempotencyKey)) ||
@@ -275,6 +278,9 @@ func TestMigration004PreservesVersion3LegacyDataReplayAndDown(t *testing.T) {
 	assertFinancialRowCounts(t, ctx, pool, 2, 2, 2)
 
 	withConnection(t, ctx, pool, func(connection *pgx.Conn) {
+		if err := migrations.Down(ctx, connection); err != nil {
+			t.Fatal("migration 011 DOWN with no authentication session data failed")
+		}
 		if err := migrations.Down(ctx, connection); err != nil {
 			t.Fatal("migration 010 DOWN with no financial goal data failed")
 		}
@@ -306,7 +312,7 @@ func TestMigration004PreservesVersion3LegacyDataReplayAndDown(t *testing.T) {
 		if err := migrations.Up(ctx, connection); err != nil {
 			t.Fatal("migration 004 reapply after safe DOWN failed")
 		}
-		assertMigrationVersion(t, ctx, connection, 10)
+		assertMigrationVersion(t, ctx, connection, 11)
 	})
 	assertAllTransactionsUncategorized(t, ctx, pool, 2)
 }

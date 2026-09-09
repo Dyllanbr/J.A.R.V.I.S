@@ -27,7 +27,7 @@ func TestFinancialGoalsPostgresSnapshotAndOwnerIsolation(t *testing.T) {
 	insertSyntheticUser(t, ctx, pool, ownerB)
 
 	withConnection(t, ctx, pool, func(connection *pgx.Conn) {
-		assertMigrationVersion(t, ctx, connection, 10)
+		assertMigrationVersion(t, ctx, connection, 11)
 	})
 	assertTableExists(t, ctx, pool, "financial_goals", true)
 	assertTableExists(t, ctx, pool, "protected_values", true)

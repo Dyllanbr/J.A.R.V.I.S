@@ -83,7 +83,7 @@ func TestMigration008FreshSchemaConstraintsSafeDownAndReapply(t *testing.T) {
 		if err := migrations.Up(ctx, connection); err != nil {
 			t.Fatalf("migration 008 reapply failed: %v", err)
 		}
-		assertMigrationVersion(t, ctx, connection, 10)
+		assertMigrationVersion(t, ctx, connection, 11)
 	})
 	for _, table := range []string{"installment_plans", "card_purchase_idempotency_records"} {
 		assertTableExists(t, ctx, pool, table, true)
@@ -105,7 +105,7 @@ func TestMigration008UpgradeFrom007PreservesLegacyRows(t *testing.T) {
 		if err := migrations.Up(ctx, connection); err != nil {
 			t.Fatalf("migration 007 to 008 failed: %v", err)
 		}
-		assertMigrationVersion(t, ctx, connection, 10)
+		assertMigrationVersion(t, ctx, connection, 11)
 	})
 	var cardID, dueOn *string
 	if err := pool.QueryRow(ctx, "SELECT credit_card_id, statement_due_on::text FROM transactions WHERE id='exp-before-008'").Scan(&cardID, &dueOn); err != nil {
