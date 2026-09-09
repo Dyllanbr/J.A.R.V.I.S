@@ -234,7 +234,7 @@ O simulador está **Verified** dentro do escopo entregue. Ele:
 - não cria Expense, InstallmentPlan, pagamento, auditoria ou reserva de idempotência;
 - preserva owner server-side, valores em minor units/BRL e a composição FinancialAPI existente.
 
-Metas financeiras, valores protegidos, margem pessoal e aconselhamento contextual permanecem **Planned**. O usuário continua responsável pela decisão e o simulador não executa compras nem movimenta dinheiro.
+Metas financeiras e valores protegidos possuem agora uma declaração backend **Implemented**: leitura combinada owner-scoped e substituição idempotente por identificador. Essa declaração não registra progresso, não altera Safe Available, não reserva saldo e não movimenta dinheiro. A experiência iOS, margem pessoal e aconselhamento contextual permanecem **Planned**. O usuário continua responsável pela decisão e o simulador não executa compras nem movimenta dinheiro.
 
 ## Visão futura
 
@@ -243,7 +243,7 @@ As capacidades a seguir estão **Planned**. A presença nesta visão não define
 - categorias customizadas e reclassificação;
 - Statement/faturas completas;
 - compromissos futuros além dos InstallmentPlans implementados;
-- metas e valores protegidos;
+- experiência iOS para metas e valores protegidos, progresso, alertas e integração dessas declarações ao Safe Available;
 - autenticação;
 - passkeys;
 - Face ID;

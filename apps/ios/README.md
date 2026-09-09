@@ -1,6 +1,6 @@
 # Aplicativo iOS
 
-Estado: **Incrementos 1, 2, 3A, 3B, 3C, 4A, 4B e 5 verificados** dentro de seus escopos; o simulador “Posso comprar?” do Incremento 6 também está verificado com auditoria independente e quality gates correspondentes. O Incremento 4B foi mergeado na `main` pelo PR #75, commit `526cc855`; o Incremento 5 foi concluído com Safe Available, Monthly Budget e harness E2E real.
+Estado: **Incrementos 1, 2, 3A, 3B, 3C, 4A, 4B e 5 verificados** dentro de seus escopos; o simulador “Posso comprar?” do Incremento 6 também está verificado com auditoria independente e quality gates correspondentes. As declarações backend de metas financeiras e valores protegidos foram implementadas nas Stages 1–3 do Incremento 6, mas a experiência iOS permanece planejada. O Incremento 4B foi mergeado na `main` pelo PR #75, commit `526cc855`; o Incremento 5 foi concluído com Safe Available, Monthly Budget e harness E2E real.
 
 O primeiro cliente nativo do J.A.R.V.I.S. usa SwiftUI, Swift concurrency, Foundation e URLSession, sem dependências externas. O deployment target é iOS 17.0, o target/scheme compartilhado é `JARVIS` e o bundle identifier de desenvolvimento é `dev.jarvis.JARVIS`.
 
