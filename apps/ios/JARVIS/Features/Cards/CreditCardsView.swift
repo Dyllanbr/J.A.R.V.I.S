@@ -44,6 +44,7 @@ struct CreditCardsView: View {
                     }
                 }
         }
+        .tint(JARVISDesign.accent)
         .task { await model.loadIfNeeded() }
         .sheet(
             isPresented: Binding(
@@ -83,6 +84,7 @@ struct CreditCardsView: View {
         case .idle, .loading:
             ProgressView("Carregando cartões")
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(JARVISDesign.canvas)
                 .accessibilityIdentifier("card.loading")
         case let .failed(message):
             ContentUnavailableView {
@@ -113,8 +115,17 @@ struct CreditCardsView: View {
                     NavigationLink {
                         InstallmentPlansView(model: plansModel)
                     } label: {
-                        Label("Planos de parcelas", systemImage: "calendar")
+                        HStack(spacing: 12) {
+                            Image(systemName: "calendar")
+                                .font(.title3.weight(.semibold))
+                                .foregroundStyle(JARVISDesign.accent)
+                                .frame(width: 32, height: 32)
+                                .background(JARVISDesign.accent.opacity(0.12), in: Circle())
+                            Text("Planos de parcelas")
+                                .font(.body.weight(.semibold))
+                        }
                     }
+                    .buttonStyle(.plain)
                     .accessibilityIdentifier("installmentPlans.open")
                 }
                 ForEach(items) { card in
@@ -125,6 +136,8 @@ struct CreditCardsView: View {
                 }
             }
             .listStyle(.insetGrouped)
+            .scrollContentBackground(.hidden)
+            .background(JARVISDesign.canvas)
             .refreshable { await model.refresh() }
             .accessibilityIdentifier("card.list")
         }
@@ -162,6 +175,21 @@ private struct CreditCardRow: View {
             .fixedSize(horizontal: false, vertical: true)
         }
         .padding(.vertical, 6)
+        .padding(.horizontal, 4)
+        .background(
+            card.status == .active
+                ? AnyShapeStyle(
+                    LinearGradient(
+                        colors: [Color(red: 0.08, green: 0.34, blue: 0.76), Color(red: 0.18, green: 0.52, blue: 0.94)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+                : AnyShapeStyle(JARVISDesign.surface),
+            in: RoundedRectangle(cornerRadius: JARVISDesign.cornerRadius, style: .continuous)
+        )
+        .foregroundStyle(card.status == .active ? Color.white : Color.primary)
+        .shadow(color: Color.black.opacity(card.status == .active ? 0.14 : 0.05), radius: 10, y: 4)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(accessibilityLabel)
     }
@@ -232,6 +260,8 @@ private struct CreditCardDetailView: View {
             }
         }
         .navigationTitle("Detalhes do cartão")
+        .scrollContentBackground(.hidden)
+        .background(JARVISDesign.canvas)
         .task { await model.loadDetail(id: cardID) }
         .refreshable { await model.refreshDetail(id: cardID) }
     }
@@ -415,6 +445,8 @@ private struct CreditCardCreateView: View {
             }
         }
         .scrollDismissesKeyboard(.immediately)
+        .scrollContentBackground(.hidden)
+        .background(JARVISDesign.canvas)
         .accessibilityIdentifier("card.create.screen")
     }
 
@@ -457,6 +489,8 @@ private struct CreditCardCreateView: View {
                 }
             }
         }
+        .scrollContentBackground(.hidden)
+        .background(JARVISDesign.canvas)
         .accessibilityIdentifier("card.review.screen")
     }
 

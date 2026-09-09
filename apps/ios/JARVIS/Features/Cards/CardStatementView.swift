@@ -16,6 +16,8 @@ struct CardStatementView: View {
         }
         .navigationTitle("Fatura do cartão")
         .navigationBarTitleDisplayMode(.inline)
+        .tint(JARVISDesign.accent)
+        .background(JARVISDesign.canvas.ignoresSafeArea())
         .accessibilityIdentifier("cardStatement.screen")
         .task { await model.loadIfNeeded() }
     }
@@ -51,8 +53,7 @@ struct CardStatementView: View {
             .disabled(model.state == .loading)
             .accessibilityIdentifier("cardStatement.load")
         }
-        .padding()
-        .background(Color.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
+        .jarvisCard(padding: 16)
     }
 
     @ViewBuilder
@@ -127,7 +128,11 @@ struct CardStatementView: View {
                 .font(.title2.weight(.semibold).monospacedDigit())
         }
         .padding()
-        .background(Color.accentColor.opacity(0.12), in: RoundedRectangle(cornerRadius: 12))
+        .background(JARVISDesign.accent.opacity(0.12), in: RoundedRectangle(cornerRadius: JARVISDesign.cornerRadius, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: JARVISDesign.cornerRadius, style: .continuous)
+                .stroke(JARVISDesign.accent.opacity(0.2), lineWidth: 1)
+        }
         .accessibilityElement(children: .combine)
         .accessibilityLabel("Total \(moneyFormatter.string(minorUnits: total.minor))")
         .accessibilityIdentifier("cardStatement.total")

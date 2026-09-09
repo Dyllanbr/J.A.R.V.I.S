@@ -23,6 +23,7 @@ struct CardPurchaseView: View {
         if embedsNavigationStack {
             NavigationStack {
                 content.navigationTitle(title)
+                    .tint(JARVISDesign.accent)
                     .toolbar {
                         if !model.isBusy {
                             ToolbarItem(placement: .cancellationAction) {
@@ -35,6 +36,7 @@ struct CardPurchaseView: View {
             }
         } else {
             content.navigationTitle(title)
+                .tint(JARVISDesign.accent)
                 .toolbar {
                     if !model.isBusy {
                         ToolbarItem(placement: .cancellationAction) {
@@ -103,10 +105,13 @@ struct CardPurchaseView: View {
                     HStack { Spacer(); if model.isBusy { ProgressView() } else { Text("Revisar compra") }; Spacer() }
                         .frame(minHeight: 44)
                 }
+                .buttonStyle(JARVISPrimaryButtonStyle())
                 .disabled(model.isBusy)
                 .accessibilityIdentifier("cardPurchase.review")
             }
         }
+        .scrollContentBackground(.hidden)
+        .background(JARVISDesign.canvas)
         .accessibilityIdentifier("cardPurchase.form")
     }
 
@@ -143,6 +148,8 @@ struct CardPurchaseView: View {
                 .accessibilityIdentifier(model.isRetryable ? "cardPurchase.retry" : "cardPurchase.confirm")
             }
         }
+        .scrollContentBackground(.hidden)
+        .background(JARVISDesign.canvas)
         .accessibilityIdentifier("cardPurchase.review")
     }
 

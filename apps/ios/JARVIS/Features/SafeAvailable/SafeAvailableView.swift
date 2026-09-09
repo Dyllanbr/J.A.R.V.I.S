@@ -12,6 +12,7 @@ struct SafeAvailableView: View {
             }
             .padding()
         }
+        .background(JARVISDesign.canvas.ignoresSafeArea())
         .navigationTitle("Disponível Seguro")
         .navigationBarTitleDisplayMode(.inline)
         .accessibilityIdentifier("safeAvailable.screen")
@@ -47,12 +48,11 @@ struct SafeAvailableView: View {
                 Label("Consultar disponibilidade", systemImage: "arrow.clockwise")
                     .frame(maxWidth: .infinity, minHeight: 44)
             }
-            .buttonStyle(.borderedProminent)
+            .buttonStyle(JARVISPrimaryButtonStyle())
             .disabled(model.state == .loading)
             .accessibilityIdentifier("safeAvailable.load")
         }
-        .padding()
-        .background(Color.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
+        .jarvisCard(padding: 18)
     }
 
     private var budgetSection: some View {
@@ -94,8 +94,7 @@ struct SafeAvailableView: View {
             .disabled(model.budgetState == .loading || model.budgetState == .saving)
             .accessibilityIdentifier("safeAvailable.budget.save")
         }
-        .padding()
-        .background(Color.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
+        .jarvisCard(padding: 18)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("safeAvailable.budget")
     }
@@ -149,7 +148,14 @@ struct SafeAvailableView: View {
             }
             .padding()
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color.accentColor.opacity(0.12), in: RoundedRectangle(cornerRadius: 12))
+            .background(
+                resultTint.opacity(0.13),
+                in: RoundedRectangle(cornerRadius: JARVISDesign.cornerRadius, style: .continuous)
+            )
+            .overlay {
+                RoundedRectangle(cornerRadius: JARVISDesign.cornerRadius, style: .continuous)
+                    .stroke(resultTint.opacity(0.2), lineWidth: 1)
+            }
             .accessibilityElement(children: .contain)
 
             if empty {
@@ -165,6 +171,17 @@ struct SafeAvailableView: View {
         .accessibilityIdentifier("safeAvailable.content")
     }
 
+    private var resultTint: Color {
+        switch model.state {
+        case let .empty(response), let .loaded(response):
+            if response.finalAmount.minor < 0 { return JARVISDesign.negative }
+            if response.finalAmount.minor == 0 { return JARVISDesign.muted }
+            return JARVISDesign.positive
+        default:
+            return JARVISDesign.accent
+        }
+    }
+
     private func missingDataView(_ values: [SafeAvailableMissingData]) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Dados e hipóteses")
@@ -176,7 +193,7 @@ struct SafeAvailableView: View {
         }
         .padding()
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
+        .jarvisCard(padding: 16)
         .accessibilityElement(children: .contain)
         .accessibilityLabel(values.map(\.displayName).joined(separator: ", "))
         .accessibilityIdentifier("safeAvailable.missingData")
@@ -217,6 +234,7 @@ struct SafeAvailableView: View {
             }
         }
         .accessibilityElement(children: .contain)
+        .jarvisCard(padding: 16)
     }
 }
 
@@ -231,11 +249,26 @@ struct HistorySafeAvailableEntryView: View {
             Button {
                 isPresentingSafeAvailable = true
             } label: {
-                Label("Disponível Seguro", systemImage: "chart.line.uptrend.xyaxis")
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                HStack(spacing: 12) {
+                    Image(systemName: "chart.line.uptrend.xyaxis")
+                        .font(.title3.weight(.semibold))
+                        .foregroundStyle(JARVISDesign.positive)
+                        .frame(width: 32, height: 32)
+                        .background(JARVISDesign.positive.opacity(0.12), in: Circle())
+                    Text("Disponível Seguro")
+                        .font(.body.weight(.semibold))
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(.tertiary)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .frame(minHeight: 44)
+            .frame(minHeight: 48)
+            .buttonStyle(.plain)
+            .jarvisCard(padding: 14)
             .padding(.horizontal)
+            .padding(.top, 8)
             .accessibilityIdentifier("history.safeAvailable.entry")
             HistoryView(model: model, scheduledCommitments: scheduledCommitments)
         }
