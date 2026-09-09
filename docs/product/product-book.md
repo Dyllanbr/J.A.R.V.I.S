@@ -224,6 +224,12 @@ O sistema agora:
 
 O incremento não implementa categorias de orçamento, rollover, metas, alertas, pagamentos, baixa financeira, Statement completo ou qualquer fórmula de Disponível Seguro baseada em dados não confirmados.
 
+## Estado atual — Incremento 7
+
+A primeira fatia técnica de Identidade e Autenticação está **Implemented** dentro de um limite explícito: o backend oferece uma fronteira HTTP opt-in que valida um bearer opaco contra sessões PostgreSQL, vincula o subject autenticado ao owner server-side configurado e mantém `/healthz` público. O modo financeiro continua sem autenticação por padrão para preservar o uso local existente.
+
+Isso não define nem implementa emissão ou revogação de sessões, multiusuário, passkeys, Face ID, PIN, recovery, cache local criptografado, sincronização ou Trust Center. Essas capacidades permanecem planejadas e exigirão contratos próprios, threat modeling e revisão proporcional.
+
 ## Estado atual — Simulador “Posso comprar?” do Incremento 6
 
 O simulador está **Verified** dentro do escopo entregue. Ele:
@@ -244,7 +250,7 @@ As capacidades a seguir estão **Planned**. A presença nesta visão não define
 - Statement/faturas completas;
 - compromissos futuros além dos InstallmentPlans implementados;
 - progresso, alertas e integração dessas declarações ao Safe Available; a consulta iOS básica já está implementada, enquanto esses complementos permanecem planejados;
-- autenticação;
+- emissão e revogação de sessões e autorização multiusuário;
 - passkeys;
 - Face ID;
 - PIN J.A.R.V.I.S.;
@@ -272,7 +278,7 @@ A visão de canais adota responsabilidades diferentes:
 - **áudio e fotos:** entradas futuras sujeitas a validação, privacidade e confirmação;
 - **MCP:** adaptador futuro submetido aos mesmos controles de segurança, política e autorização.
 
-WhatsApp representa conveniência; o app representa autoridade. Essa divisão é direção futura e não implica que autenticação ou os canais planejados já existam.
+WhatsApp representa conveniência; o app representa autoridade. Essa divisão é direção futura e não implica que os canais planejados já existam nem que a fronteira HTTP opt-in seja autenticação de produto completa.
 
 Todo registro de movimentação financeira deve exigir confirmação explícita antes da persistência, independentemente do canal. Os métodos inicialmente reconhecidos para uma despesa são Pix, débito, crédito e dinheiro. Informar o método usado não significa que o J.A.R.V.I.S. possa executar o pagamento.
 

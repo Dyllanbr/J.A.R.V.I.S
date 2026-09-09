@@ -57,7 +57,7 @@ Essa progressão não transforma o J.A.R.V.I.S. em banco nem em executor de tran
 | Incremento 5 — Orçamento e Disponível Seguro | **Verified** | Resposta explicável sobre quanto pode ser gasto |
 | Incremento 6 — Metas e “Posso comprar?” | **Implemented** | Apoio estruturado a decisões financeiras |
 | Simulador “Posso comprar?” (Issue #61) | **Verified** | Simulação hipotética read-only e impacto explícito |
-| Incremento 7 — Identidade, autenticação e Trust Center | **Planned** | Base de confiança para uso pessoal real e multiusuário |
+| Incremento 7 — Identidade, autenticação e Trust Center | **In progress** | Base de confiança para uso pessoal real e multiusuário |
 | Incremento 8 — WhatsApp | **Planned** | Conveniência com continuidade e autoridade preservada no app |
 | Incremento 9 — Assessor com IA | **Planned** | Explicação consultiva sobre dados e cálculos estruturados |
 | Incremento 10 — Hardening para uso real | **Planned** | Preparação proporcional para ampliar o uso |
@@ -182,7 +182,7 @@ Projeções adicionais, alertas, Personal Financial Model, recorrências de rece
 
 ## Incremento 4 — Cartões, parcelas e compromissos futuros
 
-**Estado: Planned.**
+**Estado: In progress.**
 
 O objetivo é compreender dinheiro já comprometido. As subcapacidades 4A — CreditCard e 4B — CardPurchase + InstallmentPlan estão **Verified** dentro de seus escopos. Permanecem planejados o restante desta etapa, incluindo Statement/faturas completas e compromissos futuros além dos InstallmentPlans implementados.
 
@@ -269,6 +269,8 @@ O objetivo é criar a base de confiança necessária para uso pessoal real e, po
 - controles de memória e personalização.
 
 Esta seção não é especificação de segurança. Requisitos, riscos e decisões devem permanecer nas fontes próprias de [segurança](../security/) e [privacidade](../privacy/).
+
+A Stage 3 implementou uma fronteira HTTP opt-in para bearer opaco validado por sessões PostgreSQL existentes. O principal autenticado é vinculado ao `JARVIS_OWNER_ID` server-side; `/healthz` permanece público e respostas de autenticação são sanitizadas. Emissão e revogação de sessões, multiusuário, passkeys, Face ID, PIN, recovery, cache local e Trust Center continuam planejados.
 
 ## Incremento 8 — WhatsApp
 
