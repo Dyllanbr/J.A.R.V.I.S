@@ -253,6 +253,16 @@ func New(
 		pool.Close()
 		return nil, err
 	}
+	purchaseSimulationRepository, err := transactionspostgres.NewPurchaseSimulationRepository(pool, postgresConfig.OperationTimeout)
+	if err != nil {
+		pool.Close()
+		return nil, err
+	}
+	simulatePurchase, err := application.NewSimulatePurchase(purchaseSimulationRepository)
+	if err != nil {
+		pool.Close()
+		return nil, err
+	}
 	listInstallmentPlans, err := application.NewListInstallmentPlans(cardPurchaseRepository)
 	if err != nil {
 		pool.Close()
@@ -314,6 +324,7 @@ func New(
 	scheduledCommitmentRoutes := httpapi.NewScheduledCommitments(cfg.OwnerID, listScheduledCommitments)
 	safeAvailableRoutes := httpapi.NewSafeAvailable(cfg.OwnerID, calculateSafeAvailable)
 	monthlyBudgetRoutes := httpapi.NewMonthlyBudget(cfg.OwnerID, setMonthlyBudget, getMonthlyBudget)
+	purchaseSimulationRoutes := httpapi.NewPurchaseSimulation(cfg.OwnerID, simulatePurchase)
 	applicationInstance.server = httpserver.New(
 		cfg.HTTPAddress,
 		logger,
@@ -327,6 +338,7 @@ func New(
 		scheduledCommitmentRoutes,
 		safeAvailableRoutes,
 		monthlyBudgetRoutes,
+		purchaseSimulationRoutes,
 	)
 	return applicationInstance, nil
 }
