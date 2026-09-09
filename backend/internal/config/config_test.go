@@ -118,14 +118,41 @@ func TestFromEnvEnablesFinancialAPIWithExplicitOwner(t *testing.T) {
 	t.Setenv("JARVIS_HTTP_ADDRESS", "127.0.0.1:8080")
 	t.Setenv("JARVIS_SHUTDOWN_TIMEOUT", "10s")
 	t.Setenv("JARVIS_FINANCIAL_API_ENABLED", "true")
+	t.Setenv("JARVIS_AUTHENTICATION_ENABLED", "true")
 	t.Setenv("JARVIS_OWNER_ID", "usr_synthetic_owner_001")
 
 	cfg, err := FromEnv()
 	if err != nil {
 		t.Fatalf("FromEnv() error = %v", err)
 	}
-	if !cfg.FinancialAPIEnabled || cfg.OwnerID != "usr_synthetic_owner_001" {
+	if !cfg.FinancialAPIEnabled || !cfg.AuthenticationEnabled || cfg.OwnerID != "usr_synthetic_owner_001" {
 		t.Fatal("FromEnv() did not preserve the explicit financial application context")
+	}
+}
+
+func TestFromEnvDefaultsAuthenticationToDisabled(t *testing.T) {
+	t.Setenv("JARVIS_FINANCIAL_API_ENABLED", "true")
+	t.Setenv("JARVIS_AUTHENTICATION_ENABLED", "")
+	t.Setenv("JARVIS_OWNER_ID", "usr_synthetic_owner_001")
+
+	cfg, err := FromEnv()
+	if err != nil {
+		t.Fatalf("FromEnv() error = %v", err)
+	}
+	if cfg.AuthenticationEnabled {
+		t.Fatal("authentication should be opt-in")
+	}
+}
+
+func TestFromEnvRejectsInvalidAuthenticationConfigurationSafely(t *testing.T) {
+	t.Setenv("JARVIS_FINANCIAL_API_ENABLED", "true")
+	t.Setenv("JARVIS_AUTHENTICATION_ENABLED", "PRIVATE_AUTH_MARKER")
+	t.Setenv("JARVIS_OWNER_ID", "usr_synthetic_owner_001")
+
+	if _, err := FromEnv(); !errors.Is(err, ErrInvalidAuthenticationEnabled) {
+		t.Fatalf("FromEnv() error = %v, want ErrInvalidAuthenticationEnabled", err)
+	} else if strings.Contains(err.Error(), "PRIVATE_AUTH_MARKER") {
+		t.Fatal("authentication configuration error exposed its raw value")
 	}
 }
 
@@ -150,5 +177,6 @@ func TestFromEnvRejectsInvalidFinancialAPIConfigurationSafely(t *testing.T) {
 func disableFinancialAPI(t *testing.T) {
 	t.Helper()
 	t.Setenv("JARVIS_FINANCIAL_API_ENABLED", "")
+	t.Setenv("JARVIS_AUTHENTICATION_ENABLED", "")
 	t.Setenv("JARVIS_OWNER_ID", "")
 }
