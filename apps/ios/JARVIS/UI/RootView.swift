@@ -138,7 +138,9 @@ private struct NativeTabContainer: UIViewControllerRepresentable {
             // registration-first state through the existing API test environment,
             // keeping their flows deterministic without making the beta feel like a
             // data-entry form on launch.
-            let isUITest = ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
+            let environment = ProcessInfo.processInfo.environment
+            let isUITest = environment["JARVIS_IOS_API_MODE"] != nil
+                || environment["XCTestConfigurationFilePath"] != nil
             selectedIndex = isUITest ? 0 : 1
             configureTabBarAppearance()
         }
