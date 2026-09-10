@@ -96,6 +96,41 @@ final class JARVISUITests: XCTestCase {
     }
 
     @MainActor
+    func testHistoryDashboardExposesFinancialOverview() throws {
+        continueAfterFailure = false
+        let launched = try launchApp()
+        let app = launched.app
+        defer { app.terminate() }
+
+        XCTAssertTrue(element("tab.history", in: app).waitForExistence(timeout: 8))
+        element("tab.history", in: app).tap()
+
+        for identifier in [
+            "dashboard.hero",
+            "dashboard.safeAvailable",
+            "dashboard.income",
+            "dashboard.expense",
+            "dashboard.insight"
+        ] {
+            XCTAssertTrue(
+                element(identifier, in: app).waitForExistence(timeout: 12),
+                "Missing dashboard identifier: \(identifier)\n\(app.debugDescription)"
+            )
+        }
+
+        let safeAvailableValue = app.descendants(matching: .any)
+            .matching(
+                NSPredicate(
+                    format: "identifier == %@ OR identifier == %@",
+                    "dashboard.safeAvailable.value",
+                    "dashboard.safeAvailable.placeholder"
+                )
+            )
+            .firstMatch
+        XCTAssertTrue(safeAvailableValue.waitForExistence(timeout: 12), app.debugDescription)
+    }
+
+    @MainActor
     func testRecurrencePreviewConfirmListAndCancel() throws {
         continueAfterFailure = false
         let launched = try launchApp()

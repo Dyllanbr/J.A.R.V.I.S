@@ -246,36 +246,44 @@ struct HistorySafeAvailableEntryView: View {
     @State private var isPresentingSafeAvailable = false
 
     var body: some View {
-        VStack(spacing: 0) {
-            Button {
-                isPresentingSafeAvailable = true
-            } label: {
-                HStack(spacing: 12) {
-                    Image(systemName: "chart.line.uptrend.xyaxis")
-                        .font(.title3.weight(.semibold))
-                        .foregroundStyle(JARVISDesign.positive)
-                        .frame(width: 32, height: 32)
-                        .background(JARVISDesign.positive.opacity(0.12), in: Circle())
-                    Text("Disponível Seguro")
-                        .font(.body.weight(.semibold))
-                    Spacer()
-                    Image(systemName: "chevron.right")
-                        .font(.caption.weight(.bold))
-                        .foregroundStyle(.tertiary)
+        NavigationStack {
+            VStack(spacing: 0) {
+                Button {
+                    isPresentingSafeAvailable = true
+                } label: {
+                    HStack(spacing: 12) {
+                        Image(systemName: "chart.line.uptrend.xyaxis")
+                            .font(.title3.weight(.semibold))
+                            .foregroundStyle(JARVISDesign.positive)
+                            .frame(width: 32, height: 32)
+                            .background(JARVISDesign.positive.opacity(0.12), in: Circle())
+                        Text("Disponível Seguro")
+                            .font(.body.weight(.semibold))
+                        Spacer()
+                        Image(systemName: "chevron.right")
+                            .font(.caption.weight(.bold))
+                            .foregroundStyle(.tertiary)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
+                .frame(minHeight: 48)
+                .buttonStyle(.plain)
+                .jarvisCard(padding: 14)
+                .padding(.horizontal)
+                .padding(.top, 8)
+                .accessibilityIdentifier("history.safeAvailable.entry")
+                HistoryView(
+                    model: model,
+                    safeAvailable: safeAvailable,
+                    scheduledCommitments: scheduledCommitments,
+                    financialGoals: financialGoals
+                )
             }
-            .frame(minHeight: 48)
-            .buttonStyle(.plain)
-            .jarvisCard(padding: 14)
-            .padding(.horizontal)
-            .padding(.top, 8)
-            .accessibilityIdentifier("history.safeAvailable.entry")
-            HistoryView(
-                model: model,
-                scheduledCommitments: scheduledCommitments,
-                financialGoals: financialGoals
-            )
+            .background(JARVISDesign.canvas)
+            .padding(.top, 36)
+            .navigationTitle("Visão geral")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(JARVISDesign.canvas, for: .navigationBar)
         }
         .sheet(isPresented: $isPresentingSafeAvailable) {
             NavigationStack {
