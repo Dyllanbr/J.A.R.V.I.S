@@ -1,6 +1,6 @@
 # Backend
 
-Backend Go em monólito modular. O processo permanece health-only por padrão; quando habilitado explicitamente, compõe os endpoints financeiros para despesas, receitas, cartões, compromissos, orçamento e Disponível Seguro com PostgreSQL e um owner temporário derivado pelo servidor. A autenticação HTTP por sessão é opt-in e não substitui os fluxos de emissão, recovery ou multiusuário ainda planejados.
+Backend Go em monólito modular. O processo permanece health-only por padrão; quando habilitado explicitamente, compõe os endpoints financeiros para despesas, receitas, cartões, compromissos, orçamento e Disponível Seguro com PostgreSQL e um owner temporário derivado pelo servidor. A autenticação HTTP por sessão é opt-in: um segredo de bootstrap configurado no servidor emite a sessão e o bearer autenticado pode revogar a própria sessão; recovery e multiusuário continuam planejados.
 
 ## Pacotes
 
@@ -33,6 +33,7 @@ O módulo Go usa o caminho local `jarvis/backend` enquanto o repositório não p
 - `JARVIS_SHUTDOWN_TIMEOUT`: padrão `10s`, maior que zero e no máximo `30s`.
 - `JARVIS_FINANCIAL_API_ENABLED`: `false`/ausente mantém health-only; `true` habilita a composição financeira.
 - `JARVIS_AUTHENTICATION_ENABLED`: `false`/ausente preserva o comportamento local atual; `true` exige um bearer opaco validado por sessão e vinculado ao owner server-side.
+- `JARVIS_SESSION_BOOTSTRAP_TOKEN`: obrigatório quando a autenticação está habilitada; segredo ASCII de 1 a 4096 bytes usado somente por `POST /v1/auth/sessions` para emitir uma sessão local.
 - `JARVIS_OWNER_ID`: obrigatório e validado quando a API financeira está habilitada; é o owner server-side do contexto single-owner temporário, ao qual o principal autenticado opt-in deve corresponder.
 
 Configuração carregada somente por comandos/adapters PostgreSQL explícitos:
@@ -45,7 +46,7 @@ Configuração carregada somente por comandos/adapters PostgreSQL explícitos:
 
 Valores inválidos geram erros categóricos sem repetir o conteúdo bruto. O modo health-only não carrega configuração PostgreSQL; quando o modo financeiro está habilitado, o pool é obrigatório, usado pelos adapters e fechado no shutdown.
 
-O servidor define timeouts para headers, leitura, escrita e conexões ociosas. O primeiro `SIGINT`/`SIGTERM` inicia shutdown gracioso; um segundo sinal volta ao comportamento padrão. O endpoint `GET /healthz` é exclusivamente operacional e não expõe dependências internas. Com autenticação habilitada, `/healthz` permanece público, as demais rotas exigem uma única credencial bearer válida e o subject autenticado precisa coincidir com `JARVIS_OWNER_ID`; respostas 401/403 são sanitizadas.
+O servidor define timeouts para headers, leitura, escrita e conexões ociosas. O primeiro `SIGINT`/`SIGTERM` inicia shutdown gracioso; um segundo sinal volta ao comportamento padrão. O endpoint `GET /healthz` é exclusivamente operacional e não expõe dependências internas. Com autenticação habilitada, `POST /v1/auth/sessions` aceita somente o segredo de bootstrap configurado no servidor; `/healthz` permanece público e as demais rotas exigem uma única credencial bearer válida e o subject autenticado precisa coincidir com `JARVIS_OWNER_ID`. `DELETE /v1/auth/sessions/{sessionID}` só revoga a sessão atualmente autenticada. Respostas 401/403 são sanitizadas.
 
 ## Persistência local
 

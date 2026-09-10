@@ -20,6 +20,8 @@ var (
 	ErrInvalidFinancialAPIEnabled   = errors.New("JARVIS_FINANCIAL_API_ENABLED: must be true or false")
 	ErrInvalidAuthenticationEnabled = errors.New("JARVIS_AUTHENTICATION_ENABLED: must be true or false")
 	ErrMissingOwnerID               = errors.New("JARVIS_OWNER_ID: is required when the financial API is enabled")
+	ErrMissingSessionBootstrapToken = errors.New("JARVIS_SESSION_BOOTSTRAP_TOKEN: is required when authentication is enabled")
+	ErrInvalidSessionBootstrapToken = errors.New("JARVIS_SESSION_BOOTSTRAP_TOKEN: is invalid")
 )
 
 // Config contains the process configuration required by the foundation.
@@ -29,6 +31,7 @@ type Config struct {
 	FinancialAPIEnabled   bool
 	AuthenticationEnabled bool
 	OwnerID               string
+	SessionBootstrapToken string
 }
 
 // FromEnv loads and validates configuration from environment variables.
@@ -77,9 +80,30 @@ func FromEnv() (Config, error) {
 		if cfg.OwnerID == "" {
 			return Config{}, ErrMissingOwnerID
 		}
+		if cfg.AuthenticationEnabled {
+			cfg.SessionBootstrapToken = os.Getenv("JARVIS_SESSION_BOOTSTRAP_TOKEN")
+			if cfg.SessionBootstrapToken == "" {
+				return Config{}, ErrMissingSessionBootstrapToken
+			}
+			if !validSessionBootstrapToken(cfg.SessionBootstrapToken) {
+				return Config{}, ErrInvalidSessionBootstrapToken
+			}
+		}
 	}
 
 	return cfg, nil
+}
+
+func validSessionBootstrapToken(value string) bool {
+	if value == "" || len(value) > 4096 {
+		return false
+	}
+	for index := 0; index < len(value); index++ {
+		if value[index] < '!' || value[index] > '~' {
+			return false
+		}
+	}
+	return true
 }
 
 func valueOrDefault(name, fallback string) string {

@@ -346,9 +346,47 @@ func New(
 	monthlyBudgetRoutes := httpapi.NewMonthlyBudget(cfg.OwnerID, setMonthlyBudget, getMonthlyBudget)
 	financialGoalsRoutes := httpapi.NewFinancialGoals(cfg.OwnerID, listFinancialGoals, replaceFinancialGoal, replaceProtectedValue)
 	purchaseSimulationRoutes := httpapi.NewPurchaseSimulation(cfg.OwnerID, simulatePurchase)
-	server := httpserver.New(
-		cfg.HTTPAddress,
-		logger,
+	var sessionRoutes httpserver.RouteRegistrar
+	var authenticationMiddleware *httpapi.AuthenticationMiddleware
+	if cfg.AuthenticationEnabled {
+		authenticationRepository, err := transactionspostgres.NewAuthenticationRepository(pool, postgresConfig.OperationTimeout)
+		if err != nil {
+			pool.Close()
+			return nil, err
+		}
+		authenticatePrincipal, err := application.NewAuthenticatePrincipal(authenticationRepository)
+		if err != nil {
+			pool.Close()
+			return nil, err
+		}
+		issueSession, err := application.NewIssueSession(
+			authenticationRepository,
+			randomid.NewSessionIDGenerator(),
+			randomid.NewSessionCredentialGenerator(),
+			systemClock{},
+		)
+		if err != nil {
+			pool.Close()
+			return nil, err
+		}
+		revokeSession, err := application.NewRevokeSession(authenticationRepository, systemClock{})
+		if err != nil {
+			pool.Close()
+			return nil, err
+		}
+		routes, err := httpapi.NewSessionLifecycle(cfg.OwnerID, cfg.SessionBootstrapToken, issueSession, revokeSession)
+		if err != nil {
+			pool.Close()
+			return nil, err
+		}
+		sessionRoutes = routes
+		authenticationMiddleware, err = httpapi.NewAuthenticationMiddleware(cfg.OwnerID, authenticatePrincipal)
+		if err != nil {
+			pool.Close()
+			return nil, err
+		}
+	}
+	registrars := []httpserver.RouteRegistrar{
 		financialRoutes,
 		recurrenceRoutes,
 		recurrenceSuggestionRoutes,
@@ -361,23 +399,14 @@ func New(
 		monthlyBudgetRoutes,
 		financialGoalsRoutes,
 		purchaseSimulationRoutes,
-	)
-	if cfg.AuthenticationEnabled {
-		authenticationRepository, err := transactionspostgres.NewAuthenticationRepository(pool, postgresConfig.OperationTimeout)
-		if err != nil {
-			pool.Close()
-			return nil, err
-		}
-		authenticatePrincipal, err := application.NewAuthenticatePrincipal(authenticationRepository)
-		if err != nil {
-			pool.Close()
-			return nil, err
-		}
-		authenticationMiddleware, err := httpapi.NewAuthenticationMiddleware(cfg.OwnerID, authenticatePrincipal)
-		if err != nil {
-			pool.Close()
-			return nil, err
-		}
+	}
+	if sessionRoutes != nil {
+		registrars = append(registrars, sessionRoutes)
+	}
+	server := httpserver.New(cfg.HTTPAddress, logger, registrars...)
+	if authenticationMiddleware != nil {
+		// The bootstrap route is registered in the same mux before the
+		// middleware, which deliberately allows only its secret-protected POST.
 		server.Handler = authenticationMiddleware.Wrap(server.Handler)
 	}
 	applicationInstance.server = server
