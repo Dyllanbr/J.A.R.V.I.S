@@ -20,6 +20,7 @@ O backend é um único processo Go organizado como monólito modular. Por padrã
 | Projeção mensal mista `MonthlyTransaction` e API discriminada | Verificadas pelo Incremento 2 |
 | Aplicativo SwiftUI/iOS 17 para Expense | Verificado pelo Incremento 1 |
 | Suporte iOS a Income e histórico misto | Verificado pelo Incremento 2 |
+| Dashboard financeiro no Histórico, sobre as leituras existentes | Verificado pelo PR #100 |
 | XCTest, XCUITest e integração Simulator/API/PostgreSQL para Expense/Income | Verificados pelos Incrementos 1 e 2 |
 | Category opcional, migration 004 e catálogo PostgreSQL | Verificados pelo Incremento 3A |
 | Descoberta de categorias e filtros locais no iOS | Verificados pelo Incremento 3A |

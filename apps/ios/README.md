@@ -15,6 +15,7 @@ O primeiro cliente nativo do J.A.R.V.I.S. usa SwiftUI, Swift concurrency, Founda
 - formulário discriminado, preview obrigatório, revisão congelada e confirmação explícita; Income não possui forma de pagamento;
 - retry em memória com a mesma `Idempotency-Key` durante uma tentativa lógica;
 - histórico mensal misto de despesas e receitas via `GET /v1/transactions?month=YYYY-MM`, com labels de Category e filtros locais por tipo/Category;
+- dashboard financeiro integrado ao Histórico, com resumo de Disponível Seguro, entradas/saídas, categorias principais e insight determinístico;
 - experiência de Safe Available integrada ao Histórico, com período civil explícito, breakdown de saldo/receitas/despesas/compromissos e marcador de orçamento ausente;
 - consulta e substituição de Monthly Budget por mês civil, com valores BRL em minor units e zero permitido;
 - simulador “Posso comprar?” read-only na área de Cartões, com compra à vista/parcelada, baseline, projected, impacto e premissas explícitas;
