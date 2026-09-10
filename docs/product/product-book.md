@@ -370,6 +370,8 @@ Quando o orçamento mensal está disponível para todo o período, o resultado t
 
 Histórico, orçamento, Disponível Seguro, metas, simulações e conversa devem funcionar como perspectivas do mesmo sistema financeiro pessoal, não como miniapps independentes. Cada canal pode adaptar a interação, mas deve preservar contexto autorizado, linguagem coerente, controles e continuidade.
 
+A experiência beta atual inicia essa composição no Histórico: um dashboard financeiro apresenta o Disponível Seguro, entradas, saídas, principais categorias e um insight determinístico para o período selecionado. Ele é uma visualização das capacidades verificadas, não uma camada de IA, não altera cálculos e não substitui a confirmação explícita dos registros.
+
 ## Foco financeiro
 
 O J.A.R.V.I.S. não pretende se tornar um organizador genérico da vida. Ele permanece especializado na dimensão financeira.

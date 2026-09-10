@@ -17,6 +17,7 @@ Implementado:
 - migrations versionadas e adapter PostgreSQL com `EXPENSE_RECORDED`/`INCOME_RECORDED`, idempotência e auditoria atômicas;
 - API financeira opt-in com descoberta de categorias, preview sem escrita, registro idempotente por tipo e histórico mensal misto, discriminado por `EXPENSE`/`INCOME`;
 - projeto iOS 17/SwiftUI com seletor Despesa/Receita, Category opcional, preview/revisão/confirmação, sucesso e histórico misto com filtros locais;
+- dashboard financeiro no Histórico com Disponível Seguro, entradas/saídas, categorias principais e insight determinístico;
 - CreditCard e CardPurchase no backend, com compra à vista ou parcelada, InstallmentPlan, schedule derivado, replay e idempotência;
 - fluxos iOS de compra no cartão e consulta/cancelamento de InstallmentPlan, com preview, revisão, confirmação explícita e E2E real;
 - projeção read-only de Scheduled Commitments e Disponível Seguro, com período civil explícito, breakdown determinístico e compromissos de InstallmentPlan/Recurrence;
