@@ -2079,7 +2079,13 @@ final class JARVISUITests: XCTestCase {
 
     @MainActor
     private func dismissKeyboard(in app: XCUIApplication) {
-        if app.keyboards.firstMatch.exists {
+        guard app.keyboards.firstMatch.exists else { return }
+        let done = app.buttons["keyboard.done"]
+        if done.waitForExistence(timeout: 2), done.isHittable {
+            done.tap()
+            return
+        }
+        for _ in 0..<2 {
             app.swipeUp()
         }
     }

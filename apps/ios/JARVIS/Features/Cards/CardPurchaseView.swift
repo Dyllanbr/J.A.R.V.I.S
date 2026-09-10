@@ -3,6 +3,7 @@ import SwiftUI
 struct CardPurchaseView: View {
     @Bindable var model: CardPurchaseViewModel
     @Environment(\.dismiss) private var dismiss
+    @FocusState private var focusedField: Field?
     private let onFinished: (() -> Void)?
     private let embedsNavigationStack: Bool
     private let money = BRLMoneyFormatter()
@@ -57,6 +58,12 @@ struct CardPurchaseView: View {
         }
     }
 
+    private enum Field {
+        case description
+        case amount
+        case installments
+    }
+
     @ViewBuilder private var content: some View {
         switch model.state {
         case .editing, .previewing: form
@@ -73,9 +80,11 @@ struct CardPurchaseView: View {
             }
             Section("Compra") {
                 TextField("Descrição", text: $model.description)
+                    .focused($focusedField, equals: .description)
                     .accessibilityIdentifier("cardPurchase.description")
                 TextField("Valor total", text: $model.amountText)
                     .keyboardType(.decimalPad)
+                    .focused($focusedField, equals: .amount)
                     .accessibilityIdentifier("cardPurchase.amount")
                 Picker("Cartão", selection: Binding(get: { model.creditCardID }, set: { model.creditCardID = $0 })) {
                     Text("Selecione um cartão").tag(String?.none)
@@ -86,6 +95,7 @@ struct CardPurchaseView: View {
                 .accessibilityIdentifier("cardPurchase.card")
                 TextField("Parcelas (opcional, 2 a 120)", text: $model.installmentCountText)
                     .keyboardType(.numberPad)
+                    .focused($focusedField, equals: .installments)
                     .accessibilityIdentifier("cardPurchase.installments")
                 DatePicker("Data da compra", selection: $model.occurredAt, displayedComponents: [.date, .hourAndMinute])
                     .accessibilityIdentifier("cardPurchase.occurredAt")
@@ -113,6 +123,15 @@ struct CardPurchaseView: View {
         .scrollContentBackground(.hidden)
         .background(JARVISDesign.canvas)
         .accessibilityIdentifier("cardPurchase.form")
+        .toolbar {
+            ToolbarItemGroup(placement: .keyboard) {
+                Spacer()
+                Button("Concluído") {
+                    focusedField = nil
+                }
+                .accessibilityIdentifier("keyboard.done")
+            }
+        }
     }
 
     private func review(_ reviewed: ReviewedCardPurchase) -> some View {

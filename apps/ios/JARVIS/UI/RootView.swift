@@ -6,6 +6,7 @@ struct RootView: View {
 
     var body: some View {
         NativeTabContainer(model: model)
+            .ignoresSafeArea(.container, edges: .bottom)
             .preferredColorScheme(.dark)
     }
 }
