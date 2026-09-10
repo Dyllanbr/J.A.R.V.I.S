@@ -226,9 +226,9 @@ O incremento não implementa categorias de orçamento, rollover, metas, alertas,
 
 ## Estado atual — Incremento 7
 
-A primeira fatia técnica de Identidade e Autenticação está **Implemented** dentro de um limite explícito: o backend oferece uma fronteira HTTP opt-in que valida um bearer opaco contra sessões PostgreSQL, vincula o subject autenticado ao owner server-side configurado e mantém `/healthz` público. O modo financeiro continua sem autenticação por padrão para preservar o uso local existente.
+A primeira fatia técnica de Identidade e Autenticação está **Implemented** dentro de um limite explícito: o backend oferece uma fronteira HTTP opt-in que valida um bearer opaco contra sessões PostgreSQL, vincula o subject autenticado ao owner server-side configurado e mantém `/healthz` público. A emissão local exige o segredo de bootstrap configurado no servidor e a revogação só aceita a sessão atualmente autenticada. O modo financeiro continua sem autenticação por padrão para preservar o uso local existente.
 
-Isso não define nem implementa emissão ou revogação de sessões, multiusuário, passkeys, Face ID, PIN, recovery, cache local criptografado, sincronização ou Trust Center. Essas capacidades permanecem planejadas e exigirão contratos próprios, threat modeling e revisão proporcional.
+Isso ainda não define nem implementa multiusuário, passkeys, Face ID, PIN, recovery, cache local criptografado, sincronização ou Trust Center. Essas capacidades permanecem planejadas e exigirão contratos próprios, threat modeling e revisão proporcional.
 
 ## Estado atual — Simulador “Posso comprar?” do Incremento 6
 
@@ -250,7 +250,7 @@ As capacidades a seguir estão **Planned**. A presença nesta visão não define
 - Statement/faturas completas;
 - compromissos futuros além dos InstallmentPlans implementados;
 - progresso, alertas e integração dessas declarações ao Safe Available; a consulta iOS básica já está implementada, enquanto esses complementos permanecem planejados;
-- emissão e revogação de sessões e autorização multiusuário;
+- autorização multiusuário;
 - passkeys;
 - Face ID;
 - PIN J.A.R.V.I.S.;

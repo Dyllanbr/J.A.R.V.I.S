@@ -98,6 +98,34 @@ func TestAuthenticationMiddlewareAuthenticatesOnceAndKeepsOwnerServerSide(t *tes
 	}
 }
 
+func TestAuthenticationMiddlewareAllowsOnlySessionBootstrapPostToReachHandler(t *testing.T) {
+	authenticator := &middlewareAuthenticator{principal: validMiddlewarePrincipal(t)}
+	middleware := newAuthenticationMiddleware(t, "usr-authenticated-owner", authenticator)
+	nextCalls := 0
+	handler := middleware.Wrap(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		nextCalls++
+		if request.Method != http.MethodPost || request.URL.Path != "/v1/auth/sessions" {
+			t.Fatalf("unexpected bootstrap request: %s %s", request.Method, request.URL.Path)
+		}
+		response.WriteHeader(http.StatusNoContent)
+	}))
+	request := httptest.NewRequest(http.MethodPost, "/v1/auth/sessions", nil)
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusNoContent || nextCalls != 1 || authenticator.calls != 0 {
+		t.Fatalf("bootstrap response/calls = %d/%d/%d", response.Code, nextCalls, authenticator.calls)
+	}
+}
+
+func TestAuthenticationMiddlewareRejectsSessionBootstrapOnOtherMethods(t *testing.T) {
+	authenticator := &middlewareAuthenticator{principal: validMiddlewarePrincipal(t)}
+	middleware := newAuthenticationMiddleware(t, "usr-authenticated-owner", authenticator)
+	request := httptest.NewRequest(http.MethodGet, "/v1/auth/sessions", nil)
+	response := httptest.NewRecorder()
+	middleware.Wrap(http.NotFoundHandler()).ServeHTTP(response, request)
+	assertAuthenticationError(t, response, http.StatusUnauthorized, "UNAUTHENTICATED")
+}
+
 func TestAuthenticationMiddlewareRejectsDifferentSubjectWithoutLeakingOwner(t *testing.T) {
 	authenticator := &middlewareAuthenticator{principal: validMiddlewarePrincipal(t)}
 	middleware := newAuthenticationMiddleware(t, "usr-other-owner", authenticator)

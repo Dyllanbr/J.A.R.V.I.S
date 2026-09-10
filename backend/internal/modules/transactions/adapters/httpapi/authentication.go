@@ -17,6 +17,10 @@ var (
 	ErrMissingAuthenticationUseCase = errors.New("authentication middleware: authenticate use case is required")
 )
 
+const sessionBootstrapPath = "/v1/auth/sessions"
+
+type principalContextKey struct{}
+
 // AuthenticationMiddleware is the opt-in HTTP boundary for the authenticated
 // single-owner beta. It verifies one opaque bearer credential and then checks
 // that its server-verified subject matches the owner composed into the app.
@@ -53,6 +57,13 @@ func (middleware *AuthenticationMiddleware) Wrap(next http.Handler) http.Handler
 			next.ServeHTTP(response, request)
 			return
 		}
+		// Session bootstrap is the only unauthenticated financial route. It is
+		// protected by the server-configured bootstrap secret in the
+		// session lifecycle handler; all other routes require a bearer session.
+		if request.Method == http.MethodPost && request.URL.Path == sessionBootstrapPath {
+			next.ServeHTTP(response, request)
+			return
+		}
 
 		credential, ok := bearerCredential(request)
 		if !ok {
@@ -71,8 +82,14 @@ func (middleware *AuthenticationMiddleware) Wrap(next http.Handler) http.Handler
 			writeError(response, http.StatusForbidden, "FORBIDDEN", "forbidden")
 			return
 		}
+		request = request.WithContext(context.WithValue(request.Context(), principalContextKey{}, result.Principal()))
 		next.ServeHTTP(response, request)
 	})
+}
+
+func authenticatedPrincipal(request *http.Request) (domain.AuthenticatedPrincipal, bool) {
+	principal, ok := request.Context().Value(principalContextKey{}).(domain.AuthenticatedPrincipal)
+	return principal, ok
 }
 
 func bearerCredential(request *http.Request) (string, bool) {

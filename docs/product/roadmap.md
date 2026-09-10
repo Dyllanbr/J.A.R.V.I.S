@@ -270,7 +270,7 @@ O objetivo é criar a base de confiança necessária para uso pessoal real e, po
 
 Esta seção não é especificação de segurança. Requisitos, riscos e decisões devem permanecer nas fontes próprias de [segurança](../security/) e [privacidade](../privacy/).
 
-A Stage 3 implementou uma fronteira HTTP opt-in para bearer opaco validado por sessões PostgreSQL existentes. O principal autenticado é vinculado ao `JARVIS_OWNER_ID` server-side; `/healthz` permanece público e respostas de autenticação são sanitizadas. Emissão e revogação de sessões, multiusuário, passkeys, Face ID, PIN, recovery, cache local e Trust Center continuam planejados.
+A Stage 3 implementou uma fronteira HTTP opt-in para bearer opaco validado por sessões PostgreSQL existentes. A fatia seguinte adicionou emissão local protegida por `JARVIS_SESSION_BOOTSTRAP_TOKEN` e revogação somente da sessão atualmente autenticada. O principal autenticado continua vinculado ao `JARVIS_OWNER_ID` server-side; `/healthz` permanece público e respostas de autenticação são sanitizadas. Multiusuário, passkeys, Face ID, PIN, recovery, cache local e Trust Center continuam planejados.
 
 ## Incremento 8 — WhatsApp
 

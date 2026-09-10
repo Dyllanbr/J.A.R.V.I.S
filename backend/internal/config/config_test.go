@@ -120,6 +120,7 @@ func TestFromEnvEnablesFinancialAPIWithExplicitOwner(t *testing.T) {
 	t.Setenv("JARVIS_FINANCIAL_API_ENABLED", "true")
 	t.Setenv("JARVIS_AUTHENTICATION_ENABLED", "true")
 	t.Setenv("JARVIS_OWNER_ID", "usr_synthetic_owner_001")
+	t.Setenv("JARVIS_SESSION_BOOTSTRAP_TOKEN", "bootstrap-synthetic-token")
 
 	cfg, err := FromEnv()
 	if err != nil {
@@ -127,6 +128,23 @@ func TestFromEnvEnablesFinancialAPIWithExplicitOwner(t *testing.T) {
 	}
 	if !cfg.FinancialAPIEnabled || !cfg.AuthenticationEnabled || cfg.OwnerID != "usr_synthetic_owner_001" {
 		t.Fatal("FromEnv() did not preserve the explicit financial application context")
+	}
+}
+
+func TestFromEnvRequiresValidSessionBootstrapTokenWhenAuthenticationIsEnabled(t *testing.T) {
+	t.Setenv("JARVIS_FINANCIAL_API_ENABLED", "true")
+	t.Setenv("JARVIS_AUTHENTICATION_ENABLED", "true")
+	t.Setenv("JARVIS_OWNER_ID", "usr_synthetic_owner_001")
+
+	if _, err := FromEnv(); !errors.Is(err, ErrMissingSessionBootstrapToken) {
+		t.Fatalf("FromEnv() error = %v, want ErrMissingSessionBootstrapToken", err)
+	}
+
+	for _, value := range []string{" bootstrap", "bootstrap\nsecret", strings.Repeat("x", 4097)} {
+		t.Setenv("JARVIS_SESSION_BOOTSTRAP_TOKEN", value)
+		if _, err := FromEnv(); !errors.Is(err, ErrInvalidSessionBootstrapToken) {
+			t.Fatalf("FromEnv() error for invalid token = %v, want ErrInvalidSessionBootstrapToken", err)
+		}
 	}
 }
 
@@ -179,4 +197,5 @@ func disableFinancialAPI(t *testing.T) {
 	t.Setenv("JARVIS_FINANCIAL_API_ENABLED", "")
 	t.Setenv("JARVIS_AUTHENTICATION_ENABLED", "")
 	t.Setenv("JARVIS_OWNER_ID", "")
+	t.Setenv("JARVIS_SESSION_BOOTSTRAP_TOKEN", "")
 }
