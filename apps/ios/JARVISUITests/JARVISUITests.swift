@@ -1060,8 +1060,8 @@ final class JARVISUITests: XCTestCase {
         let income = app.descendants(matching: .any)
             .matching(NSPredicate(format: "identifier BEGINSWITH %@", "history.income."))
             .firstMatch
-        XCTAssertTrue(expense.waitForExistence(timeout: 8))
-        XCTAssertTrue(income.waitForExistence(timeout: 8))
+        XCTAssertTrue(reveal(expense, in: app), app.debugDescription)
+        XCTAssertTrue(reveal(income, in: app), app.debugDescription)
         XCTAssertTrue(expense.label.contains("Saída"))
         XCTAssertTrue(expense.label.contains("PIX"))
         XCTAssertTrue(expense.label.contains("Alimentação"))
@@ -1809,7 +1809,7 @@ final class JARVISUITests: XCTestCase {
         element("tab.history", in: app).tap()
         XCTAssertTrue(element("history.list", in: app).waitForExistence(timeout: 10))
         XCTAssertTrue(reveal("history.filter.type", in: app))
-        XCTAssertTrue(reveal("history.filter.category", in: app))
+        XCTAssertTrue(reveal("history.filter.category", in: app), app.debugDescription)
         XCTAssertTrue(
             app.descendants(matching: .any)
                 .matching(NSPredicate(format: "identifier BEGINSWITH %@", "history.expense."))
@@ -2093,6 +2093,11 @@ final class JARVISUITests: XCTestCase {
     @MainActor
     private func reveal(_ identifier: String, in app: XCUIApplication) -> Bool {
         let target = element(identifier, in: app)
+        return reveal(target, in: app)
+    }
+
+    @MainActor
+    private func reveal(_ target: XCUIElement, in app: XCUIApplication) -> Bool {
         if target.waitForExistence(timeout: 3), target.isHittable {
             return true
         }

@@ -10,16 +10,19 @@ struct HistoryView: View {
     private let displayFormatter = FinancialDisplayFormatter()
 
     var body: some View {
-        VStack(spacing: 0) {
-            dashboardHeader
-            monthNavigation
-            scheduledCommitmentsEntry
-            financialGoalsEntry
-            filters
-            categoryCatalogStatus
-            content
+        ScrollView {
+            VStack(spacing: 0) {
+                dashboardHeader
+                monthNavigation
+                scheduledCommitmentsEntry
+                financialGoalsEntry
+                filters
+                categoryCatalogStatus
+                content
+            }
         }
         .background(JARVISDesign.canvas)
+        .refreshable { await model.load() }
         .task(id: model.refreshRevision) {
             syncSafeAvailablePeriod()
             await model.load()
@@ -405,52 +408,57 @@ struct HistoryView: View {
     private var content: some View {
         switch model.state {
         case .idle, .loading:
-            Spacer()
-            ProgressView("Carregando histórico")
-                .accessibilityIdentifier("history.loading")
-            Spacer()
+            VStack {
+                ProgressView("Carregando histórico")
+                    .accessibilityIdentifier("history.loading")
+            }
+            .frame(maxWidth: .infinity, minHeight: 260)
         case let .loaded(transactions):
             if transactions.isEmpty {
-                Spacer()
-                ContentUnavailableView(
-                    "Nenhuma movimentação registrada neste mês",
-                    systemImage: "tray",
-                    description: Text("Quando você registrar uma despesa ou receita, ela aparecerá aqui.")
-                )
-                .accessibilityIdentifier("history.empty")
-                Spacer()
-            } else if model.filteredTransactions.isEmpty {
-                Spacer()
-                ContentUnavailableView(
-                    "Nenhuma movimentação corresponde aos filtros",
-                    systemImage: "line.3.horizontal.decrease.circle",
-                    description: Text("Altere os filtros para ver outras movimentações deste mês.")
-                )
-                .accessibilityIdentifier("history.filteredEmpty")
-                Spacer()
-            } else {
-                List(model.filteredTransactions) { transaction in
-                    transactionRow(transaction)
+                VStack {
+                    ContentUnavailableView(
+                        "Nenhuma movimentação registrada neste mês",
+                        systemImage: "tray",
+                        description: Text("Quando você registrar uma despesa ou receita, ela aparecerá aqui.")
+                    )
+                    .accessibilityIdentifier("history.empty")
                 }
-                .listStyle(.plain)
-                .scrollContentBackground(.hidden)
-                .background(JARVISDesign.canvas)
-                .refreshable { await model.load() }
+                .frame(maxWidth: .infinity, minHeight: 360)
+            } else if model.filteredTransactions.isEmpty {
+                VStack {
+                    ContentUnavailableView(
+                        "Nenhuma movimentação corresponde aos filtros",
+                        systemImage: "line.3.horizontal.decrease.circle",
+                        description: Text("Altere os filtros para ver outras movimentações deste mês.")
+                    )
+                    .accessibilityIdentifier("history.filteredEmpty")
+                }
+                .frame(maxWidth: .infinity, minHeight: 360)
+            } else {
+                VStack(spacing: 0) {
+                    ForEach(model.filteredTransactions) { transaction in
+                        transactionRow(transaction)
+                            .padding(.horizontal)
+                    }
+                }
+                .accessibilityElement(children: .contain)
                 .accessibilityIdentifier("history.list")
+                .padding(.top, 8)
             }
         case let .failed(message):
-            Spacer()
-            ContentUnavailableView {
-                Label("Não foi possível carregar", systemImage: "wifi.exclamationmark")
-            } description: {
-                Text(message)
-            } actions: {
-                Button("Tentar novamente") { model.retry() }
-                    .buttonStyle(.borderedProminent)
-                    .frame(minHeight: 44)
-                    .accessibilityIdentifier("history.retry")
+            VStack {
+                ContentUnavailableView {
+                    Label("Não foi possível carregar", systemImage: "wifi.exclamationmark")
+                } description: {
+                    Text(message)
+                } actions: {
+                    Button("Tentar novamente") { model.retry() }
+                        .buttonStyle(.borderedProminent)
+                        .frame(minHeight: 44)
+                        .accessibilityIdentifier("history.retry")
+                }
             }
-            Spacer()
+            .frame(maxWidth: .infinity, minHeight: 360)
         }
     }
 
