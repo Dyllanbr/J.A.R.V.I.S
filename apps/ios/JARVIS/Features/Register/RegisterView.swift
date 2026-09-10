@@ -192,6 +192,15 @@ struct RegisterView: View {
         .scrollDismissesKeyboard(.immediately)
         .scrollContentBackground(.hidden)
         .background(JARVISDesign.canvas)
+        .toolbar {
+            ToolbarItemGroup(placement: .keyboard) {
+                Spacer()
+                Button("Concluído") {
+                    focusedField = nil
+                }
+                .accessibilityIdentifier("keyboard.done")
+            }
+        }
     }
 
     private func review(_ reviewed: ReviewedTransaction) -> some View {

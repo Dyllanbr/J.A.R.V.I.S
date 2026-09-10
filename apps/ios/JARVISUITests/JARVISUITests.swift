@@ -96,6 +96,41 @@ final class JARVISUITests: XCTestCase {
     }
 
     @MainActor
+    func testHistoryDashboardExposesFinancialOverview() throws {
+        continueAfterFailure = false
+        let launched = try launchApp()
+        let app = launched.app
+        defer { app.terminate() }
+
+        XCTAssertTrue(element("tab.history", in: app).waitForExistence(timeout: 8))
+        element("tab.history", in: app).tap()
+
+        for identifier in [
+            "dashboard.hero",
+            "dashboard.safeAvailable",
+            "dashboard.income",
+            "dashboard.expense",
+            "dashboard.insight"
+        ] {
+            XCTAssertTrue(
+                element(identifier, in: app).waitForExistence(timeout: 12),
+                "Missing dashboard identifier: \(identifier)\n\(app.debugDescription)"
+            )
+        }
+
+        let safeAvailableValue = app.descendants(matching: .any)
+            .matching(
+                NSPredicate(
+                    format: "identifier == %@ OR identifier == %@",
+                    "dashboard.safeAvailable.value",
+                    "dashboard.safeAvailable.placeholder"
+                )
+            )
+            .firstMatch
+        XCTAssertTrue(safeAvailableValue.waitForExistence(timeout: 12), app.debugDescription)
+    }
+
+    @MainActor
     func testRecurrencePreviewConfirmListAndCancel() throws {
         continueAfterFailure = false
         let launched = try launchApp()
@@ -1025,8 +1060,8 @@ final class JARVISUITests: XCTestCase {
         let income = app.descendants(matching: .any)
             .matching(NSPredicate(format: "identifier BEGINSWITH %@", "history.income."))
             .firstMatch
-        XCTAssertTrue(expense.waitForExistence(timeout: 8))
-        XCTAssertTrue(income.waitForExistence(timeout: 8))
+        XCTAssertTrue(reveal(expense, in: app), app.debugDescription)
+        XCTAssertTrue(reveal(income, in: app), app.debugDescription)
         XCTAssertTrue(expense.label.contains("Saída"))
         XCTAssertTrue(expense.label.contains("PIX"))
         XCTAssertTrue(expense.label.contains("Alimentação"))
@@ -1774,7 +1809,7 @@ final class JARVISUITests: XCTestCase {
         element("tab.history", in: app).tap()
         XCTAssertTrue(element("history.list", in: app).waitForExistence(timeout: 10))
         XCTAssertTrue(reveal("history.filter.type", in: app))
-        XCTAssertTrue(reveal("history.filter.category", in: app))
+        XCTAssertTrue(reveal("history.filter.category", in: app), app.debugDescription)
         XCTAssertTrue(
             app.descendants(matching: .any)
                 .matching(NSPredicate(format: "identifier BEGINSWITH %@", "history.expense."))
@@ -2044,7 +2079,13 @@ final class JARVISUITests: XCTestCase {
 
     @MainActor
     private func dismissKeyboard(in app: XCUIApplication) {
-        if app.keyboards.firstMatch.exists {
+        guard app.keyboards.firstMatch.exists else { return }
+        let done = app.buttons["keyboard.done"]
+        if done.waitForExistence(timeout: 2), done.isHittable {
+            done.tap()
+            return
+        }
+        for _ in 0..<2 {
             app.swipeUp()
         }
     }
@@ -2052,6 +2093,11 @@ final class JARVISUITests: XCTestCase {
     @MainActor
     private func reveal(_ identifier: String, in app: XCUIApplication) -> Bool {
         let target = element(identifier, in: app)
+        return reveal(target, in: app)
+    }
+
+    @MainActor
+    private func reveal(_ target: XCUIElement, in app: XCUIApplication) -> Bool {
         if target.waitForExistence(timeout: 3), target.isHittable {
             return true
         }

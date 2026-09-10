@@ -2,6 +2,7 @@ import SwiftUI
 
 struct HistoryView: View {
     @Bindable var model: HistoryViewModel
+    @Bindable var safeAvailable: SafeAvailableViewModel
     let scheduledCommitments: ScheduledCommitmentsViewModel
     let financialGoals: FinancialGoalsViewModel
 
@@ -9,8 +10,9 @@ struct HistoryView: View {
     private let displayFormatter = FinancialDisplayFormatter()
 
     var body: some View {
-        NavigationStack {
+        ScrollView {
             VStack(spacing: 0) {
+                dashboardHeader
                 monthNavigation
                 scheduledCommitmentsEntry
                 financialGoalsEntry
@@ -18,14 +20,224 @@ struct HistoryView: View {
                 categoryCatalogStatus
                 content
             }
-            .background(JARVISDesign.canvas)
-            .navigationTitle("Histórico")
         }
+        .background(JARVISDesign.canvas)
+        .refreshable { await model.load() }
         .task(id: model.refreshRevision) {
+            syncSafeAvailablePeriod()
             await model.load()
+            await safeAvailable.load(forceRefresh: true)
         }
         .task {
             await model.loadCategoriesIfNeeded()
+        }
+    }
+
+    private func syncSafeAvailablePeriod() {
+        let calendar = Calendar.financial
+        guard let start = calendar.date(from: DateComponents(year: model.month.year, month: model.month.month, day: 1)),
+              let nextMonth = calendar.date(byAdding: .month, value: 1, to: start),
+              let end = calendar.date(byAdding: .day, value: -1, to: nextMonth)
+        else { return }
+        safeAvailable.setPeriodStart(start)
+        safeAvailable.setPeriodEnd(end)
+    }
+
+    private var dashboardHeader: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            HStack(alignment: .top, spacing: 12) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("JARVIS")
+                        .font(.caption.weight(.bold))
+                        .tracking(2)
+                        .foregroundStyle(DashboardPalette.accent)
+                    Text("Sua vida financeira, em foco.")
+                        .font(.title2.weight(.bold))
+                        .foregroundStyle(.white)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: 8)
+                Image(systemName: "sparkles")
+                    .font(.title3.weight(.semibold))
+                    .foregroundStyle(DashboardPalette.accent)
+                    .frame(width: 40, height: 40)
+                    .background(DashboardPalette.accent.opacity(0.14), in: Circle())
+                    .accessibilityHidden(true)
+            }
+
+            HStack(alignment: .bottom) {
+                VStack(alignment: .leading, spacing: 5) {
+                    Text("Disponível seguro")
+                        .font(.subheadline.weight(.medium))
+                        .foregroundStyle(DashboardPalette.secondaryText)
+                    if let response = safeAvailable.response {
+                        Text(DashboardMoneyFormatter.string(minor: response.finalAmount.minor))
+                            .font(.system(size: 32, weight: .bold, design: .rounded).monospacedDigit())
+                            .foregroundStyle(response.finalAmount.minor < 0 ? DashboardPalette.warning : .white)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.72)
+                            .accessibilityIdentifier("dashboard.safeAvailable.value")
+                    } else {
+                        Text("Calcule seu próximo passo")
+                            .font(.title3.weight(.semibold))
+                            .foregroundStyle(.white)
+                            .accessibilityIdentifier("dashboard.safeAvailable.placeholder")
+                    }
+                }
+                Spacer(minLength: 12)
+                NavigationLink {
+                    SafeAvailableView(model: safeAvailable)
+                        .environment(\.locale, Locale(identifier: "pt_BR"))
+                } label: {
+                    Label("Ver análise", systemImage: "arrow.up.right")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(DashboardPalette.accent)
+                        .padding(.horizontal, 12)
+                        .frame(minHeight: 40)
+                        .background(DashboardPalette.accent.opacity(0.14), in: Capsule())
+                }
+                .accessibilityIdentifier("dashboard.safeAvailable")
+            }
+
+            HStack(spacing: 10) {
+                dashboardMetric(
+                    title: "Entradas",
+                    value: totalIncome,
+                    tint: DashboardPalette.positive,
+                    identifier: "dashboard.income"
+                )
+                dashboardMetric(
+                    title: "Saídas",
+                    value: totalExpense,
+                    tint: DashboardPalette.warning,
+                    identifier: "dashboard.expense"
+                )
+            }
+
+            if !categorySpend.isEmpty {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("Onde seu dinheiro foi")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.white)
+                    ForEach(categorySpend.prefix(3), id: \.id) { item in
+                        HStack(spacing: 10) {
+                            Text(item.name)
+                                .font(.caption)
+                                .foregroundStyle(DashboardPalette.secondaryText)
+                                .lineLimit(1)
+                                .frame(width: 92, alignment: .leading)
+                            GeometryReader { proxy in
+                                Capsule()
+                                    .fill(DashboardPalette.accent.opacity(0.8))
+                                    .frame(width: max(8, proxy.size.width * item.share), height: 6)
+                                    .frame(maxHeight: .infinity, alignment: .center)
+                            }
+                            .frame(height: 12)
+                            Text(DashboardMoneyFormatter.string(minor: item.amount))
+                                .font(.caption.monospacedDigit())
+                                .foregroundStyle(.white)
+                        }
+                    }
+                }
+                .accessibilityIdentifier("dashboard.categories")
+            }
+
+            Text(dashboardInsight)
+                .font(.footnote)
+                .foregroundStyle(DashboardPalette.secondaryText)
+                .fixedSize(horizontal: false, vertical: true)
+                .accessibilityIdentifier("dashboard.insight")
+        }
+        .padding(20)
+        .background(DashboardPalette.background, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 24, style: .continuous)
+                .stroke(DashboardPalette.accent.opacity(0.28), lineWidth: 1)
+        }
+        .padding(.horizontal)
+        .padding(.top, 10)
+        .padding(.bottom, 8)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("dashboard.hero")
+    }
+
+    private func dashboardMetric(
+        title: String,
+        value: Int64,
+        tint: Color,
+        identifier: String
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 5) {
+            Text(title)
+                .font(.caption)
+                .foregroundStyle(DashboardPalette.secondaryText)
+            Text(DashboardMoneyFormatter.string(minor: value))
+                .font(.headline.monospacedDigit())
+                .foregroundStyle(tint)
+                .lineLimit(1)
+                .minimumScaleFactor(0.75)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(12)
+        .background(Color.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier(identifier)
+    }
+
+    private var totalIncome: Int64 {
+        sum(model.transactions.compactMap { transaction in
+            if case let .income(income) = transaction { return income.amount.minor }
+            return nil
+        })
+    }
+
+    private var totalExpense: Int64 {
+        sum(model.transactions.compactMap { transaction in
+            if case let .expense(expense) = transaction { return expense.amount.minor }
+            return nil
+        })
+    }
+
+    private var categorySpend: [DashboardCategorySpend] {
+        var totals: [String: (name: String, amount: Int64)] = [:]
+        for transaction in model.transactions {
+            guard case let .expense(expense) = transaction else { continue }
+            let id = expense.categoryID ?? "uncategorized"
+            let name = model.categoryDisplayName(for: transaction)
+            let current = totals[id]?.amount ?? 0
+            let (amount, overflow) = current.addingReportingOverflow(expense.amount.minor)
+            totals[id] = (name, overflow ? Int64.max : amount)
+        }
+        let total = max(totalExpense, 1)
+        return totals
+            .map { key, value in
+                DashboardCategorySpend(
+                    id: key,
+                    name: value.name,
+                    amount: value.amount,
+                    share: min(1, Double(value.amount) / Double(total))
+                )
+            }
+            .sorted { lhs, rhs in
+                if lhs.amount != rhs.amount { return lhs.amount > rhs.amount }
+                return lhs.name < rhs.name
+            }
+    }
+
+    private var dashboardInsight: String {
+        guard !model.transactions.isEmpty else {
+            return "Seu resumo aparece aqui assim que houver movimentações no período."
+        }
+        if totalExpense > totalIncome {
+            return "Resumo automático · as saídas estão acima das entradas neste mês."
+        }
+        return "Resumo automático · suas entradas cobrem as saídas registradas neste mês."
+    }
+
+    private func sum(_ values: [Int64]) -> Int64 {
+        values.reduce(into: Int64(0)) { result, value in
+            let (next, overflow) = result.addingReportingOverflow(value)
+            result = overflow ? Int64.max : next
         }
     }
 
@@ -196,52 +408,57 @@ struct HistoryView: View {
     private var content: some View {
         switch model.state {
         case .idle, .loading:
-            Spacer()
-            ProgressView("Carregando histórico")
-                .accessibilityIdentifier("history.loading")
-            Spacer()
+            VStack {
+                ProgressView("Carregando histórico")
+                    .accessibilityIdentifier("history.loading")
+            }
+            .frame(maxWidth: .infinity, minHeight: 260)
         case let .loaded(transactions):
             if transactions.isEmpty {
-                Spacer()
-                ContentUnavailableView(
-                    "Nenhuma movimentação registrada neste mês",
-                    systemImage: "tray",
-                    description: Text("Quando você registrar uma despesa ou receita, ela aparecerá aqui.")
-                )
-                .accessibilityIdentifier("history.empty")
-                Spacer()
-            } else if model.filteredTransactions.isEmpty {
-                Spacer()
-                ContentUnavailableView(
-                    "Nenhuma movimentação corresponde aos filtros",
-                    systemImage: "line.3.horizontal.decrease.circle",
-                    description: Text("Altere os filtros para ver outras movimentações deste mês.")
-                )
-                .accessibilityIdentifier("history.filteredEmpty")
-                Spacer()
-            } else {
-                List(model.filteredTransactions) { transaction in
-                    transactionRow(transaction)
+                VStack {
+                    ContentUnavailableView(
+                        "Nenhuma movimentação registrada neste mês",
+                        systemImage: "tray",
+                        description: Text("Quando você registrar uma despesa ou receita, ela aparecerá aqui.")
+                    )
+                    .accessibilityIdentifier("history.empty")
                 }
-                .listStyle(.plain)
-                .scrollContentBackground(.hidden)
-                .background(JARVISDesign.canvas)
-                .refreshable { await model.load() }
+                .frame(maxWidth: .infinity, minHeight: 360)
+            } else if model.filteredTransactions.isEmpty {
+                VStack {
+                    ContentUnavailableView(
+                        "Nenhuma movimentação corresponde aos filtros",
+                        systemImage: "line.3.horizontal.decrease.circle",
+                        description: Text("Altere os filtros para ver outras movimentações deste mês.")
+                    )
+                    .accessibilityIdentifier("history.filteredEmpty")
+                }
+                .frame(maxWidth: .infinity, minHeight: 360)
+            } else {
+                VStack(spacing: 0) {
+                    ForEach(model.filteredTransactions) { transaction in
+                        transactionRow(transaction)
+                            .padding(.horizontal)
+                    }
+                }
+                .accessibilityElement(children: .contain)
                 .accessibilityIdentifier("history.list")
+                .padding(.top, 8)
             }
         case let .failed(message):
-            Spacer()
-            ContentUnavailableView {
-                Label("Não foi possível carregar", systemImage: "wifi.exclamationmark")
-            } description: {
-                Text(message)
-            } actions: {
-                Button("Tentar novamente") { model.retry() }
-                    .buttonStyle(.borderedProminent)
-                    .frame(minHeight: 44)
-                    .accessibilityIdentifier("history.retry")
+            VStack {
+                ContentUnavailableView {
+                    Label("Não foi possível carregar", systemImage: "wifi.exclamationmark")
+                } description: {
+                    Text(message)
+                } actions: {
+                    Button("Tentar novamente") { model.retry() }
+                        .buttonStyle(.borderedProminent)
+                        .frame(minHeight: 44)
+                        .accessibilityIdentifier("history.retry")
+                }
             }
-            Spacer()
+            .frame(maxWidth: .infinity, minHeight: 360)
         }
     }
 
@@ -320,5 +537,30 @@ struct HistoryView: View {
         .accessibilityIdentifier("history.income.\(income.id)")
         .listRowSeparator(.hidden)
         .listRowBackground(JARVISDesign.surface)
+    }
+}
+
+private struct DashboardCategorySpend {
+    let id: String
+    let name: String
+    let amount: Int64
+    let share: Double
+}
+
+private enum DashboardPalette {
+    static let background = Color(red: 10 / 255, green: 13 / 255, blue: 12 / 255)
+    static let accent = Color(red: 53 / 255, green: 210 / 255, blue: 138 / 255)
+    static let positive = Color(red: 112 / 255, green: 230 / 255, blue: 167 / 255)
+    static let warning = Color(red: 255 / 255, green: 176 / 255, blue: 92 / 255)
+    static let secondaryText = Color.white.opacity(0.68)
+}
+
+private enum DashboardMoneyFormatter {
+    static func string(minor: Int64) -> String {
+        let negative = minor < 0
+        let magnitude = minor == Int64.min ? UInt64(Int64.max) + 1 : UInt64(abs(minor))
+        let whole = magnitude / 100
+        let cents = magnitude % 100
+        return "R$ \(negative ? "-" : "")\(whole),\(String(format: "%02llu", cents))"
     }
 }
