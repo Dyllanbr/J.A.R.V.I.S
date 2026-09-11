@@ -48,6 +48,62 @@ final class HistoryViewModelTests: XCTestCase {
         XCTAssertEqual(items.map(\.type), [.income, .expense])
     }
 
+    func testLoadComparisonCalculatesExactMonthOverMonthDeltas() async {
+        let api = FinancialAPISpy()
+        api.monthResult = .success(
+            TransactionMonth(
+                month: "2026-08",
+                items: [
+                    .income(syntheticIncome(id: "inc_current", amount: 10_000)),
+                    .expense(syntheticExpense(id: "exp_current", amount: 6_500))
+                ]
+            )
+        )
+        api.monthResultsByMonth["2026-07"] = .success(
+            TransactionMonth(
+                month: "2026-07",
+                items: [
+                    .income(syntheticIncome(id: "inc_previous", amount: 8_500)),
+                    .expense(syntheticExpense(id: "exp_previous", amount: 7_000))
+                ]
+            )
+        )
+        let model = HistoryViewModel(api: api, now: syntheticAugustDate())
+
+        await model.load()
+        await model.loadComparison()
+
+        XCTAssertEqual(api.requestedMonths, ["2026-08", "2026-07"])
+        XCTAssertEqual(
+            model.comparisonState,
+            .loaded(HistoryMonthComparison(month: FinancialMonth(year: 2026, month: 7), income: 8_500, expense: 7_000))
+        )
+        if case let .loaded(comparison) = model.comparisonState {
+            XCTAssertEqual(comparison.income, 8_500)
+            XCTAssertEqual(comparison.expense, 7_000)
+            XCTAssertEqual(comparison.net, 1_500)
+            XCTAssertEqual(model.transactions.compactMap { transaction in
+                if case let .income(income) = transaction { return income.amount.minor }
+                return nil
+            }.reduce(0, +) - comparison.income, 1_500)
+        }
+    }
+
+    func testComparisonFailureDoesNotHideLoadedHistory() async {
+        let api = FinancialAPISpy()
+        api.monthResult = .success(
+            TransactionMonth(month: "2026-08", items: [.expense(syntheticExpense())])
+        )
+        api.monthResultsByMonth["2026-07"] = .failure(FinancialAPIError.serviceUnavailable)
+        let model = HistoryViewModel(api: api, now: syntheticAugustDate())
+
+        await model.load()
+        await model.loadComparison()
+
+        XCTAssertEqual(model.state, .loaded([.expense(syntheticExpense())]))
+        XCTAssertEqual(model.comparisonState, .unavailable)
+    }
+
     func testCategoryLabelsDistinguishUncategorizedUnknownAndKnownValues() {
         let api = FinancialAPISpy()
         let model = makeModel(api: api)

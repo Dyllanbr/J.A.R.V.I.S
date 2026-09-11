@@ -8,6 +8,25 @@ enum HistoryState: Equatable {
     case failed(String)
 }
 
+enum HistoryComparisonState: Equatable {
+    case idle
+    case loading
+    case loaded(HistoryMonthComparison)
+    case unavailable
+}
+
+struct HistoryMonthComparison: Equatable, Sendable {
+    let month: FinancialMonth
+    let income: Int64
+    let expense: Int64
+
+    var net: Int64 {
+        let (value, overflow) = income.subtractingReportingOverflow(expense)
+        if !overflow { return value }
+        return income >= 0 ? Int64.max : Int64.min
+    }
+}
+
 enum HistoryTypeFilter: String, CaseIterable, Identifiable {
     case all
     case expense
@@ -54,6 +73,7 @@ final class HistoryViewModel {
     private(set) var refreshRevision = 0
     private(set) var typeFilter: HistoryTypeFilter = .all
     private(set) var categoryFilter: HistoryCategoryFilter = .all
+    private(set) var comparisonState: HistoryComparisonState = .idle
 
     private let api: any FinancialAPI
     private let categories: CategoryCatalogModel
@@ -140,6 +160,7 @@ final class HistoryViewModel {
 
     func load() async {
         state = .loading
+        comparisonState = .idle
         do {
             let response = try await api.transactions(month: month.apiValue)
             state = .loaded(response.items)
@@ -149,6 +170,38 @@ final class HistoryViewModel {
             let message = (error as? FinancialAPIError)?.userMessage
                 ?? "Não foi possível carregar o histórico. Tente novamente."
             state = .failed(message)
+        }
+    }
+
+    /// Loads the immediately preceding civil month for a read-only dashboard
+    /// comparison. A comparison failure never hides a successfully loaded
+    /// current month; it is represented explicitly as unavailable.
+    func loadComparison() async {
+        guard case .loaded = state else {
+            comparisonState = .unavailable
+            return
+        }
+
+        let requestedMonth = month
+        let comparisonMonth = month.adding(months: -1)
+        comparisonState = .loading
+
+        do {
+            let response = try await api.transactions(month: comparisonMonth.apiValue)
+            guard requestedMonth == month else { return }
+            comparisonState = .loaded(
+                HistoryMonthComparison(
+                    month: comparisonMonth,
+                    income: Self.totalIncome(in: response.items),
+                    expense: Self.totalExpense(in: response.items)
+                )
+            )
+        } catch is CancellationError {
+            guard requestedMonth == month else { return }
+            comparisonState = .unavailable
+        } catch {
+            guard requestedMonth == month else { return }
+            comparisonState = .unavailable
         }
     }
 
@@ -168,5 +221,26 @@ final class HistoryViewModel {
 
     func transactionWasRecorded() {
         refreshRevision += 1
+    }
+
+    private static func totalIncome(in transactions: [FinancialTransaction]) -> Int64 {
+        saturatingSum(transactions.compactMap { transaction in
+            if case let .income(income) = transaction { return income.amount.minor }
+            return nil
+        })
+    }
+
+    private static func totalExpense(in transactions: [FinancialTransaction]) -> Int64 {
+        saturatingSum(transactions.compactMap { transaction in
+            if case let .expense(expense) = transaction { return expense.amount.minor }
+            return nil
+        })
+    }
+
+    private static func saturatingSum(_ values: [Int64]) -> Int64 {
+        values.reduce(into: Int64(0)) { result, value in
+            let (next, overflow) = result.addingReportingOverflow(value)
+            result = overflow ? (value >= 0 ? Int64.max : Int64.min) : next
+        }
     }
 }

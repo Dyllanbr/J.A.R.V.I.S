@@ -26,6 +26,7 @@ struct HistoryView: View {
         .task(id: model.refreshRevision) {
             syncSafeAvailablePeriod()
             await model.load()
+            await model.loadComparison()
             await safeAvailable.load(forceRefresh: true)
         }
         .task {
@@ -96,6 +97,10 @@ struct HistoryView: View {
                     tint: DashboardPalette.warning,
                     identifier: "dashboard.expense"
                 )
+            }
+
+            if case let .loaded(comparison) = model.comparisonState {
+                dashboardComparisonCard(comparison)
             }
 
             if !categorySpend.isEmpty {
@@ -259,6 +264,86 @@ struct HistoryView: View {
         .background(Color.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
         .accessibilityElement(children: .combine)
         .accessibilityIdentifier(identifier)
+    }
+
+    private func dashboardComparisonCard(_ comparison: HistoryMonthComparison) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .firstTextBaseline) {
+                Text("Comparativo mensal")
+                    .font(.subheadline.weight(.bold))
+                    .foregroundStyle(.white)
+                Spacer()
+                Text("vs. \(comparison.month.displayName)")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(DashboardPalette.secondaryText)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.75)
+            }
+
+            Text("Veja o que mudou desde o último mês registrado.")
+                .font(.caption)
+                .foregroundStyle(DashboardPalette.secondaryText)
+                .fixedSize(horizontal: false, vertical: true)
+
+            comparisonRow(
+                title: "Entradas",
+                delta: difference(current: totalIncome, previous: comparison.income),
+                tint: DashboardPalette.positive,
+                identifier: "dashboard.comparison.income"
+            )
+            comparisonRow(
+                title: "Saídas",
+                delta: difference(current: totalExpense, previous: comparison.expense),
+                tint: DashboardPalette.warning,
+                identifier: "dashboard.comparison.expense"
+            )
+        }
+        .padding(14)
+        .background(DashboardPalette.surface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .stroke(Color.white.opacity(0.1), lineWidth: 1)
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("dashboard.comparison")
+    }
+
+    private func comparisonRow(
+        title: String,
+        delta: Int64,
+        tint: Color,
+        identifier: String
+    ) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: delta == 0 ? "equal.circle" : (delta > 0 ? "arrow.up.right" : "arrow.down.right"))
+                .font(.caption.weight(.bold))
+                .foregroundStyle(tint)
+                .frame(width: 26, height: 26)
+                .background(tint.opacity(0.14), in: Circle())
+                .accessibilityHidden(true)
+            Text(title)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(DashboardPalette.secondaryText)
+            Spacer()
+            Text(signedMoney(delta))
+                .font(.subheadline.weight(.bold).monospacedDigit())
+                .foregroundStyle(tint)
+                .accessibilityLabel("\(title), variação \(signedMoney(delta))")
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier(identifier)
+    }
+
+    private func difference(current: Int64, previous: Int64) -> Int64 {
+        let (value, overflow) = current.subtractingReportingOverflow(previous)
+        if !overflow { return value }
+        return current >= 0 ? Int64.max : Int64.min
+    }
+
+    private func signedMoney(_ minor: Int64) -> String {
+        guard minor != 0 else { return "R$ 0,00" }
+        let prefix = minor > 0 ? "+" : ""
+        return prefix + DashboardMoneyFormatter.string(minor: minor)
     }
 
     private var dashboardInsightSymbol: String {

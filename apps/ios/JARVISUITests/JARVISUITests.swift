@@ -136,6 +136,9 @@ final class JARVISUITests: XCTestCase {
             "dashboard.safeAvailable",
             "dashboard.income",
             "dashboard.expense",
+            "dashboard.comparison",
+            "dashboard.comparison.income",
+            "dashboard.comparison.expense",
             "dashboard.insight"
         ] {
             XCTAssertTrue(
