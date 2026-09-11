@@ -140,11 +140,13 @@ enum FinancialAPIError: Error, Equatable {
 final class URLSessionFinancialAPIClient: FinancialAPI {
     private let baseURL: URL
     private let session: URLSession
+    private let bearerToken: String?
     private let timestampCodec = RFC3339DateCodec()
 
-    init(baseURL: URL, session: URLSession? = nil) {
+    init(baseURL: URL, session: URLSession? = nil, bearerToken: String? = nil) {
         self.baseURL = baseURL
         self.session = session ?? Self.makeSession()
+        self.bearerToken = bearerToken
     }
 
     func categories() async throws -> [CategoryDefinition] {
@@ -661,6 +663,9 @@ final class URLSessionFinancialAPIClient: FinancialAPI {
         request.timeoutInterval = 15
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         request.setValue("no-store", forHTTPHeaderField: "Cache-Control")
+        if let bearerToken {
+            request.setValue("Bearer \(bearerToken)", forHTTPHeaderField: "Authorization")
+        }
         return request
     }
 

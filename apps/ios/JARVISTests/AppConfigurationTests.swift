@@ -67,4 +67,19 @@ final class AppConfigurationTests: XCTestCase {
 
         XCTAssertTrue(api is StubFinancialAPI)
     }
+
+    func testInvalidBearerConfigurationFailsClosed() async {
+        let api = AppConfiguration.financialAPI(environment: [
+            "JARVIS_IOS_API_MODE": "real",
+            "JARVIS_IOS_API_BASE_URL": "http://127.0.0.1:18081",
+            "JARVIS_IOS_API_BEARER": "token with whitespace"
+        ])
+
+        do {
+            _ = try await api.categories()
+            XCTFail("Invalid bearer configuration must fail closed")
+        } catch {
+            XCTAssertEqual(error as? FinancialAPIError, .configuration)
+        }
+    }
 }

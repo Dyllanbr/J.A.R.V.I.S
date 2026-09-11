@@ -13,6 +13,7 @@ final class FinancialAPIClientTests: XCTestCase {
         URLProtocolStub.install { request in
             XCTAssertEqual(request.httpMethod, "GET")
             XCTAssertEqual(request.url?.path, "/v1/categories")
+            XCTAssertNil(request.value(forHTTPHeaderField: "Authorization"))
             XCTAssertNil(request.httpBody)
             XCTAssertEqual(request.cachePolicy, .reloadIgnoringLocalCacheData)
             return Self.response(request: request, status: 200, body: Self.categoryCatalogJSON)
@@ -25,6 +26,19 @@ final class FinancialAPIClientTests: XCTestCase {
         XCTAssertEqual(categories[9].id, "expense.other")
         XCTAssertEqual(categories[10].id, "income.salary")
         XCTAssertEqual(categories.last?.id, "income.other")
+    }
+
+    @MainActor
+    func testConfiguredBearerIsSentWithoutChangingTheRequestContract() async throws {
+        URLProtocolStub.install { request in
+            XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer opaque-session-token")
+            XCTAssertEqual(request.value(forHTTPHeaderField: "X-JARVIS-Owner"), nil)
+            XCTAssertNil(Self.requestBody(request))
+            return Self.response(request: request, status: 200, body: Self.categoryCatalogJSON)
+        }
+
+        let categories = try await makeClient(bearerToken: "opaque-session-token").categories()
+        XCTAssertEqual(categories.count, 17)
     }
 
     @MainActor
@@ -384,13 +398,17 @@ final class FinancialAPIClientTests: XCTestCase {
     }
 
     @MainActor
-    private func makeClient() -> URLSessionFinancialAPIClient {
+    private func makeClient(bearerToken: String? = nil) -> URLSessionFinancialAPIClient {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [URLProtocolStub.self]
         configuration.urlCache = nil
         configuration.httpCookieStorage = nil
         let session = URLSession(configuration: configuration)
-        return URLSessionFinancialAPIClient(baseURL: URL(string: "http://127.0.0.1:18081")!, session: session)
+        return URLSessionFinancialAPIClient(
+            baseURL: URL(string: "http://127.0.0.1:18081")!,
+            session: session,
+            bearerToken: bearerToken
+        )
     }
 
     private func syntheticRequest() -> ExpenseRequest {
