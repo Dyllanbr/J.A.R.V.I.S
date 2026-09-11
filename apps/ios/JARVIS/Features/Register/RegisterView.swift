@@ -62,135 +62,21 @@ struct RegisterView: View {
     }
 
     private var form: some View {
-        Form {
-            Section("Tipo de movimentação") {
-                HStack {
-                    ForEach(TransactionType.allCases) { type in
-                        Button {
-                            model.selectTransactionType(type)
-                        } label: {
-                            Label(
-                                type.displayName,
-                                systemImage: model.transactionType == type
-                                    ? "checkmark.circle.fill"
-                                    : "circle"
-                            )
-                            .frame(maxWidth: .infinity)
-                        }
-                        .buttonStyle(JARVISChoiceButtonStyle(isSelected: model.transactionType == type))
-                        .accessibilityAddTraits(model.transactionType == type ? .isSelected : [])
-                        .accessibilityHint(
-                            model.transactionType == type
-                                ? "Selecionado"
-                                : "Seleciona \(type.displayName.lowercased())"
-                        )
-                        .accessibilityIdentifier("register.type.\(type.rawValue.lowercased())")
-                    }
-                }
-                .accessibilityElement(children: .contain)
-                .accessibilityIdentifier("register.type")
+        ScrollView {
+            VStack(alignment: .leading, spacing: 18) {
+                registerIntro
+                transactionTypePicker
+                movementFields
+                categoryCatalogStatus
+                registerError
+                reviewButton
             }
-
-            Section(model.transactionType.displayName) {
-                TextField("Descrição", text: $model.description)
-                    .textContentType(.none)
-                    .submitLabel(.next)
-                    .focused($focusedField, equals: .description)
-                    .accessibilityIdentifier("register.description")
-
-                TextField("Valor", text: $model.amountText)
-                    .keyboardType(.decimalPad)
-                    .focused($focusedField, equals: .amount)
-                    .accessibilityLabel("Valor em reais")
-                    .accessibilityHint("Use vírgula ou ponto e até duas casas decimais")
-                    .accessibilityIdentifier("register.amount")
-
-                if model.transactionType == .expense {
-                    Picker("Forma de pagamento", selection: $model.paymentMethod) {
-                        ForEach(PaymentMethod.allCases) { method in
-                            Text(method.displayName)
-                                .tag(method)
-                                .accessibilityIdentifier(
-                                    "register.paymentMethod.\(method.rawValue.lowercased())"
-                                )
-                        }
-                    }
-                    .accessibilityIdentifier("register.paymentMethod")
-                }
-
-                Picker(
-                    "Categoria",
-                    selection: Binding(
-                        get: { model.selectedCategoryID },
-                        set: { model.selectCategory($0) }
-                    )
-                ) {
-                    Text("Sem categoria")
-                        .tag(String?.none)
-                        .accessibilityIdentifier("register.category.option.none")
-                    ForEach(model.availableCategories) { category in
-                        Text(category.displayName)
-                            .tag(Optional(category.id))
-                            .accessibilityIdentifier("register.category.option.\(category.id)")
-                    }
-                }
-                .disabled(!model.categoryCatalogState.isLoaded)
-                .accessibilityValue(model.selectedCategoryDisplayName)
-                .accessibilityHint(categoryAccessibilityHint)
-                .accessibilityIdentifier("register.category")
-
-                DatePicker(
-                    "Data e hora",
-                    selection: $model.occurredAt,
-                    displayedComponents: [.date, .hourAndMinute]
-                )
-                .accessibilityIdentifier("register.occurredAt")
-            }
-
-            categoryCatalogStatus
-
-            if let errorMessage = model.errorMessage {
-                Section {
-                    Label(errorMessage, systemImage: "exclamationmark.triangle.fill")
-                        .foregroundStyle(.red)
-                        .accessibilityIdentifier("register.error")
-                }
-            }
-
-            Section {
-                Button {
-                    focusedField = nil
-                    if model.transactionType == .expense && model.paymentMethod == .credit {
-                        purchaseModel.begin(
-                            description: model.description,
-                            amountText: model.amountText,
-                            occurredAt: model.occurredAt,
-                            categoryID: model.selectedCategoryID
-                        )
-                    } else {
-                        Task { await model.review() }
-                    }
-                } label: {
-                    HStack {
-                        Spacer()
-                        if model.isBusy {
-                            ProgressView()
-                                .accessibilityLabel("Revisando movimentação")
-                        } else {
-                            Text(model.transactionType == .expense && model.paymentMethod == .credit ? "Continuar com cartão" : "Revisar")
-                        }
-                        Spacer()
-                    }
-                    .frame(minHeight: 44)
-                }
-                .buttonStyle(JARVISPrimaryButtonStyle())
-                .disabled(model.isBusy)
-                .accessibilityIdentifier(model.transactionType == .expense && model.paymentMethod == .credit ? "register.cardPurchase" : "register.review")
-            }
+            .padding(.horizontal)
+            .padding(.top, 12)
+            .padding(.bottom, 28)
         }
         .accessibilityIdentifier("register.screen")
         .scrollDismissesKeyboard(.immediately)
-        .scrollContentBackground(.hidden)
         .background(JARVISDesign.canvas)
         .toolbar {
             ToolbarItemGroup(placement: .keyboard) {
@@ -203,85 +89,352 @@ struct RegisterView: View {
         }
     }
 
-    private func review(_ reviewed: ReviewedTransaction) -> some View {
-        Form {
-            Section("Confira antes de registrar") {
-                switch reviewed {
-                case let .expense(expense):
-                    reviewCommonRows(
-                        type: .expense,
-                        description: expense.preview.description,
-                        amount: expense.preview.amount,
-                        occurredAt: expense.preview.occurredAt
+    private var registerIntro: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 12) {
+                Image(systemName: model.transactionType == .expense ? "arrow.down.right" : "arrow.up.right")
+                    .font(.headline.weight(.bold))
+                    .foregroundStyle(JARVISDesign.canvas)
+                    .frame(width: 40, height: 40)
+                    .background(
+                        model.transactionType == .expense ? JARVISDesign.negative : JARVISDesign.positive,
+                        in: RoundedRectangle(cornerRadius: 13, style: .continuous)
                     )
-                    summaryRow(
-                        "Forma de pagamento",
-                        value: expense.preview.paymentMethod.displayName,
-                        identifier: "review.paymentMethod"
-                    )
-                    summaryRow(
-                        "Categoria",
-                        value: expense.categoryDisplayName,
-                        identifier: "review.category"
-                    )
-                case let .income(income):
-                    reviewCommonRows(
-                        type: .income,
-                        description: income.preview.description,
-                        amount: income.preview.amount,
-                        occurredAt: income.preview.occurredAt
-                    )
-                    summaryRow(
-                        "Categoria",
-                        value: income.categoryDisplayName,
-                        identifier: "review.category"
-                    )
+                    .accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("NOVA MOVIMENTAÇÃO")
+                        .font(.caption2.weight(.bold))
+                        .tracking(1.3)
+                        .foregroundStyle(JARVISDesign.accent)
+                    Text("Registre sem perder o contexto.")
+                        .font(.title3.weight(.bold))
+                        .foregroundStyle(.white)
                 }
             }
+            Text("Confirme os detalhes antes de salvar no seu histórico.")
+                .font(.subheadline)
+                .foregroundStyle(JARVISDesign.muted)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityIdentifier("register.intro")
+    }
 
-            if let errorMessage = model.errorMessage {
-                Section {
-                    Label(errorMessage, systemImage: "exclamationmark.triangle.fill")
-                        .foregroundStyle(.red)
-                        .accessibilityIdentifier("review.error")
-                }
-            }
-
-            Section {
-                Button("Editar") { model.edit() }
-                    .frame(minHeight: 44)
-                    .disabled(model.isBusy)
-                    .accessibilityIdentifier("review.edit")
-
-                if !model.state.requiresEditing {
+    private var transactionTypePicker: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("TIPO DE MOVIMENTAÇÃO")
+                .font(.caption.weight(.bold))
+                .tracking(1.1)
+                .foregroundStyle(JARVISDesign.muted)
+            HStack(spacing: 10) {
+                ForEach(TransactionType.allCases) { type in
                     Button {
-                        Task { await model.confirm() }
+                        model.selectTransactionType(type)
                     } label: {
-                        HStack {
-                            Spacer()
-                            if model.isBusy {
-                                ProgressView()
-                                    .accessibilityLabel("Confirmando registro")
-                            } else if case .retryable = model.state {
-                                Text("Tentar novamente")
-                            } else {
-                                Text("Confirmar registro")
-                            }
-                            Spacer()
-                        }
-                        .frame(minHeight: 44)
+                        Label(
+                            type.displayName,
+                            systemImage: model.transactionType == type
+                                ? "checkmark.circle.fill"
+                                : "circle"
+                        )
+                        .frame(maxWidth: .infinity)
                     }
-                    .buttonStyle(JARVISPrimaryButtonStyle())
-                    .disabled(model.isBusy)
-                    .accessibilityIdentifier(
-                        model.state.isRetryable ? "review.retry" : "review.confirm"
+                    .buttonStyle(JARVISChoiceButtonStyle(isSelected: model.transactionType == type))
+                    .accessibilityAddTraits(model.transactionType == type ? .isSelected : [])
+                    .accessibilityHint(
+                        model.transactionType == type
+                            ? "Selecionado"
+                            : "Seleciona \(type.displayName.lowercased())"
                     )
+                    .accessibilityIdentifier("register.type.\(type.rawValue.lowercased())")
                 }
             }
         }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("register.type")
+    }
+
+    private var movementFields: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text(model.transactionType.displayName.uppercased())
+                .font(.caption.weight(.bold))
+                .tracking(1.1)
+                .foregroundStyle(JARVISDesign.accent)
+                .padding(.bottom, 12)
+
+            registerTextField(
+                title: "Descrição",
+                placeholder: "Ex.: supermercado, salário...",
+                text: $model.description,
+                field: .description,
+                identifier: "register.description"
+            )
+            registerDivider
+            registerTextField(
+                title: "Valor",
+                placeholder: "0,00",
+                text: $model.amountText,
+                field: .amount,
+                identifier: "register.amount",
+                keyboard: .decimalPad,
+                accessibilityLabel: "Valor em reais",
+                accessibilityHint: "Use vírgula ou ponto e até duas casas decimais"
+            )
+
+            if model.transactionType == .expense {
+                registerDivider
+                Picker("Forma de pagamento", selection: $model.paymentMethod) {
+                    ForEach(PaymentMethod.allCases) { method in
+                        Text(method.displayName)
+                            .tag(method)
+                            .accessibilityIdentifier(
+                                "register.paymentMethod.\(method.rawValue.lowercased())"
+                            )
+                    }
+                }
+                .pickerStyle(.menu)
+                .tint(JARVISDesign.accent)
+                .padding(.vertical, 7)
+                .accessibilityIdentifier("register.paymentMethod")
+            }
+
+            registerDivider
+            Picker(
+                "Categoria",
+                selection: Binding(
+                    get: { model.selectedCategoryID },
+                    set: { model.selectCategory($0) }
+                )
+            ) {
+                Text("Sem categoria")
+                    .tag(String?.none)
+                    .accessibilityIdentifier("register.category.option.none")
+                ForEach(model.availableCategories) { category in
+                    Text(category.displayName)
+                        .tag(Optional(category.id))
+                        .accessibilityIdentifier("register.category.option.\(category.id)")
+                }
+            }
+            .pickerStyle(.menu)
+            .tint(JARVISDesign.accent)
+            .disabled(!model.categoryCatalogState.isLoaded)
+            .accessibilityValue(model.selectedCategoryDisplayName)
+            .accessibilityHint(categoryAccessibilityHint)
+            .accessibilityIdentifier("register.category")
+
+            registerDivider
+            DatePicker(
+                "Data e hora",
+                selection: $model.occurredAt,
+                displayedComponents: [.date, .hourAndMinute]
+            )
+            .tint(JARVISDesign.accent)
+            .padding(.vertical, 6)
+            .accessibilityIdentifier("register.occurredAt")
+        }
+        .padding(16)
+        .background(JARVISDesign.elevated, in: RoundedRectangle(cornerRadius: JARVISDesign.cornerRadius, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: JARVISDesign.cornerRadius, style: .continuous)
+                .stroke(Color.white.opacity(0.08), lineWidth: 1)
+        }
+    }
+
+    private func registerTextField(
+        title: String,
+        placeholder: String,
+        text: Binding<String>,
+        field: FormField,
+        identifier: String,
+        keyboard: UIKeyboardType = .default,
+        accessibilityLabel: String? = nil,
+        accessibilityHint: String? = nil
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 5) {
+            Text(title)
+                .font(.caption)
+                .foregroundStyle(JARVISDesign.muted)
+            TextField(placeholder, text: text)
+                .textContentType(.none)
+                .submitLabel(.next)
+                .keyboardType(keyboard)
+                .focused($focusedField, equals: field)
+                .font(.body.weight(.medium))
+                .foregroundStyle(.white)
+                .tint(JARVISDesign.accent)
+                .accessibilityLabel(accessibilityLabel ?? title)
+                .accessibilityHint(accessibilityHint ?? "")
+                .accessibilityIdentifier(identifier)
+        }
+        .padding(.vertical, 4)
+    }
+
+    private var registerDivider: some View {
+        Divider().overlay(Color.white.opacity(0.08))
+    }
+
+    @ViewBuilder
+    private var registerError: some View {
+        if let errorMessage = model.errorMessage {
+            Label(errorMessage, systemImage: "exclamationmark.triangle.fill")
+                .font(.subheadline)
+                .foregroundStyle(JARVISDesign.negative)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(14)
+                .background(JARVISDesign.negative.opacity(0.1), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .accessibilityIdentifier("register.error")
+        }
+    }
+
+    private var reviewButton: some View {
+        Button {
+            focusedField = nil
+            if model.transactionType == .expense && model.paymentMethod == .credit {
+                purchaseModel.begin(
+                    description: model.description,
+                    amountText: model.amountText,
+                    occurredAt: model.occurredAt,
+                    categoryID: model.selectedCategoryID
+                )
+            } else {
+                Task { await model.review() }
+            }
+        } label: {
+            HStack {
+                if model.isBusy {
+                    ProgressView()
+                        .tint(.white)
+                        .accessibilityLabel("Revisando movimentação")
+                } else {
+                    Text(model.transactionType == .expense && model.paymentMethod == .credit ? "Continuar com cartão" : "Revisar")
+                }
+            }
+            .frame(maxWidth: .infinity, minHeight: 50)
+        }
+        .buttonStyle(JARVISPrimaryButtonStyle())
+        .disabled(model.isBusy)
+        .accessibilityIdentifier(model.transactionType == .expense && model.paymentMethod == .credit ? "register.cardPurchase" : "register.review")
+    }
+
+    private func review(_ reviewed: ReviewedTransaction) -> some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 18) {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("REVISÃO")
+                        .font(.caption.weight(.bold))
+                        .tracking(1.3)
+                        .foregroundStyle(JARVISDesign.accent)
+                    Text("Confira antes de registrar")
+                        .font(.title2.weight(.bold))
+                        .foregroundStyle(.white)
+                    Text("Nada é salvo até você confirmar.")
+                        .font(.subheadline)
+                        .foregroundStyle(JARVISDesign.muted)
+                }
+                .accessibilityIdentifier("review.intro")
+
+                VStack(alignment: .leading, spacing: 0) {
+                    switch reviewed {
+                    case let .expense(expense):
+                        reviewCommonRows(
+                            type: .expense,
+                            description: expense.preview.description,
+                            amount: expense.preview.amount,
+                            occurredAt: expense.preview.occurredAt
+                        )
+                        reviewDivider
+                        summaryRow(
+                            "Forma de pagamento",
+                            value: expense.preview.paymentMethod.displayName,
+                            identifier: "review.paymentMethod"
+                        )
+                        reviewDivider
+                        summaryRow(
+                            "Categoria",
+                            value: expense.categoryDisplayName,
+                            identifier: "review.category"
+                        )
+                    case let .income(income):
+                        reviewCommonRows(
+                            type: .income,
+                            description: income.preview.description,
+                            amount: income.preview.amount,
+                            occurredAt: income.preview.occurredAt
+                        )
+                        reviewDivider
+                        summaryRow(
+                            "Categoria",
+                            value: income.categoryDisplayName,
+                            identifier: "review.category"
+                        )
+                    }
+                }
+                .padding(16)
+                .background(JARVISDesign.elevated, in: RoundedRectangle(cornerRadius: JARVISDesign.cornerRadius, style: .continuous))
+                .overlay {
+                    RoundedRectangle(cornerRadius: JARVISDesign.cornerRadius, style: .continuous)
+                        .stroke(Color.white.opacity(0.08), lineWidth: 1)
+                }
+                .accessibilityIdentifier("review.summary")
+
+                if let errorMessage = model.errorMessage {
+                    Label(errorMessage, systemImage: "exclamationmark.triangle.fill")
+                        .font(.subheadline)
+                        .foregroundStyle(JARVISDesign.negative)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(14)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(JARVISDesign.negative.opacity(0.1), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        .accessibilityIdentifier("review.error")
+                }
+
+                VStack(spacing: 10) {
+                    Button("Editar") { model.edit() }
+                        .frame(maxWidth: .infinity, minHeight: 48)
+                        .background(JARVISDesign.surface, in: RoundedRectangle(cornerRadius: 15, style: .continuous))
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 15, style: .continuous)
+                                .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                        }
+                        .disabled(model.isBusy)
+                        .accessibilityIdentifier("review.edit")
+
+                    if !model.state.requiresEditing {
+                        Button {
+                            Task { await model.confirm() }
+                        } label: {
+                            HStack {
+                                if model.isBusy {
+                                    ProgressView()
+                                        .tint(.white)
+                                        .accessibilityLabel("Confirmando registro")
+                                } else if case .retryable = model.state {
+                                    Text("Tentar novamente")
+                                } else {
+                                    Text("Confirmar registro")
+                                }
+                            }
+                            .frame(maxWidth: .infinity, minHeight: 50)
+                        }
+                        .buttonStyle(JARVISPrimaryButtonStyle())
+                        .disabled(model.isBusy)
+                        .accessibilityIdentifier(
+                            model.state.isRetryable ? "review.retry" : "review.confirm"
+                        )
+                    }
+                }
+            }
+            .padding(.horizontal)
+            .padding(.top, 18)
+            .padding(.bottom, 28)
+        }
         .accessibilityIdentifier("review.screen")
-        .scrollContentBackground(.hidden)
         .background(JARVISDesign.canvas)
+    }
+
+    private var reviewDivider: some View {
+        Divider().overlay(Color.white.opacity(0.08)).padding(.vertical, 10)
     }
 
     @ViewBuilder
@@ -323,36 +476,61 @@ struct RegisterView: View {
     }
 
     private func success(_ transaction: FinancialTransaction) -> some View {
+        let title: String
+        let description: String
+        let newButtonTitle: String
+        let newButtonIdentifier: String
         switch transaction {
         case let .expense(expense):
-            ContentUnavailableView {
-                Label("Despesa registrada", systemImage: "checkmark.circle.fill")
-                    .accessibilityIdentifier("register.success")
-            } description: {
-                Text("\(expense.description) foi adicionada ao histórico.")
-            } actions: {
-                Button("Registrar nova despesa") {
-                    model.startNewExpense()
-                }
-                .buttonStyle(.borderedProminent)
-                .frame(minHeight: 44)
-                .accessibilityIdentifier("register.newExpense")
-            }
+            title = "Despesa registrada"
+            description = "\(expense.description) foi adicionada ao histórico."
+            newButtonTitle = "Registrar nova despesa"
+            newButtonIdentifier = "register.newExpense"
         case let .income(income):
-            ContentUnavailableView {
-                Label("Receita registrada", systemImage: "checkmark.circle.fill")
-                    .accessibilityIdentifier("register.success")
-            } description: {
-                Text("\(income.description) foi adicionada ao histórico.")
-            } actions: {
-                Button("Registrar nova receita") {
-                    model.startNewIncome()
-                }
-                .buttonStyle(.borderedProminent)
-                .frame(minHeight: 44)
-                .accessibilityIdentifier("register.newIncome")
-            }
+            title = "Receita registrada"
+            description = "\(income.description) foi adicionada ao histórico."
+            newButtonTitle = "Registrar nova receita"
+            newButtonIdentifier = "register.newIncome"
         }
+
+        return VStack(spacing: 18) {
+            Spacer(minLength: 28)
+            VStack(spacing: 12) {
+                Image(systemName: "checkmark.circle.fill")
+                    .font(.system(size: 54, weight: .semibold))
+                    .foregroundStyle(JARVISDesign.positive)
+                    .accessibilityHidden(true)
+                Text(title)
+                    .font(.title2.weight(.bold))
+                    .foregroundStyle(.white)
+                    .accessibilityIdentifier("register.success")
+                Text(description)
+                    .font(.body)
+                    .foregroundStyle(JARVISDesign.muted)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(24)
+            .background(JARVISDesign.elevated, in: RoundedRectangle(cornerRadius: JARVISDesign.cornerRadius, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: JARVISDesign.cornerRadius, style: .continuous)
+                    .stroke(JARVISDesign.positive.opacity(0.25), lineWidth: 1)
+            }
+            Button(newButtonTitle) {
+                switch transaction {
+                case .expense: model.startNewExpense()
+                case .income: model.startNewIncome()
+                }
+            }
+            .buttonStyle(JARVISPrimaryButtonStyle())
+            .accessibilityIdentifier(newButtonIdentifier)
+            Spacer()
+        }
+        .padding(.horizontal)
+        .padding(.top, 20)
+        .background(JARVISDesign.canvas)
+        .accessibilityIdentifier("register.success.screen")
     }
 
     @ViewBuilder
