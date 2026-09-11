@@ -13,6 +13,119 @@ struct ReviewedIncome: Equatable, Sendable {
     let categoryDisplayName: String
 }
 
+struct QuickCaptureDraft: Equatable, Sendable {
+    let transactionType: TransactionType
+    let description: String
+    let amountText: String
+}
+
+enum QuickCaptureParserError: Error, Equatable {
+    case empty
+    case missingType
+    case missingAmount
+    case missingDescription
+    case invalidAmount
+    case installmentUnsupported
+
+    var message: String {
+        switch self {
+        case .empty:
+            "Digite algo como “comprei pão por R$ 12,50”."
+        case .missingType:
+            "Comece com “comprei”, “gastei”, “recebi” ou “ganhei”."
+        case .missingAmount:
+            "Informe o valor da movimentação."
+        case .missingDescription:
+            "Informe o que foi comprado ou recebido."
+        case .invalidAmount:
+            "Use um valor em reais com até duas casas decimais."
+        case .installmentUnsupported:
+            "Compras parceladas continuam pelo fluxo Cartões, com revisão própria."
+        }
+    }
+}
+
+enum QuickCaptureParser {
+    private static let commandPattern = try! NSRegularExpression(
+        pattern: #"(?i)^\s*(comprei|gastei|paguei|despesa|recebi|ganhei|entrou|receita|salário|salario)\b"#
+    )
+    private static let amountAfterConnectorPattern = try! NSRegularExpression(
+        pattern: #"(?i)(?:r\$\s*|\bpor\s+|\bde\s+)([0-9][0-9. ]*(?:,[0-9]{1,2})?|[0-9]+(?:\.[0-9]{1,2})?)\b"#
+    )
+    private static let standaloneAmountPattern = try! NSRegularExpression(
+        pattern: #"(?i)\b([0-9]+(?:[,.][0-9]{1,2})?)\b"#
+    )
+    private static let installmentPattern = try! NSRegularExpression(
+        pattern: #"(?i)\b[0-9]+\s*x\b|\bparcelad[oa]s?\b|\bparcelamento\b"#
+    )
+
+    static func parse(_ input: String) throws -> QuickCaptureDraft {
+        let value = input.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !value.isEmpty else { throw QuickCaptureParserError.empty }
+        let searchRange = NSRange(value.startIndex..<value.endIndex, in: value)
+        if installmentPattern.firstMatch(in: value, range: searchRange) != nil {
+            throw QuickCaptureParserError.installmentUnsupported
+        }
+
+        guard let commandMatch = commandPattern.firstMatch(in: value, range: searchRange),
+              let commandRange = Range(commandMatch.range(at: 1), in: value)
+        else {
+            throw QuickCaptureParserError.missingType
+        }
+
+        let command = value[commandRange].lowercased()
+        let transactionType: TransactionType = ["recebi", "ganhei", "entrou", "receita", "salário", "salario"].contains(command)
+            ? .income
+            : .expense
+
+        let amountMatch = amountAfterConnectorPattern.firstMatch(in: value, range: searchRange)
+            ?? standaloneAmountPattern.firstMatch(in: value, range: searchRange)
+        guard let amountMatch,
+              let amountRange = Range(amountMatch.range(at: 1), in: value)
+        else {
+            throw QuickCaptureParserError.missingAmount
+        }
+
+        let amountText = canonicalAmount(String(value[amountRange]))
+        guard let amountMinor = try? BRLMoneyParser().parseMinorUnits(amountText), amountMinor > 0 else {
+            throw QuickCaptureParserError.invalidAmount
+        }
+
+        let beforeAmount = value[commandRange.upperBound..<amountRange.lowerBound]
+        let afterAmount = value[amountRange.upperBound..<value.endIndex]
+        var description = String(beforeAmount) + " " + String(afterAmount)
+        description = cleanDescription(description)
+        guard !description.isEmpty else { throw QuickCaptureParserError.missingDescription }
+
+        return QuickCaptureDraft(
+            transactionType: transactionType,
+            description: description,
+            amountText: amountText
+        )
+    }
+
+    private static func canonicalAmount(_ raw: String) -> String {
+        var value = raw.filter { !$0.isWhitespace }
+        if value.contains(",") {
+            value = value.replacingOccurrences(of: ".", with: "")
+        } else if value.filter({ $0 == "." }).count == 1,
+                  let separator = value.firstIndex(of: "."),
+                  value.distance(from: separator, to: value.endIndex) == 4 {
+            value.remove(at: separator)
+        } else {
+            value = value.replacingOccurrences(of: ".", with: ",")
+        }
+        return value
+    }
+
+    private static func cleanDescription(_ raw: String) -> String {
+        raw
+            .replacingOccurrences(of: #"(?i)(r\$|\b(por|de|no|na|em|valor)\b)"#, with: " ", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines.union(.punctuationCharacters))
+            .replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
+    }
+}
+
 enum ReviewedTransaction: Equatable, Sendable {
     case expense(ReviewedExpense)
     case income(ReviewedIncome)
@@ -153,6 +266,18 @@ final class RegistrationViewModel {
 
     func retryCategories() async {
         await categories.retry()
+    }
+
+    func applyQuickCapture(_ draft: QuickCaptureDraft) {
+        guard case .editing = state else { return }
+        if transactionType != draft.transactionType {
+            transactionType = draft.transactionType
+            selectedCategoryID = nil
+            paymentMethod = .pix
+        }
+        description = draft.description
+        amountText = draft.amountText
+        errorMessage = nil
     }
 
     func selectCategory(_ categoryID: String?) {

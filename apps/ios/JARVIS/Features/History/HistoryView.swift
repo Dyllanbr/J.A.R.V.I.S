@@ -12,9 +12,9 @@ struct HistoryView: View {
     var body: some View {
         ScrollView {
             VStack(spacing: 0) {
+                scheduledCommitmentsEntry
                 dashboardHeader
                 monthNavigation
-                scheduledCommitmentsEntry
                 financialGoalsEntry
                 filters
                 categoryCatalogStatus

@@ -96,6 +96,32 @@ final class JARVISUITests: XCTestCase {
     }
 
     @MainActor
+    func testQuickCaptureFillsDraftAndKeepsReviewExplicit() throws {
+        continueAfterFailure = false
+        let launched = try launchApp()
+        let app = launched.app
+        defer { app.terminate() }
+
+        XCTAssertTrue(element("tab.register", in: app).waitForExistence(timeout: 8))
+        let quickCapture = app.descendants(matching: .any)["register.quickCapture"]
+        XCTAssertTrue(quickCapture.waitForExistence(timeout: 8))
+        quickCapture.tap()
+        quickCapture.typeText("comprei pão por R$ 12,50")
+        element("register.quickCapture.apply", in: app).tap()
+
+        XCTAssertEqual(app.textFields["register.description"].value as? String, "pão")
+        XCTAssertEqual(app.textFields["register.amount"].value as? String, "12,50")
+        XCTAssertTrue(element("register.review", in: app).exists)
+        XCTAssertFalse(element("register.success", in: app).exists)
+
+        element("register.review", in: app).tap()
+        XCTAssertTrue(element("review.screen", in: app).waitForExistence(timeout: 8))
+        XCTAssertTrue(element("review.description", in: app).label.contains("pão"))
+        XCTAssertTrue(element("review.amount", in: app).label.contains("R$ 12,50"))
+        XCTAssertTrue(element("review.confirm", in: app).exists)
+    }
+
+    @MainActor
     func testHistoryDashboardExposesFinancialOverview() throws {
         continueAfterFailure = false
         let launched = try launchApp()

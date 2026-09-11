@@ -4,6 +4,9 @@ struct RegisterView: View {
     @Bindable var model: RegistrationViewModel
     @Bindable var purchaseModel: CardPurchaseViewModel
     @FocusState private var focusedField: FormField?
+    @State private var quickCaptureText = ""
+    @State private var quickCaptureError: String?
+    @FocusState private var quickCaptureFocused: Bool
 
     private let moneyFormatter = BRLMoneyFormatter()
     private let displayFormatter = FinancialDisplayFormatter()
@@ -64,6 +67,7 @@ struct RegisterView: View {
     private var form: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
+                quickCaptureCard
                 registerIntro
                 transactionTypePicker
                 movementFields
@@ -86,6 +90,90 @@ struct RegisterView: View {
                 }
                 .accessibilityIdentifier("keyboard.done")
             }
+        }
+    }
+
+    private var quickCaptureCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .center, spacing: 10) {
+                Image(systemName: "wand.and.stars")
+                    .font(.headline.weight(.bold))
+                    .foregroundStyle(JARVISDesign.canvas)
+                    .frame(width: 34, height: 34)
+                    .background(JARVISDesign.accent, in: RoundedRectangle(cornerRadius: 11, style: .continuous))
+                    .accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("ENTRADA RÁPIDA")
+                        .font(.caption2.weight(.bold))
+                        .tracking(1.2)
+                        .foregroundStyle(JARVISDesign.accent)
+                    Text("Fale como você falaria com o J.A.R.V.I.S.")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.white)
+                }
+            }
+
+            Text("O app preenche um rascunho para você revisar. Nada é salvo sem confirmação.")
+                .font(.footnote)
+                .foregroundStyle(JARVISDesign.muted)
+                .fixedSize(horizontal: false, vertical: true)
+
+            TextField("Ex.: comprei pão por R$ 12,50", text: $quickCaptureText, axis: .vertical)
+                .lineLimit(1...3)
+                .textContentType(.none)
+                .submitLabel(.done)
+                .focused($quickCaptureFocused)
+                .font(.body.weight(.medium))
+                .foregroundStyle(.white)
+                .tint(JARVISDesign.accent)
+                .padding(.horizontal, 13)
+                .padding(.vertical, 11)
+                .background(JARVISDesign.canvas, in: RoundedRectangle(cornerRadius: 13, style: .continuous))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 13, style: .continuous)
+                        .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                }
+                .accessibilityLabel("Entrada rápida")
+                .accessibilityHint("Digite uma despesa ou receita em linguagem natural")
+                .accessibilityIdentifier("register.quickCapture")
+
+            if let quickCaptureError {
+                Label(quickCaptureError, systemImage: "info.circle")
+                    .font(.footnote)
+                    .foregroundStyle(JARVISDesign.negative)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("register.quickCapture.error")
+            }
+
+            Button {
+                applyQuickCapture()
+            } label: {
+                Label("Preencher rascunho", systemImage: "arrow.down.to.line.compact")
+                    .frame(maxWidth: .infinity, minHeight: 42)
+            }
+            .buttonStyle(JARVISSecondaryButtonStyle())
+            .disabled(quickCaptureText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || model.isBusy)
+            .accessibilityIdentifier("register.quickCapture.apply")
+        }
+        .padding(15)
+        .background(JARVISDesign.surface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .stroke(JARVISDesign.accent.opacity(0.28), lineWidth: 1)
+        }
+    }
+
+    private func applyQuickCapture() {
+        do {
+            let draft = try QuickCaptureParser.parse(quickCaptureText)
+            model.applyQuickCapture(draft)
+            quickCaptureText = ""
+            quickCaptureError = nil
+            quickCaptureFocused = false
+        } catch let error as QuickCaptureParserError {
+            quickCaptureError = error.message
+        } catch {
+            quickCaptureError = QuickCaptureParserError.invalidAmount.message
         }
     }
 
