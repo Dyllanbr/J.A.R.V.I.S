@@ -155,18 +155,29 @@ private struct CreditCardRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .firstTextBaseline) {
+                Image(systemName: "creditcard.fill")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(card.status == .active ? JARVISDesign.accent : .secondary)
                 Text(card.name)
                     .font(.headline)
                     .fixedSize(horizontal: false, vertical: true)
                 Spacer(minLength: 8)
                 Text(card.status.displayName)
                     .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(card.status == .active ? Color.cyan : Color.secondary)
+                    .foregroundStyle(card.status == .active ? JARVISDesign.accent : Color.secondary)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(
+                        (card.status == .active ? JARVISDesign.accent : Color.white).opacity(0.12),
+                        in: Capsule()
+                    )
             }
             if let lastFour = card.lastFour {
                 Text("•••• \(lastFour)")
                     .font(.body.monospacedDigit())
             }
+            Divider()
+                .overlay(Color.white.opacity(0.1))
             HStack {
                 Text("Fecha dia \(card.closingDay) · vence dia \(card.dueDay)")
                 if let limit = card.creditLimit {
@@ -178,22 +189,21 @@ private struct CreditCardRow: View {
             .foregroundStyle(.secondary)
             .fixedSize(horizontal: false, vertical: true)
         }
-        .padding(.vertical, 6)
-        .padding(.horizontal, 4)
+        .padding(14)
         .background(
-            card.status == .active
-                ? AnyShapeStyle(
-                    LinearGradient(
-                        colors: [Color(red: 0.08, green: 0.34, blue: 0.76), Color(red: 0.18, green: 0.52, blue: 0.94)],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
-                : AnyShapeStyle(JARVISDesign.surface),
+            card.status == .active ? JARVISDesign.elevated : JARVISDesign.surface,
             in: RoundedRectangle(cornerRadius: JARVISDesign.cornerRadius, style: .continuous)
         )
+        .overlay {
+            RoundedRectangle(cornerRadius: JARVISDesign.cornerRadius, style: .continuous)
+                .stroke(
+                    card.status == .active
+                        ? JARVISDesign.accent.opacity(0.48)
+                        : Color.white.opacity(0.08),
+                    lineWidth: 1
+                )
+        }
         .foregroundStyle(card.status == .active ? Color.white : Color.primary)
-        .shadow(color: Color.black.opacity(card.status == .active ? 0.14 : 0.05), radius: 10, y: 4)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(accessibilityLabel)
     }
