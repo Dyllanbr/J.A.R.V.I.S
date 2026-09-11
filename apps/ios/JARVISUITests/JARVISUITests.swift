@@ -122,6 +122,28 @@ final class JARVISUITests: XCTestCase {
     }
 
     @MainActor
+    func testQuickCaptureOpensInstallmentPurchaseWithParsedCount() throws {
+        continueAfterFailure = false
+        let launched = try launchApp()
+        let app = launched.app
+        defer { app.terminate() }
+
+        XCTAssertTrue(element("tab.register", in: app).waitForExistence(timeout: 8))
+        let quickCapture = app.descendants(matching: .any)["register.quickCapture"]
+        XCTAssertTrue(quickCapture.waitForExistence(timeout: 8))
+        quickCapture.tap()
+        quickCapture.typeText("comprei um PS5 em 10x de R$ 300")
+        element("register.quickCapture.apply", in: app).tap()
+
+        XCTAssertTrue(element("cardPurchase.form", in: app).waitForExistence(timeout: 10), app.debugDescription)
+        XCTAssertEqual(app.textFields["cardPurchase.description"].value as? String, "um PS5")
+        XCTAssertEqual(app.textFields["cardPurchase.amount"].value as? String, "300")
+        XCTAssertEqual(app.textFields["cardPurchase.installments"].value as? String, "10")
+        XCTAssertTrue(element("cardPurchase.review", in: app).exists)
+        XCTAssertFalse(element("cardPurchase.success", in: app).exists)
+    }
+
+    @MainActor
     func testHistoryDashboardExposesFinancialOverview() throws {
         continueAfterFailure = false
         let launched = try launchApp()

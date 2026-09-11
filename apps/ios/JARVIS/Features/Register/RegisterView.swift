@@ -166,7 +166,15 @@ struct RegisterView: View {
     private func applyQuickCapture() {
         do {
             let draft = try QuickCaptureParser.parse(quickCaptureText)
-            model.applyQuickCapture(draft)
+            if let installmentCountText = draft.installmentCountText {
+                purchaseModel.begin(
+                    description: draft.description,
+                    amountText: draft.amountText,
+                    installmentCountText: installmentCountText
+                )
+            } else {
+                model.applyQuickCapture(draft)
+            }
             quickCaptureText = ""
             quickCaptureError = nil
             quickCaptureFocused = false

@@ -17,6 +17,7 @@ struct QuickCaptureDraft: Equatable, Sendable {
     let transactionType: TransactionType
     let description: String
     let amountText: String
+    let installmentCountText: String?
 }
 
 enum QuickCaptureParserError: Error, Equatable {
@@ -25,7 +26,7 @@ enum QuickCaptureParserError: Error, Equatable {
     case missingAmount
     case missingDescription
     case invalidAmount
-    case installmentUnsupported
+    case invalidInstallmentCount
 
     var message: String {
         switch self {
@@ -39,8 +40,8 @@ enum QuickCaptureParserError: Error, Equatable {
             "Informe o que foi comprado ou recebido."
         case .invalidAmount:
             "Use um valor em reais com até duas casas decimais."
-        case .installmentUnsupported:
-            "Compras parceladas continuam pelo fluxo Cartões, com revisão própria."
+        case .invalidInstallmentCount:
+            "Informe entre 2 e 120 parcelas para abrir o fluxo Cartões."
         }
     }
 }
@@ -55,17 +56,17 @@ enum QuickCaptureParser {
     private static let standaloneAmountPattern = try! NSRegularExpression(
         pattern: #"(?i)\b([0-9]+(?:[,.][0-9]{1,2})?)\b"#
     )
-    private static let installmentPattern = try! NSRegularExpression(
-        pattern: #"(?i)\b[0-9]+\s*x\b|\bparcelad[oa]s?\b|\bparcelamento\b"#
+    private static let installmentMarkerPattern = try! NSRegularExpression(
+        pattern: #"(?i)\b[0-9]{1,3}\s*(?:x|vezes)\b|\bparcelad[oa]s?\b|\bparcelamento\b"#
+    )
+    private static let installmentCountPattern = try! NSRegularExpression(
+        pattern: #"(?i)\b([0-9]{1,3})\s*(?:x|vezes)\b"#
     )
 
     static func parse(_ input: String) throws -> QuickCaptureDraft {
         let value = input.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !value.isEmpty else { throw QuickCaptureParserError.empty }
         let searchRange = NSRange(value.startIndex..<value.endIndex, in: value)
-        if installmentPattern.firstMatch(in: value, range: searchRange) != nil {
-            throw QuickCaptureParserError.installmentUnsupported
-        }
 
         guard let commandMatch = commandPattern.firstMatch(in: value, range: searchRange),
               let commandRange = Range(commandMatch.range(at: 1), in: value)
@@ -77,6 +78,21 @@ enum QuickCaptureParser {
         let transactionType: TransactionType = ["recebi", "ganhei", "entrou", "receita", "salário", "salario"].contains(command)
             ? .income
             : .expense
+
+        var installmentCountText: String?
+        if installmentMarkerPattern.firstMatch(in: value, range: searchRange) != nil {
+            guard transactionType == .expense else {
+                throw QuickCaptureParserError.invalidInstallmentCount
+            }
+            guard let installmentMatch = installmentCountPattern.firstMatch(in: value, range: searchRange),
+                  let countRange = Range(installmentMatch.range(at: 1), in: value),
+                  let count = Int(value[countRange]),
+                  (2...120).contains(count)
+            else {
+                throw QuickCaptureParserError.invalidInstallmentCount
+            }
+            installmentCountText = String(count)
+        }
 
         let amountMatch = amountAfterConnectorPattern.firstMatch(in: value, range: searchRange)
             ?? standaloneAmountPattern.firstMatch(in: value, range: searchRange)
@@ -100,7 +116,8 @@ enum QuickCaptureParser {
         return QuickCaptureDraft(
             transactionType: transactionType,
             description: description,
-            amountText: amountText
+            amountText: amountText,
+            installmentCountText: installmentCountText
         )
     }
 
@@ -120,6 +137,8 @@ enum QuickCaptureParser {
 
     private static func cleanDescription(_ raw: String) -> String {
         raw
+            .replacingOccurrences(of: #"(?i)\b\d{1,3}\s*(?:x|vezes)\b"#, with: " ", options: .regularExpression)
+            .replacingOccurrences(of: #"(?i)\bparcelad[oa]s?\b|\bparcelamento\b"#, with: " ", options: .regularExpression)
             .replacingOccurrences(of: #"(?i)(r\$|\b(por|de|no|na|em|valor)\b)"#, with: " ", options: .regularExpression)
             .trimmingCharacters(in: .whitespacesAndNewlines.union(.punctuationCharacters))
             .replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)

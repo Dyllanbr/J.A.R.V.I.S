@@ -13,7 +13,8 @@ final class RegistrationViewModelTests: XCTestCase {
             QuickCaptureDraft(
                 transactionType: .expense,
                 description: "pão",
-                amountText: "12,50"
+                amountText: "12,50",
+                installmentCountText: nil
             )
         )
     }
@@ -41,9 +42,25 @@ final class RegistrationViewModelTests: XCTestCase {
         XCTAssertTrue(api.createRequests.isEmpty)
     }
 
-    func testQuickCaptureRejectsInstallmentsInsteadOfGuessing() {
-        XCTAssertThrowsError(try QuickCaptureParser.parse("comprei um PS5 em 10x de R$ 300")) { error in
-            XCTAssertEqual(error as? QuickCaptureParserError, .installmentUnsupported)
+    func testQuickCaptureParsesInstallmentsForTheCardPurchaseFlow() throws {
+        let draft = try QuickCaptureParser.parse("comprei um PS5 em 10x de R$ 300")
+
+        XCTAssertEqual(draft.transactionType, .expense)
+        XCTAssertEqual(draft.description, "um PS5")
+        XCTAssertEqual(draft.amountText, "300")
+        XCTAssertEqual(draft.installmentCountText, "10")
+    }
+
+    func testQuickCaptureRejectsAmbiguousOrOutOfRangeInstallmentCounts() {
+        for input in [
+            "comprei um PS5 parcelado por R$ 300",
+            "comprei um PS5 em 1x de R$ 300",
+            "comprei um PS5 em 121x de R$ 300",
+            "recebi 10x de R$ 300"
+        ] {
+            XCTAssertThrowsError(try QuickCaptureParser.parse(input)) { error in
+                XCTAssertEqual(error as? QuickCaptureParserError, .invalidInstallmentCount)
+            }
         }
     }
 
