@@ -332,7 +332,6 @@ struct RegisterView: View {
                         .font(.subheadline)
                         .foregroundStyle(JARVISDesign.muted)
                 }
-                .accessibilityIdentifier("review.intro")
 
                 VStack(alignment: .leading, spacing: 0) {
                     switch reviewed {
@@ -376,7 +375,6 @@ struct RegisterView: View {
                     RoundedRectangle(cornerRadius: JARVISDesign.cornerRadius, style: .continuous)
                         .stroke(Color.white.opacity(0.08), lineWidth: 1)
                 }
-                .accessibilityIdentifier("review.summary")
 
                 if let errorMessage = model.errorMessage {
                     Label(errorMessage, systemImage: "exclamationmark.triangle.fill")
@@ -530,7 +528,6 @@ struct RegisterView: View {
         .padding(.horizontal)
         .padding(.top, 20)
         .background(JARVISDesign.canvas)
-        .accessibilityIdentifier("register.success.screen")
     }
 
     @ViewBuilder
