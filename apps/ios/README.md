@@ -68,7 +68,7 @@ O gate cross-platform `make verify` permanece separado e não exige macOS/Xcode.
 - somente fixtures sintéticas são autorizadas;
 - nenhum dado financeiro é persistido localmente;
 - não existem analytics, telemetria, crash SDK externo, cookies persistentes ou cache financeiro;
-- o cliente não implementa emissão, armazenamento persistente ou renovação de credenciais; opcionalmente aceita `JARVIS_IOS_API_BEARER` na configuração de execução e mantém o bearer somente em memória para a fronteira HTTP opt-in; Face ID, passkey, PIN e Keychain continuam planejados;
+- o cliente não implementa emissão ou renovação de credenciais; opcionalmente aceita `JARVIS_IOS_API_BEARER` na configuração de execução e envia o bearer pela fronteira HTTP opt-in. Por padrão ele permanece somente em memória; com `JARVIS_IOS_API_PERSIST_BEARER=true` o token é salvo no Keychain deste app para a beta pessoal e lido nas execuções seguintes. Face ID, passkey e PIN continuam planejados;
 - retry mantém a mesma chave somente para falhas transitórias ou de outcome incerto; `400` e `409` exigem edição/nova revisão;
 - a chave idempotente sobrevive apenas enquanto a tentativa permanece em memória;
 - recuperação após encerramento/restart depende de futura autenticação e armazenamento local seguro;
