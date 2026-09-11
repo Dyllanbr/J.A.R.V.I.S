@@ -226,7 +226,7 @@ O incremento não implementa categorias de orçamento, rollover, metas, alertas,
 
 ## Estado atual — Incremento 7
 
-A primeira fatia técnica de Identidade e Autenticação está **Implemented** dentro de um limite explícito: o backend oferece uma fronteira HTTP opt-in que valida um bearer opaco contra sessões PostgreSQL, vincula o subject autenticado ao owner server-side configurado e mantém `/healthz` público. A emissão local exige o segredo de bootstrap configurado no servidor e a revogação só aceita a sessão atualmente autenticada. O modo financeiro continua sem autenticação por padrão para preservar o uso local existente.
+A primeira fatia técnica de Identidade e Autenticação está **Implemented** dentro de um limite explícito: o backend oferece uma fronteira HTTP opt-in que valida um bearer opaco contra sessões PostgreSQL, vincula o subject autenticado ao owner server-side configurado e mantém `/healthz` público. A emissão local exige o segredo de bootstrap configurado no servidor e a revogação só aceita a sessão atualmente autenticada. No iOS, o bearer pode ser persistido no Keychain deste app somente quando a configuração de beta `JARVIS_IOS_API_PERSIST_BEARER` é habilitada explicitamente; sem essa opção ele permanece em memória. O modo financeiro continua sem autenticação por padrão para preservar o uso local existente.
 
 Isso ainda não define nem implementa multiusuário, passkeys, Face ID, PIN, recovery, cache local criptografado, sincronização ou Trust Center. Essas capacidades permanecem planejadas e exigirão contratos próprios, threat modeling e revisão proporcional.
 
