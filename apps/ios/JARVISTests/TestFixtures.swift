@@ -216,6 +216,7 @@ class FinancialAPISpy: FinancialAPI {
         .success(RecordedIncome(income: syntheticIncome(), replayed: false))
     ]
     var monthResult: Result<TransactionMonth, Error> = .success(TransactionMonth(month: "2026-08", items: []))
+    var monthResultsByMonth: [String: Result<TransactionMonth, Error>] = [:]
     var recurrencePreviewResult: Result<RecurrencePreview, Error> = .success(syntheticRecurrencePreview())
     var recurrenceCreateResults: [Result<RecordedRecurrence, Error>] = [
         .success(RecordedRecurrence(recurrence: syntheticRecurrence(), replayed: false))
@@ -291,6 +292,9 @@ class FinancialAPISpy: FinancialAPI {
 
     func transactions(month: String) async throws -> TransactionMonth {
         requestedMonths.append(month)
+        if let result = monthResultsByMonth[month] {
+            return try result.get()
+        }
         return try monthResult.get()
     }
 
