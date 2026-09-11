@@ -75,12 +75,20 @@ final class CardPurchaseViewModel {
         return Int(trimmed)
     }
 
-    func begin(cardID: String? = nil, description: String = "", amountText: String = "", occurredAt: Date? = nil, categoryID: String? = nil) {
+    func begin(
+        cardID: String? = nil,
+        description: String = "",
+        amountText: String = "",
+        installmentCountText: String = "",
+        occurredAt: Date? = nil,
+        categoryID: String? = nil
+    ) {
         guard !isPresenting else { return }
         resetDraft()
         creditCardID = cardID
         self.description = description
         self.amountText = amountText
+        self.installmentCountText = installmentCountText
         if let occurredAt { self.occurredAt = occurredAt }
         self.categoryID = categoryID
         isPresenting = true
