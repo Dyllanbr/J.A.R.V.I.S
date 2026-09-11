@@ -2,6 +2,7 @@ import Foundation
 
 enum AppConfiguration {
     private static let baseURLVariable = "JARVIS_IOS_API_BASE_URL"
+    private static let bearerTokenVariable = "JARVIS_IOS_API_BEARER"
     #if DEBUG
     private static let apiModeVariable = "JARVIS_IOS_API_MODE"
     #endif
@@ -24,11 +25,13 @@ enum AppConfiguration {
         #endif
 
         do {
+            let bearerToken = try bearerToken(environment: environment)
             return URLSessionFinancialAPIClient(
                 baseURL: try baseURL(
                     environment: environment,
                     allowsDebugLoopbackFallback: allowsDebugLoopbackFallback
-                )
+                ),
+                bearerToken: bearerToken
             )
         } catch {
             return UnavailableFinancialAPI()
@@ -37,6 +40,15 @@ enum AppConfiguration {
 
     static func baseURL(environment: [String: String]) throws -> URL {
         try baseURL(environment: environment, allowsDebugLoopbackFallback: true)
+    }
+
+    private static func bearerToken(environment: [String: String]) throws -> String? {
+        guard let value = environment[bearerTokenVariable] else { return nil }
+        let bytes = Array(value.utf8)
+        guard (1...4096).contains(bytes.count), bytes.allSatisfy({ (33...126).contains($0) }) else {
+            throw FinancialAPIError.configuration
+        }
+        return value
     }
 
     private static func baseURL(
