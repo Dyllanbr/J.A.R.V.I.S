@@ -1,14 +1,81 @@
 import Foundation
+import Security
+
+protocol SessionCredentialStore {
+    func readBearerToken() throws -> String?
+    func saveBearerToken(_ token: String) throws
+}
+
+enum SessionCredentialStoreError: Error, Equatable {
+    case readFailed
+    case saveFailed
+}
+
+struct KeychainSessionCredentialStore: SessionCredentialStore, Sendable {
+    static let shared = KeychainSessionCredentialStore()
+
+    private let service = "dev.jarvis.JARVIS.session"
+    private let account = "financial-api-bearer"
+
+    func readBearerToken() throws -> String? {
+        var query = baseQuery
+        query[kSecReturnData as String] = true
+        query[kSecMatchLimit as String] = kSecMatchLimitOne
+
+        var result: CFTypeRef?
+        let status = SecItemCopyMatching(query as CFDictionary, &result)
+        switch status {
+        case errSecSuccess:
+            guard let data = result as? Data,
+                  let token = String(data: data, encoding: .utf8)
+            else { throw SessionCredentialStoreError.readFailed }
+            return token
+        case errSecItemNotFound:
+            return nil
+        default:
+            throw SessionCredentialStoreError.readFailed
+        }
+    }
+
+    func saveBearerToken(_ token: String) throws {
+        var query = baseQuery
+        query[kSecValueData as String] = Data(token.utf8)
+        query[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
+
+        let status = SecItemUpdate(baseQuery as CFDictionary, query as CFDictionary)
+        if status == errSecSuccess { return }
+        guard status == errSecItemNotFound else {
+            throw SessionCredentialStoreError.saveFailed
+        }
+
+        let addStatus = SecItemAdd(query as CFDictionary, nil)
+        guard addStatus == errSecSuccess else {
+            throw SessionCredentialStoreError.saveFailed
+        }
+    }
+
+    private var baseQuery: [String: Any] {
+        [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: account,
+        ]
+    }
+}
 
 enum AppConfiguration {
     private static let baseURLVariable = "JARVIS_IOS_API_BASE_URL"
     private static let bearerTokenVariable = "JARVIS_IOS_API_BEARER"
+    private static let persistBearerVariable = "JARVIS_IOS_API_PERSIST_BEARER"
     #if DEBUG
     private static let apiModeVariable = "JARVIS_IOS_API_MODE"
     #endif
 
     @MainActor
-    static func financialAPI(environment: [String: String] = ProcessInfo.processInfo.environment) -> any FinancialAPI {
+    static func financialAPI(
+        environment: [String: String] = ProcessInfo.processInfo.environment,
+        credentialStore: any SessionCredentialStore = KeychainSessionCredentialStore.shared
+    ) -> any FinancialAPI {
         #if DEBUG
         let mode = environment[apiModeVariable]
 
@@ -25,7 +92,7 @@ enum AppConfiguration {
         #endif
 
         do {
-            let bearerToken = try bearerToken(environment: environment)
+            let bearerToken = try bearerToken(environment: environment, credentialStore: credentialStore)
             return URLSessionFinancialAPIClient(
                 baseURL: try baseURL(
                     environment: environment,
@@ -42,13 +109,50 @@ enum AppConfiguration {
         try baseURL(environment: environment, allowsDebugLoopbackFallback: true)
     }
 
-    private static func bearerToken(environment: [String: String]) throws -> String? {
-        guard let value = environment[bearerTokenVariable] else { return nil }
+    static func bearerToken(
+        environment: [String: String],
+        credentialStore: any SessionCredentialStore
+    ) throws -> String? {
+        if let value = environment[bearerTokenVariable] {
+            try validateBearerToken(value)
+            if try persistenceIsEnabled(environment: environment) {
+                do {
+                    try credentialStore.saveBearerToken(value)
+                } catch {
+                    throw FinancialAPIError.configuration
+                }
+            }
+            return value
+        }
+
+        do {
+            guard let stored = try credentialStore.readBearerToken() else { return nil }
+            try validateBearerToken(stored)
+            return stored
+        } catch let error as FinancialAPIError {
+            throw error
+        } catch {
+            throw FinancialAPIError.configuration
+        }
+    }
+
+    private static func persistenceIsEnabled(environment: [String: String]) throws -> Bool {
+        guard let rawValue = environment[persistBearerVariable] else { return false }
+        switch rawValue.lowercased() {
+        case "1", "true", "yes":
+            return true
+        case "0", "false", "no":
+            return false
+        default:
+            throw FinancialAPIError.configuration
+        }
+    }
+
+    private static func validateBearerToken(_ value: String) throws {
         let bytes = Array(value.utf8)
         guard (1...4096).contains(bytes.count), bytes.allSatisfy({ (33...126).contains($0) }) else {
             throw FinancialAPIError.configuration
         }
-        return value
     }
 
     private static func baseURL(
