@@ -44,62 +44,46 @@ struct HistoryView: View {
     }
 
     private var dashboardHeader: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            HStack(alignment: .top, spacing: 12) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("JARVIS")
-                        .font(.caption.weight(.bold))
-                        .tracking(2)
+        VStack(alignment: .leading, spacing: 16) {
+            HStack(alignment: .center, spacing: 12) {
+                Image(systemName: "chart.line.uptrend.xyaxis")
+                    .font(.headline.weight(.semibold))
+                    .foregroundStyle(DashboardPalette.background)
+                    .frame(width: 38, height: 38)
+                    .background(DashboardPalette.accent, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("VISÃO GERAL")
+                        .font(.caption2.weight(.bold))
+                        .tracking(1.6)
                         .foregroundStyle(DashboardPalette.accent)
-                    Text("Sua vida financeira, em foco.")
-                        .font(.title2.weight(.bold))
+                    Text("Seu dinheiro, em foco.")
+                        .font(.title3.weight(.bold))
                         .foregroundStyle(.white)
-                        .fixedSize(horizontal: false, vertical: true)
                 }
                 Spacer(minLength: 8)
-                Image(systemName: "sparkles")
-                    .font(.title3.weight(.semibold))
-                    .foregroundStyle(DashboardPalette.accent)
-                    .frame(width: 40, height: 40)
-                    .background(DashboardPalette.accent.opacity(0.14), in: Circle())
-                    .accessibilityHidden(true)
+                Text(model.month.displayName)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(DashboardPalette.secondaryText)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+                    .padding(.horizontal, 10)
+                    .frame(minHeight: 32)
+                    .background(Color.white.opacity(0.08), in: Capsule())
+                    .accessibilityLabel("Período, \(model.month.displayName)")
             }
 
-            HStack(alignment: .bottom) {
-                VStack(alignment: .leading, spacing: 5) {
-                    Text("Disponível seguro")
-                        .font(.subheadline.weight(.medium))
-                        .foregroundStyle(DashboardPalette.secondaryText)
-                    if let response = safeAvailable.response {
-                        Text(DashboardMoneyFormatter.string(minor: response.finalAmount.minor))
-                            .font(.system(size: 32, weight: .bold, design: .rounded).monospacedDigit())
-                            .foregroundStyle(response.finalAmount.minor < 0 ? DashboardPalette.warning : .white)
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.72)
-                            .accessibilityIdentifier("dashboard.safeAvailable.value")
-                    } else {
-                        Text("Calcule seu próximo passo")
-                            .font(.title3.weight(.semibold))
-                            .foregroundStyle(.white)
-                            .accessibilityIdentifier("dashboard.safeAvailable.placeholder")
-                    }
-                }
-                Spacer(minLength: 12)
-                NavigationLink {
-                    SafeAvailableView(model: safeAvailable)
-                        .environment(\.locale, Locale(identifier: "pt_BR"))
-                } label: {
-                    Label("Ver análise", systemImage: "arrow.up.right")
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(DashboardPalette.accent)
-                        .padding(.horizontal, 12)
-                        .frame(minHeight: 40)
-                        .background(DashboardPalette.accent.opacity(0.14), in: Capsule())
-                }
-                .accessibilityIdentifier("dashboard.safeAvailable")
-            }
+            Text("Mais clareza para decidir o próximo passo.")
+                .font(.subheadline)
+                .foregroundStyle(DashboardPalette.secondaryText)
+                .fixedSize(horizontal: false, vertical: true)
 
-            HStack(spacing: 10) {
+            dashboardAvailableCard
+
+            LazyVGrid(
+                columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)],
+                spacing: 10
+            ) {
                 dashboardMetric(
                     title: "Entradas",
                     value: totalIncome,
@@ -115,50 +99,143 @@ struct HistoryView: View {
             }
 
             if !categorySpend.isEmpty {
-                VStack(alignment: .leading, spacing: 10) {
-                    Text("Onde seu dinheiro foi")
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(.white)
-                    ForEach(categorySpend.prefix(3), id: \.id) { item in
-                        HStack(spacing: 10) {
-                            Text(item.name)
-                                .font(.caption)
-                                .foregroundStyle(DashboardPalette.secondaryText)
-                                .lineLimit(1)
-                                .frame(width: 92, alignment: .leading)
-                            GeometryReader { proxy in
-                                Capsule()
-                                    .fill(DashboardPalette.accent.opacity(0.8))
-                                    .frame(width: max(8, proxy.size.width * item.share), height: 6)
-                                    .frame(maxHeight: .infinity, alignment: .center)
-                            }
-                            .frame(height: 12)
-                            Text(DashboardMoneyFormatter.string(minor: item.amount))
-                                .font(.caption.monospacedDigit())
-                                .foregroundStyle(.white)
-                        }
-                    }
-                }
-                .accessibilityIdentifier("dashboard.categories")
+                dashboardCategoriesCard
             }
 
-            Text(dashboardInsight)
-                .font(.footnote)
-                .foregroundStyle(DashboardPalette.secondaryText)
-                .fixedSize(horizontal: false, vertical: true)
-                .accessibilityIdentifier("dashboard.insight")
+            HStack(alignment: .top, spacing: 10) {
+                Image(systemName: dashboardInsightSymbol)
+                    .font(.subheadline.weight(.bold))
+                    .foregroundStyle(dashboardInsightTint)
+                    .frame(width: 30, height: 30)
+                    .background(dashboardInsightTint.opacity(0.14), in: Circle())
+                    .accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Leitura rápida")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(.white)
+                    Text(dashboardInsight)
+                        .font(.footnote)
+                        .foregroundStyle(DashboardPalette.secondaryText)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .accessibilityIdentifier("dashboard.insight")
+                }
+            }
+            .padding(12)
+            .background(Color.white.opacity(0.055), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
         }
-        .padding(20)
+        .padding(16)
         .background(DashboardPalette.background, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: 24, style: .continuous)
-                .stroke(DashboardPalette.accent.opacity(0.28), lineWidth: 1)
+                .stroke(Color.white.opacity(0.1), lineWidth: 1)
         }
         .padding(.horizontal)
         .padding(.top, 10)
         .padding(.bottom, 8)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("dashboard.hero")
+    }
+
+    private var dashboardAvailableCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .center) {
+                Label("Disponível seguro", systemImage: "shield.checkered")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(DashboardPalette.secondaryText)
+                Spacer(minLength: 8)
+                Text("LEITURA CONSERVADORA")
+                    .font(.caption2.weight(.bold))
+                    .tracking(0.7)
+                    .foregroundStyle(DashboardPalette.accent)
+            }
+
+            if let response = safeAvailable.response {
+                Text(DashboardMoneyFormatter.string(minor: response.finalAmount.minor))
+                    .font(.system(size: 36, weight: .bold, design: .rounded).monospacedDigit())
+                    .foregroundStyle(response.finalAmount.minor < 0 ? DashboardPalette.warning : .white)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.65)
+                    .accessibilityIdentifier("dashboard.safeAvailable.value")
+            } else {
+                Text("Calcule seu próximo passo")
+                    .font(.title3.weight(.semibold))
+                    .foregroundStyle(.white)
+                    .accessibilityIdentifier("dashboard.safeAvailable.placeholder")
+            }
+
+            HStack(alignment: .center, spacing: 12) {
+                Text("Período: \(model.month.displayName)")
+                    .font(.caption)
+                    .foregroundStyle(DashboardPalette.secondaryText)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+                Spacer(minLength: 8)
+                NavigationLink {
+                    SafeAvailableView(model: safeAvailable)
+                        .environment(\.locale, Locale(identifier: "pt_BR"))
+                } label: {
+                    Label("Ver análise", systemImage: "arrow.up.right")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(DashboardPalette.background)
+                        .padding(.horizontal, 12)
+                        .frame(minHeight: 36)
+                        .background(DashboardPalette.accent, in: Capsule())
+                }
+                .accessibilityIdentifier("dashboard.safeAvailable")
+            }
+        }
+        .padding(15)
+        .background(DashboardPalette.surface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .stroke(DashboardPalette.accent.opacity(0.32), lineWidth: 1)
+        }
+    }
+
+    private var dashboardCategoriesCard: some View {
+        VStack(alignment: .leading, spacing: 11) {
+            HStack(alignment: .firstTextBaseline) {
+                Text("Despesas por categoria")
+                    .font(.subheadline.weight(.bold))
+                    .foregroundStyle(.white)
+                Spacer()
+                Text("TOP 3")
+                    .font(.caption2.weight(.bold))
+                    .tracking(0.8)
+                    .foregroundStyle(DashboardPalette.secondaryText)
+            }
+            ForEach(categorySpend.prefix(3), id: \.id) { item in
+                HStack(spacing: 9) {
+                    Text(item.name)
+                        .font(.caption)
+                        .foregroundStyle(DashboardPalette.secondaryText)
+                        .lineLimit(1)
+                        .frame(width: 86, alignment: .leading)
+                    GeometryReader { proxy in
+                        ZStack(alignment: .leading) {
+                            Capsule()
+                                .fill(Color.white.opacity(0.1))
+                            Capsule()
+                                .fill(DashboardPalette.accent)
+                                .frame(width: max(8, proxy.size.width * item.share))
+                        }
+                    }
+                    .frame(height: 8)
+                    Text("\(Int(item.share * 100))%")
+                        .font(.caption2.monospacedDigit())
+                        .foregroundStyle(DashboardPalette.secondaryText)
+                        .frame(width: 30, alignment: .trailing)
+                    Text(DashboardMoneyFormatter.string(minor: item.amount))
+                        .font(.caption.monospacedDigit())
+                        .foregroundStyle(.white)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.75)
+                }
+            }
+        }
+        .padding(14)
+        .background(DashboardPalette.surface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .accessibilityIdentifier("dashboard.categories")
     }
 
     private func dashboardMetric(
@@ -182,6 +259,16 @@ struct HistoryView: View {
         .background(Color.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
         .accessibilityElement(children: .combine)
         .accessibilityIdentifier(identifier)
+    }
+
+    private var dashboardInsightSymbol: String {
+        guard !model.transactions.isEmpty else { return "sparkles" }
+        return totalExpense > totalIncome ? "exclamationmark.triangle" : "checkmark.seal"
+    }
+
+    private var dashboardInsightTint: Color {
+        guard !model.transactions.isEmpty else { return DashboardPalette.accent }
+        return totalExpense > totalIncome ? DashboardPalette.warning : DashboardPalette.positive
     }
 
     private var totalIncome: Int64 {
@@ -549,6 +636,7 @@ private struct DashboardCategorySpend {
 
 private enum DashboardPalette {
     static let background = Color(red: 10 / 255, green: 13 / 255, blue: 12 / 255)
+    static let surface = Color(red: 20 / 255, green: 25 / 255, blue: 23 / 255)
     static let accent = Color(red: 53 / 255, green: 210 / 255, blue: 138 / 255)
     static let positive = Color(red: 112 / 255, green: 230 / 255, blue: 167 / 255)
     static let warning = Color(red: 255 / 255, green: 176 / 255, blue: 92 / 255)
