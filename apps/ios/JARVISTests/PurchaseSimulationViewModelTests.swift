@@ -51,14 +51,16 @@ final class PurchaseSimulationViewModelTests: XCTestCase {
 
     func testConcurrentSimulationUsesSingleFlight() async throws {
         let response = try Self.response()
-        let api = PurchaseSimulationAPISpy(result: .success(response), yieldsBeforeResult: true)
+        let api = PurchaseSimulationAPISpy(result: .success(response), blocksFirstCall: true)
         let model = PurchaseSimulationViewModel(api: api, now: Self.now)
         model.configure(card: Self.card)
         model.amountText = "12,00"
 
         let first = Task { await model.simulate() }
-        await Task.yield()
+        await api.waitForFirstCall()
         let second = Task { await model.simulate() }
+        await Task.yield()
+        api.releaseFirstCall()
         await first.value
         await second.value
 
@@ -126,20 +128,42 @@ final class PurchaseSimulationViewModelTests: XCTestCase {
 @MainActor
 private final class PurchaseSimulationAPISpy: FinancialAPI {
     var result: Result<PurchaseSimulationResponse, Error>
-    let yieldsBeforeResult: Bool
+    let blocksFirstCall: Bool
     private(set) var callCount = 0
     private(set) var requests: [PurchaseSimulationRequest] = []
+    private var firstCallStarted = false
+    private var firstCallContinuation: CheckedContinuation<Void, Never>?
+    private var releaseContinuation: CheckedContinuation<Void, Never>?
 
-    init(result: Result<PurchaseSimulationResponse, Error>, yieldsBeforeResult: Bool = false) {
+    init(result: Result<PurchaseSimulationResponse, Error>, blocksFirstCall: Bool = false) {
         self.result = result
-        self.yieldsBeforeResult = yieldsBeforeResult
+        self.blocksFirstCall = blocksFirstCall
     }
 
     func simulatePurchase(_ request: PurchaseSimulationRequest) async throws -> PurchaseSimulationResponse {
         callCount += 1
         requests.append(request)
-        if yieldsBeforeResult { await Task.yield() }
+        if blocksFirstCall, !firstCallStarted {
+            firstCallStarted = true
+            firstCallContinuation?.resume()
+            firstCallContinuation = nil
+            await withCheckedContinuation { continuation in
+                releaseContinuation = continuation
+            }
+        }
         return try result.get()
+    }
+
+    func waitForFirstCall() async {
+        guard !firstCallStarted else { return }
+        await withCheckedContinuation { continuation in
+            firstCallContinuation = continuation
+        }
+    }
+
+    func releaseFirstCall() {
+        releaseContinuation?.resume()
+        releaseContinuation = nil
     }
 
     func categories() async throws -> [CategoryDefinition] { throw FinancialAPIError.configuration }

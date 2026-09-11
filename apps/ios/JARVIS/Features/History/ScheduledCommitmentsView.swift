@@ -8,14 +8,11 @@ struct ScheduledCommitmentsView: View {
     var body: some View {
         ZStack(alignment: .topLeading) {
             content
-            Color.clear
-                .frame(width: 1, height: 1)
-                .accessibilityElement()
-                .accessibilityLabel("Compromissos futuros")
-                .accessibilityIdentifier("scheduledCommitments.screen")
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(JARVISDesign.canvas)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("scheduledCommitments.screen")
         .navigationTitle("Compromissos futuros")
         .navigationBarTitleDisplayMode(.inline)
             .task {

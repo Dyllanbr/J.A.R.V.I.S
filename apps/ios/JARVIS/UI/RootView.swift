@@ -60,6 +60,24 @@ struct JARVISPrimaryButtonStyle: ButtonStyle {
     }
 }
 
+struct JARVISSecondaryButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(.subheadline.weight(.semibold))
+            .foregroundStyle(JARVISDesign.accent)
+            .background(
+                JARVISDesign.accent.opacity(configuration.isPressed ? 0.2 : 0.1),
+                in: RoundedRectangle(cornerRadius: 13, style: .continuous)
+            )
+            .overlay {
+                RoundedRectangle(cornerRadius: 13, style: .continuous)
+                    .stroke(JARVISDesign.accent.opacity(0.35), lineWidth: 1)
+            }
+            .scaleEffect(configuration.isPressed ? 0.98 : 1)
+            .animation(.easeOut(duration: 0.16), value: configuration.isPressed)
+    }
+}
+
 struct JARVISChoiceButtonStyle: ButtonStyle {
     let isSelected: Bool
 

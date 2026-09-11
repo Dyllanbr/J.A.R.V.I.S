@@ -5,6 +5,57 @@ import XCTest
 final class RegistrationViewModelTests: XCTestCase {
     private let fixedNow = Date(timeIntervalSinceReferenceDate: 808_000_000)
 
+    func testQuickCaptureParsesExpenseWithoutSaving() throws {
+        let draft = try QuickCaptureParser.parse("comprei pão por R$ 12,50")
+
+        XCTAssertEqual(
+            draft,
+            QuickCaptureDraft(
+                transactionType: .expense,
+                description: "pão",
+                amountText: "12,50"
+            )
+        )
+    }
+
+    func testQuickCaptureParsesIncomeWithAmountFirst() throws {
+        let draft = try QuickCaptureParser.parse("recebi R$ 3.500 de salário")
+
+        XCTAssertEqual(draft.transactionType, .income)
+        XCTAssertEqual(draft.description, "salário")
+        XCTAssertEqual(draft.amountText, "3500")
+    }
+
+    func testQuickCaptureAppliesDraftButLeavesPreviewAndConfirmationExplicit() {
+        let api = FinancialAPISpy()
+        let model = makeModel(api: api)
+        let draft = try? QuickCaptureParser.parse("gastei 18,90 no café")
+        XCTAssertNotNil(draft)
+        model.applyQuickCapture(draft!)
+
+        XCTAssertEqual(model.transactionType, .expense)
+        XCTAssertEqual(model.description, "café")
+        XCTAssertEqual(model.amountText, "18,90")
+        XCTAssertEqual(model.state, .editing)
+        XCTAssertTrue(api.previewRequests.isEmpty)
+        XCTAssertTrue(api.createRequests.isEmpty)
+    }
+
+    func testQuickCaptureRejectsInstallmentsInsteadOfGuessing() {
+        XCTAssertThrowsError(try QuickCaptureParser.parse("comprei um PS5 em 10x de R$ 300")) { error in
+            XCTAssertEqual(error as? QuickCaptureParserError, .installmentUnsupported)
+        }
+    }
+
+    func testQuickCaptureRejectsUnknownTypeAndMissingDescription() {
+        XCTAssertThrowsError(try QuickCaptureParser.parse("pão por R$ 12")) { error in
+            XCTAssertEqual(error as? QuickCaptureParserError, .missingType)
+        }
+        XCTAssertThrowsError(try QuickCaptureParser.parse("comprei por R$ 12")) { error in
+            XCTAssertEqual(error as? QuickCaptureParserError, .missingDescription)
+        }
+    }
+
     func testPreviewMustCompleteBeforeCreateAndConfirmationIsExplicit() async {
         let api = FinancialAPISpy()
         let model = makeModel(api: api)
